@@ -1,0 +1,40 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Go
+source-code/golang/**/bin/
+source-code/golang/**/*.exe
+source-code/golang/**/vendor/
+
+# Python
+source-code/python/**/__pycache__/
+source-code/python/**/*.pyc
+source-code/python/**/.venv/
+source-code/python/**/venv/
+
+# Frontend
+source-code/frontend/**/node_modules/
+source-code/frontend/**/dist/
+source-code/frontend/**/.next/
+
+# Terraform / Infra state
+**/*.tfstate
+**/*.tfstate.backup
+**/.terraform/
+
+# Logs
+*.log
+
+# Docker
+**/docker-compose.override.yml

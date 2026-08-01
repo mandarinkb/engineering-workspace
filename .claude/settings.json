@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /home/m710q/Workspace/engineering-workspace status)",
+      "Bash(git -C /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-aebac1446b323ea5b log --stat -1)",
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-a7d7caf4f12b4ed35/books/07-docker/*.md /home/m710q/Workspace/engineering-workspace/books/07-docker/)",
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-a7d7caf4f12b4ed35/books/08-kubernetes/*.md /home/m710q/Workspace/engineering-workspace/books/08-kubernetes/)",
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-aebac1446b323ea5b/books/09-authentication/*.md /home/m710q/Workspace/engineering-workspace/books/09-authentication/)",
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-aebac1446b323ea5b/books/10-apisix/*.md /home/m710q/Workspace/engineering-workspace/books/10-apisix/)",
+      "Bash(cp -r /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-ab96447c8edfaed73/books/14-observability/. /home/m710q/Workspace/engineering-workspace/books/14-observability/)",
+      "Bash(cp -r /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-ab96447c8edfaed73/books/15-security/. /home/m710q/Workspace/engineering-workspace/books/15-security/)",
+      "Bash(cp -r /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-ab96447c8edfaed73/books/16-cicd/. /home/m710q/Workspace/engineering-workspace/books/16-cicd/)",
+      "Bash(xargs -I{} sh -c 'echo \"{}\"; wc -l \"{}\"')",
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-a6e5803c921e5f07b/books/05-postgresql/*.md /home/m710q/Workspace/engineering-workspace/books/05-postgresql/)",
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-a6e5803c921e5f07b/books/06-redis/*.md /home/m710q/Workspace/engineering-workspace/books/06-redis/)",
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/11-microservices/*.md /home/m710q/Workspace/engineering-workspace/books/11-microservices/)",
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/12-kafka/*.md /home/m710q/Workspace/engineering-workspace/books/12-kafka/)",
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/13-temporal/01-workflow-and-activity.md /home/m710q/Workspace/engineering-workspace/books/13-temporal/)"
+    ]
+  }
+}
