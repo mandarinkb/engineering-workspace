@@ -27,7 +27,24 @@
       "Bash(echo \"---exit: $?---\")",
       "Bash(lsof -ti:8080)",
       "Bash(xargs -r kill -9)",
-      "Bash(kill -9 17779)"
+      "Bash(kill -9 17779)",
+      "Bash(find ~/.claude/skills -maxdepth 3 2>/dev/null)",
+      "Read(//home/m710q/.claude/skills/**)",
+      "Read(//home/m710q/.claude/skills/karpathy-guidelines/**)",
+      "Bash(go env *)",
+      "Bash(timeout 15 go list -m -versions go.temporal.io/sdk)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(go get *)",
+      "Bash(go mod *)",
+      "Bash(go list *)",
+      "Bash(head -5 \"$\\(go env GOMODCACHE\\)/go.temporal.io/api@v1.44.1/workflowservice/v1/request_response.pb.go\")",
+      "Bash(head -5 \"$\\(go env GOMODCACHE\\)/go.temporal.io/api@v1.44.1/workflow/v1/message.pb.go\")",
+      "Bash(grep -n \"^package\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/api@v1.44.1/workflowservice/v1/request_response.pb.go\")",
+      "Bash(grep -n \"^package\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/api@v1.44.1/workflow/v1/message.pb.go\")",
+      "Bash(grep -n \"ErrScheduleAlreadyRunning\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/sdk@v1.47.0/client/client.go\")",
+      "Bash(grep -rn \"ErrScheduleAlreadyRunning\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/sdk@v1.47.0\"/*.go \"$\\(go env GOMODCACHE\\)/go.temporal.io/sdk@v1.47.0\"/client/*.go)",
+      "Bash(grep -rln \"ErrScheduleAlreadyRunning\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/sdk@v1.47.0\")"
     ]
   }
 }

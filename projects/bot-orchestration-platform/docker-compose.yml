@@ -1,0 +1,52 @@
+# docker-compose.yml สำหรับรัน Temporal server + UI ใน local dev เท่านั้น
+#
+# ขอบเขตตั้งใจไว้แคบมาก: มีแค่สิ่งที่ Temporal เองต้องการ (server + UI + PostgreSQL
+# ของ Temporal เอง) ไม่ได้ containerize ตัว BOP app (cmd/bop, cmd/bop-worker) — นั่นคือ
+# scope ของ FULLSTACK-INFRA-ROADMAP.md Phase 2.1 (Containerize) ที่ยังไม่เริ่ม ยังรัน
+# `go run ./cmd/bop` และ `go run ./cmd/bop-worker` ตรงๆ บนเครื่องต่อไปตามปกติ
+#
+# PostgreSQL ตัวนี้เป็น instance แยกต่างหาก ใช้เก็บ event history ภายในของ Temporal
+# เองเท่านั้น (ไม่เกี่ยวกับ PostgreSQL ที่ BOP จะใช้เก็บ job history เองใน Phase 0.4)
+services:
+  postgresql:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes:
+      - temporal-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # temporalio/auto-setup รวม Temporal server ทุก component (frontend/history/matching/
+  # worker service) ไว้ใน image เดียว พร้อมสร้าง schema + namespace "default" ให้อัตโนมัติ
+  # ตอน container เริ่มครั้งแรก — เหมาะกับ local dev มากกว่าแยก image ทีละ service เอง
+  temporal:
+    image: temporalio/auto-setup:latest
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: postgresql
+    ports:
+      - "7233:7233" # gRPC endpoint ที่ Temporal Go SDK (client.Dial) เชื่อมต่อ
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8233:8080" # เปิดดูที่ http://localhost:8233
+
+volumes:
+  temporal-postgres:

@@ -39,7 +39,7 @@ func (b *Bot) Name() string { return "http-status-checker" }
 func (b *Bot) Run(ctx context.Context, log bot.LogFunc, cfg bot.Config) (bot.Result, error) {
 	url, ok := cfg["url"]
 	if !ok || url == "" {
-		return bot.Result{}, fmt.Errorf("http-status-checker: missing required config key %q", "url")
+		return bot.Result{}, bot.NewConfigError(fmt.Errorf("http-status-checker: missing required config key %q", "url"))
 	}
 
 	log(fmt.Sprintf("requesting %s", url))

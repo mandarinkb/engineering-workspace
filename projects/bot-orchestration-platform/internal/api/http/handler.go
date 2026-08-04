@@ -11,6 +11,10 @@ import (
 	"net/http"
 	"time"
 
+	workflowpb "go.temporal.io/api/workflow/v1"
+	"go.temporal.io/api/workflowservice/v1"
+	"go.temporal.io/sdk/client"
+
 	"bop/internal/job"
 	"bop/internal/logger"
 	"bop/internal/worker"
@@ -19,16 +23,16 @@ import (
 
 // Server คือ HTTP API ของ BOP รวม handler ทุกตัวไว้ในที่เดียว
 type Server struct {
-	mux     *http.ServeMux // ตัว router มาตรฐานของ Go (ใช้ pattern matching แบบ method+path ของ Go 1.22+)
-	repo    job.Repository
-	log     logger.Logger
-	pool    *worker.Pool
-	runRepo workflow.RunRepository
+	mux      *http.ServeMux // ตัว router มาตรฐานของ Go (ใช้ pattern matching แบบ method+path ของ Go 1.22+)
+	repo     job.Repository
+	log      logger.Logger
+	pool     *worker.Pool
+	temporal client.Client // ใช้ query ผลลัพธ์ workflow run ผ่าน Temporal เอง (แทน workflow.RunRepository เดิม)
 }
 
 // NewServer ผูก handler ทุกตัวเข้ากับ dependency ที่ส่งเข้ามา แล้วลงทะเบียน route ให้เรียบร้อย
-func NewServer(repo job.Repository, log logger.Logger, pool *worker.Pool, runRepo workflow.RunRepository) *Server {
-	s := &Server{mux: http.NewServeMux(), repo: repo, log: log, pool: pool, runRepo: runRepo}
+func NewServer(repo job.Repository, log logger.Logger, pool *worker.Pool, temporalClient client.Client) *Server {
+	s := &Server{mux: http.NewServeMux(), repo: repo, log: log, pool: pool, temporal: temporalClient}
 	s.routes()
 	return s
 }
@@ -139,28 +143,91 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// workflowRunSummary คือรูปแบบ JSON ที่คืนให้ dashboard ดู — แปลงมาจาก
+// *workflowpb.WorkflowExecutionInfo ของ Temporal อีกที (ตัว protobuf type เดิมมี field
+// เยอะเกินจำเป็นและใช้ *timestamppb.Timestamp ที่ไม่ใช่ JSON-friendly ตรงๆ) เก็บไว้แค่
+// เท่าที่ dashboard ต้องใช้จริง ใกล้เคียงกับ workflow.Run เดิมก่อนย้ายมาใช้ Temporal
+type workflowRunSummary struct {
+	WorkflowID   string     `json:"workflow_id"`
+	RunID        string     `json:"run_id"`
+	WorkflowName string     `json:"workflow_name"`
+	Status       string     `json:"status"`
+	StartedAt    time.Time  `json:"started_at"`
+	EndedAt      *time.Time `json:"ended_at,omitempty"`
+}
+
+// toRunSummary แปลง WorkflowExecutionInfo ที่ได้จาก Temporal (ทั้งจาก ListWorkflow และ
+// DescribeWorkflowExecution) ให้เป็น workflowRunSummary — StartTime ของ Temporal เป็น
+// *timestamppb.Timestamp เสมอ (ไม่มีทางเป็น nil สำหรับ execution ที่มีอยู่จริง) ส่วน
+// CloseTime เป็น nil ตราบใดที่ workflow ยังไม่จบ จึงต้องเช็คก่อนแปลง
+func toRunSummary(info *workflowpb.WorkflowExecutionInfo) workflowRunSummary {
+	summary := workflowRunSummary{
+		WorkflowID:   info.GetExecution().GetWorkflowId(),
+		RunID:        info.GetExecution().GetRunId(),
+		WorkflowName: info.GetType().GetName(),
+		Status:       info.GetStatus().String(),
+		StartedAt:    info.GetStartTime().AsTime(),
+	}
+	if info.GetCloseTime() != nil {
+		ended := info.GetCloseTime().AsTime()
+		summary.EndedAt = &ended
+	}
+	return summary
+}
+
 // handleListWorkflowRuns คืนรายการ workflow run ทั้งหมด (ทั้งที่กำลังรันอยู่และจบไปแล้ว)
-// เรียงจากล่าสุดไปเก่าสุด — ใช้ดูว่า scheduled workflow ทำงานไปแล้วกี่รอบ สำเร็จ/ล้มเหลว
-// รอบไหนบ้าง
+// เรียงจากล่าสุดไปเก่าสุดตาม default ordering ของ Temporal Visibility API — ใช้ดูว่า
+// scheduled workflow ทำงานไปแล้วกี่รอบ สำเร็จ/ล้มเหลวรอบไหนบ้าง แทนที่การอ่านจาก
+// workflow.RunRepository (in-memory) เดิม ตอนนี้ query ตรงไปที่ Temporal server เอง
+// (Temporal เป็นคนเก็บ event history + visibility record ให้ทั้งหมดอยู่แล้ว)
 func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) {
-	runs, err := s.runRepo.List(r.Context())
+	resp, err := s.temporal.ListWorkflow(r.Context(), &workflowservice.ListWorkflowExecutionsRequest{
+		Namespace: workflow.Namespace,
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	runs := make([]workflowRunSummary, 0, len(resp.Executions))
+	for _, e := range resp.Executions {
+		runs = append(runs, toRunSummary(e))
+	}
 	writeJSON(w, http.StatusOK, runs)
 }
 
+// workflowRunDetail ต่อยอดจาก workflowRunSummary เพิ่มผลลัพธ์ทีละ step เข้ามา
+type workflowRunDetail struct {
+	workflowRunSummary
+	Steps []workflow.StepResult `json:"steps"`
+}
+
 // handleGetWorkflowRun คืนรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step ที่รันไปแล้ว
-// (แต่ละ step มี JobID กำกับ ไปดู log เต็มๆ ของ step นั้นต่อได้ที่ GET /jobs/{id}/logs)
+// — id ในที่นี้คือ Temporal Workflow ID (ไม่ใช่ Run.ID แบบสุ่มของเวอร์ชันเดิมอีกต่อไป)
+// ดึงสถานะโดยรวมผ่าน DescribeWorkflowExecution และดึงผลลัพธ์ทีละ step ผ่าน
+// QueryWorkflow เรียก query handler ชื่อ "steps" ที่ประกาศไว้ใน workflow.Execute
+// (internal/workflow/temporal.go) — ใช้ได้ทั้งตอน workflow ยังรันอยู่และจบไปแล้ว
 func (s *Server) handleGetWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	run, err := s.runRepo.Get(r.Context(), id)
+
+	desc, err := s.temporal.DescribeWorkflowExecution(r.Context(), id, "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	writeJSON(w, http.StatusOK, run)
+
+	var steps []workflow.StepResult
+	// QueryWorkflow อาจ error ได้หลายกรณี (เช่น เพิ่งเริ่ม workflow ยังไม่ทัน register
+	// query handler, หรือ history ถูกลบไปตาม retention แล้ว) — ไม่ถือเป็น fatal error
+	// ของ endpoint นี้ทั้งหมด ปล่อยให้ steps เป็น slice ว่างแทนที่จะ error ทั้ง response
+	if val, qerr := s.temporal.QueryWorkflow(r.Context(), id, "", "steps"); qerr == nil {
+		_ = val.Get(&steps)
+	}
+
+	writeJSON(w, http.StatusOK, workflowRunDetail{
+		workflowRunSummary: toRunSummary(desc.WorkflowExecutionInfo),
+		Steps:              steps,
+	})
 }
 
 // writeJSON คือ helper เขียน response กลับเป็น JSON พร้อมตั้ง header/status code ให้ครบ

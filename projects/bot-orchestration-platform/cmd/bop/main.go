@@ -1,9 +1,14 @@
-// Command bop คือจุดเริ่มต้นของโปรแกรม ทำหน้าที่ "ประกอบ" (wire) ทุกส่วนของระบบเข้า
-// ด้วยกัน: สร้าง repository, logger, worker pool, register bot ที่รู้จักทั้งหมด, ตั้ง
-// workflow/scheduler สำหรับรัน bot อัตโนมัติตามเวลา แล้วเปิดใช้งานได้ 2 แบบ: (1) HTTP
-// API server (ค่า default) สำหรับให้ dashboard เรียกใช้ (2) CLI mode สำหรับสั่งรัน bot
-// ตัวเดียวจบแล้วออกจากโปรแกรม เหมาะกับตอนทดสอบ core engine ก่อนที่จะมี UI จริง
-// (ดู FULLSTACK-INFRA-ROADMAP.md Phase 0.4)
+// Command bop คือจุดเริ่มต้นของ HTTP API server + CLI ของ BOP ทำหน้าที่ "ประกอบ" (wire)
+// ส่วนที่เกี่ยวกับ job เดี่ยวๆ ทั้งหมดเข้าด้วยกัน: repository, logger, worker pool,
+// register bot ที่รู้จักทั้งหมด, ต่อ Temporal client (สำหรับอ่านสถานะ workflow run ผ่าน
+// HTTP เท่านั้น) แล้วเปิดใช้งานได้ 2 แบบ: (1) HTTP API server (ค่า default) สำหรับให้
+// dashboard เรียกใช้ (2) CLI mode สำหรับสั่งรัน bot ตัวเดียวจบแล้วออกจากโปรแกรม เหมาะกับ
+// ตอนทดสอบ core engine ก่อนที่จะมี UI จริง (ดู FULLSTACK-INFRA-ROADMAP.md Phase 0.4)
+//
+// process นี้ "ไม่ได้" รัน workflow ใดๆ เอง (ไม่มี Temporal Worker อยู่ในนี้) — การรัน
+// workflow ทั้งแบบ scheduled และการ register Activity ทั้งหมดอยู่ที่ cmd/bop-worker
+// ซึ่งเป็นคนละ process แยกกันโดยตั้งใจ (ดูเหตุผลที่หัวไฟล์ cmd/bop-worker/main.go) —
+// ต้องรันทั้งสอง process คู่กันเสมอถ้าต้องการให้ workflow ทำงานจริง (ดู README.md)
 package main
 
 import (
@@ -15,14 +20,14 @@ import (
 	"os"
 	"time"
 
+	"go.temporal.io/sdk/client"
+
 	apihttp "bop/internal/api/http" // ตั้งชื่อ alias เพราะ package นี้ก็ชื่อ "http" เหมือน net/http
-	"bop/internal/bot"
 	"bop/internal/bots/httpstatus"
 	"bop/internal/job"
 	"bop/internal/logger"
 	memlogger "bop/internal/logger/memory"   // alias เพราะซ้ำชื่อกับ repository/memory ด้านล่าง
 	memrepo "bop/internal/repository/memory" // alias เพราะซ้ำชื่อกับ logger/memory ด้านบน
-	"bop/internal/scheduler"
 	"bop/internal/worker"
 	"bop/internal/workflow"
 )
@@ -44,29 +49,20 @@ func main() {
 	// ชนิดใหม่ในอนาคตแค่เพิ่มบรรทัด pool.Register(...) ตรงนี้ ไม่ต้องแก้โค้ดที่อื่นเลย
 	pool.Register(httpstatus.New())
 
-	// ขั้นตอนที่ 4: ตั้ง workflow + scheduler — เวอร์ชันเบาก่อนย้ายไปใช้ Temporal จริงจัง
-	// ใน roadmap Phase 2.5 (ดูข้อจำกัดที่อธิบายไว้ที่หัวไฟล์ internal/workflow/workflow.go)
-	// runRepo เก็บประวัติการรันของแต่ละ workflow, runner รันแต่ละ step ตามลำดับผ่าน pool
-	// เดิมที่ประกาศไว้ข้างบน (ไม่ได้สร้าง execution engine แยกต่างหาก), scheduler คอย
-	// เช็คว่าถึงเวลาที่ workflow ไหนควรถูกสั่งรันอัตโนมัติหรือยัง
-	runRepo := memrepo.NewRunRepository()
-	runner := workflow.NewRunner(pool, runRepo)
-	sched := scheduler.New(runner, time.Second) // เช็ค schedule ทุก 1 วินาที
-
-	// ตัวอย่าง workflow: เช็คสถานะ example.com ทุก 1 นาที (มีแค่ 1 step ตอนนี้ เพื่อสาธิต
-	// ว่า scheduler+runner ทำงานจริง — เพิ่ม step อื่นต่อท้ายได้ทันทีโดยไม่ต้องแก้โค้ดส่วนอื่น
-	// เพราะ Runner รัน Steps ทีละตัวตามลำดับให้อัตโนมัติอยู่แล้ว)
-	sched.Register(workflow.Workflow{
-		Name: "check-example-com",
-		Steps: []workflow.Step{
-			{BotName: "http-status-checker", Config: bot.Config{"url": "https://example.com"}},
-		},
-	}, scheduler.Interval{Every: time.Minute})
-
-	// รัน scheduler ใน goroutine แยก ให้ทำงานอยู่เบื้องหลังตลอดอายุโปรแกรม — ใช้
-	// context.Background() ไปก่อน (ยังไม่มี graceful shutdown ในเวอร์ชันนี้ โปรแกรม
-	// ถูกปิดยังไง scheduler ก็ถูกปิดไปพร้อมกันเพราะเป็น process เดียวกัน)
-	go sched.Start(context.Background())
+	// ขั้นตอนที่ 4: ต่อ Temporal client — ใช้แค่ "อ่าน" สถานะ workflow run ผ่าน
+	// GET /workflow-runs (ดู internal/api/http/handler.go) เท่านั้น ไม่ได้ใช้สั่งรัน
+	// workflow เอง (การสั่งรันอัตโนมัติตามตารางเวลาย้ายไปอยู่ที่ cmd/bop-worker ทั้งหมด
+	// แล้ว ผ่าน Temporal Schedule — ดูเหตุผลการแยก process ที่หัวไฟล์ cmd/bop-worker/main.go)
+	// ต้องรัน `docker compose up -d` (ดู docker-compose.yml) ให้ Temporal server พร้อมก่อน
+	// ไม่งั้น Dial จะ error ทันที
+	temporalClient, err := client.Dial(client.Options{
+		HostPort:  "localhost:7233",
+		Namespace: workflow.Namespace,
+	})
+	if err != nil {
+		log.Fatalf("connect to temporal: %v", err)
+	}
+	defer temporalClient.Close()
 
 	// ขั้นตอนที่ 5: เช็คว่าถูกเรียกแบบ CLI mode หรือไม่ (มี argument แรกเป็นคำว่า "run")
 	// ถ้าใช่ ให้ทำงานแบบ CLI แล้วจบโปรแกรมทันทีหลังจากนั้น ไม่เปิด HTTP server ต่อ
@@ -76,7 +72,7 @@ func main() {
 	}
 
 	// ถ้าไม่ใช่ CLI mode ให้เปิด HTTP API server ตามปกติ (ค่า default ของโปรแกรมนี้)
-	serve(repo, appLogger, pool, runRepo)
+	serve(repo, appLogger, pool, temporalClient)
 }
 
 // runCLI คือโหมดสำหรับทดสอบ engine โดยไม่ต้องเปิด server หรือมี UI เลย ใช้แบบนี้:
@@ -135,8 +131,8 @@ func runCLI(repo job.Repository, pool *worker.Pool, args []string) {
 // serve เปิด HTTP API server ที่ port 8080 — ผูก dependency ทั้งหมดเข้ากับ Server
 // ที่ประกาศไว้ใน internal/api/http แล้วปล่อยให้ http.ListenAndServe รับ request เข้ามาเรื่อยๆ
 // จนกว่าโปรแกรมจะถูกปิด (Ctrl+C หรือ signal อื่น)
-func serve(repo job.Repository, l logger.Logger, pool *worker.Pool, runRepo workflow.RunRepository) {
-	srv := apihttp.NewServer(repo, l, pool, runRepo)
+func serve(repo job.Repository, l logger.Logger, pool *worker.Pool, temporalClient client.Client) {
+	srv := apihttp.NewServer(repo, l, pool, temporalClient)
 	addr := ":8080"
 	fmt.Printf("bop api listening on %s\n", addr)
 	if err := http.ListenAndServe(addr, srv); err != nil {

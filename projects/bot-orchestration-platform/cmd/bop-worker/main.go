@@ -1,0 +1,111 @@
+// Command bop-worker คือ Temporal Worker process ของ BOP — แยกออกมาจาก cmd/bop (HTTP
+// API server) ตามที่ตัดสินใจไว้ใน Open Question ข้อ 4 ของ TEMPORAL-MIGRATION-TODO.md
+// เหตุผลที่แยก: Temporal ใช้งานจริงใน production แทบทุกที่แยก worker process ออกจาก
+// API server เสมอ เพราะ scale/deploy กันคนละจังหวะได้อิสระ (worker ต้อง scale ตามปริมาณ
+// workflow/activity ที่รันอยู่ ส่วน API server scale ตามปริมาณ HTTP request) — แลกกับ
+// ความซับซ้อนที่ต้องรัน 2 process ตอน local dev แทนที่จะเป็น 1 (ดู README.md "รันยังไง")
+//
+// process นี้ทำ 2 อย่าง: (1) เปิด Temporal Worker ที่ poll งานจาก Task Queue เดียวกับที่
+// cmd/bop-worker ประกาศ workflow.Execute + workflow.Activities.RunStep ไว้ (2) สร้าง
+// Temporal Schedule ให้ workflow ตัวอย่าง "check-example-com" รันทุก 1 นาที (แทนที่
+// internal/scheduler เดิมที่ถูกลบไปแล้วทั้งหมด — Temporal Schedules ทำหน้าที่นี้แทนได้
+// ครบตาม Open Question ข้อ 2 เพราะยังไม่มีกฎปฏิทินซับซ้อนอะไรที่ Temporal Schedules ไม่รองรับ)
+package main
+
+import (
+	"context"
+	"errors"
+	"log"
+	"time"
+
+	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/client"
+	sdktemporal "go.temporal.io/sdk/temporal"
+	"go.temporal.io/sdk/worker"
+
+	"bop/internal/bot"
+	"bop/internal/bots/httpstatus"
+	memlogger "bop/internal/logger/memory"
+	"bop/internal/workflow"
+)
+
+func main() {
+	// ขั้นตอนที่ 1: ต่อ Temporal client เข้ากับ Temporal server (ดู docker-compose.yml
+	// ที่ root ของโปรเจกต์ — ต้อง `docker compose up -d` ให้ server พร้อมก่อนรัน process นี้)
+	// ที่อยู่ "localhost:7233" คือ gRPC endpoint default ของ Temporal server (แค่ hardcode
+	// ไปก่อนเหมือนที่ cmd/bop hardcode addr ":8080" ไว้ ไม่เพิ่ม flag/env var จนกว่าจะมี
+	// ความจำเป็นจริง)
+	c, err := client.Dial(client.Options{
+		HostPort:  "localhost:7233",
+		Namespace: workflow.Namespace,
+	})
+	if err != nil {
+		log.Fatalf("connect to temporal: %v", err)
+	}
+	defer c.Close()
+
+	// ขั้นตอนที่ 2: เตรียม Activities — เป็น registry ของ bot ที่ workflow เรียกใช้ได้
+	// (คนละ registry กับ worker.Pool ใน cmd/bop เพราะเป็นคนละ process กัน ดูหมายเหตุยาว
+	// ที่ internal/workflow/activity.go เรื่อง logger แยก process) เพิ่ม bot ชนิดใหม่ต้อง
+	// register ที่นี่ด้วยเสมอ ไม่งั้น workflow ที่อ้างถึง bot นั้นจะ fail ด้วย "unknown bot"
+	appLogger := memlogger.New()
+	activities := workflow.NewActivities(appLogger)
+	activities.Register(httpstatus.New())
+
+	// ขั้นตอนที่ 3: สร้างและเริ่ม Temporal Worker — ตัวนี้คือ process ที่ poll งานจาก
+	// Task Queue จริงๆ (RegisterWorkflow ผูก "ชื่อ workflow type" เข้ากับ workflow.Execute,
+	// RegisterActivity ผูก "RunStep" ตามชื่อคงที่ที่ internal/workflow/temporal.go กำหนดไว้
+	// เข้ากับ method จริงของ activities — ต้องตั้งชื่อผ่าน activity.RegisterOptions ให้ตรง
+	// กับ string "RunStep" เป๊ะ เพราะ workflow.ExecuteActivity เรียกด้วยชื่อ ไม่ใช่ reference
+	// ฟังก์ชันตรงๆ ดูเหตุผลที่ temporal.go)
+	w := worker.New(c, workflow.TaskQueueName, worker.Options{})
+	w.RegisterWorkflow(workflow.Execute)
+	w.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: workflow.ActivityName})
+
+	// ขั้นตอนที่ 4: สร้าง Temporal Schedule ให้ workflow ตัวอย่างรันทุก 1 นาที (ค่าเดียวกับ
+	// scheduler.Interval{Every: time.Minute} ในเวอร์ชันก่อน Temporal) — เรียกตอน startup
+	// ทุกครั้ง แต่ idempotent: ถ้า Schedule ID นี้มีอยู่แล้ว (เช่น worker ถูก restart)
+	// Temporal จะคืน ErrScheduleAlreadyRunning ซึ่งไม่ใช่ปัญหา ข้ามไปเฉยๆ ได้เลย
+	ensureExampleSchedule(context.Background(), c)
+
+	// ขั้นตอนที่ 5: รัน Worker ค้างอยู่ (poll งานเรื่อยๆ) จนกว่าจะได้รับ interrupt signal
+	// (Ctrl+C) — worker.InterruptCh() คือ helper ของ SDK เอง ดักจับ signal มาตรฐานให้แล้ว
+	if err := w.Run(worker.InterruptCh()); err != nil {
+		log.Fatalf("worker stopped with error: %v", err)
+	}
+}
+
+// ensureExampleSchedule สร้าง Temporal Schedule ชื่อ "check-example-com" ที่สั่ง
+// workflow.Execute รันด้วย workflow.Workflow ตัวอย่าง (เช็คสถานะ example.com) ทุก 1 นาที
+// — ตัวอย่างเดียวกับที่ cmd/bop/main.go เวอร์ชันก่อน Temporal เคย sched.Register ไว้ตรงๆ
+// ในโค้ด ตอนนี้ย้ายมาไว้ที่นี่เพราะ cmd/bop-worker คือ process ที่ "เป็นเจ้าของ" workflow
+// ที่รันอัตโนมัติตามตาราง ส่วน cmd/bop มีหน้าที่แค่ตอบ HTTP request เท่านั้น
+func ensureExampleSchedule(ctx context.Context, c client.Client) {
+	wf := workflow.Workflow{
+		Name: "check-example-com",
+		Steps: []workflow.Step{
+			{BotName: "http-status-checker", Config: bot.Config{"url": "https://example.com"}},
+		},
+	}
+
+	_, err := c.ScheduleClient().Create(ctx, client.ScheduleOptions{
+		ID: "check-example-com-schedule",
+		Spec: client.ScheduleSpec{
+			Intervals: []client.ScheduleIntervalSpec{{Every: time.Minute}},
+		},
+		Action: &client.ScheduleWorkflowAction{
+			ID:        "check-example-com",
+			Workflow:  workflow.Execute,
+			Args:      []interface{}{wf},
+			TaskQueue: workflow.TaskQueueName,
+		},
+	})
+	if err != nil {
+		if errors.Is(err, sdktemporal.ErrScheduleAlreadyRunning) {
+			log.Println("schedule check-example-com-schedule already exists, skipping creation")
+			return
+		}
+		log.Fatalf("create schedule: %v", err)
+	}
+	log.Println("created schedule check-example-com-schedule")
+}

@@ -6,7 +6,7 @@ Go core of the flagship project described in [FULLSTACK-INFRA-ROADMAP.md](../../
 
 Phase 0 (`Golang: สร้าง Bot Execution Engine`) ทำแล้ว: `Bot` interface, worker pool ที่รันพร้อมกันได้หลาย job แบบมี timeout/cancel, in-memory repository + logger (persist + live-subscribe design พร้อมสลับเป็น PostgreSQL/OpenSearch ทีหลังโดยไม่แก้ caller), bot ตัวอย่างที่ implement interface จริง, และ HTTP API ที่ dashboard ใน Phase 1 จะเรียกใช้ได้ทันที — ทั้งหมด build/vet/test -race ผ่าน และลองยิงจริงทั้ง CLI กับ HTTP server แล้ว
 
-**เพิ่มมาก่อนกำหนด (ปกติวางแผนไว้เป็น Phase 2.5)**: `internal/workflow` + `internal/scheduler` — รัน bot หลายตัวเรียงเป็น workflow เดียว (step ถัดไปเริ่มได้ก็ต่อเมื่อ step ก่อนหน้าสำเร็จ) พร้อม scheduler ที่ trigger workflow ตามเวลาอัตโนมัติ (เทียบเท่า cron ของระบบนี้) ดูรายละเอียดที่หัวข้อ "Workflow และ Scheduler" ด้านล่าง — **นี่คือเวอร์ชันเบาก่อนย้ายไป Temporal จริงจัง ไม่ใช่ของทดแทนถาวร** (ไม่มี durable execution, ไม่มี retry policy ต่อ step, ความคืบหน้าหายถ้า process restart กลางทาง — ข้อจำกัดพวกนี้มีคอมเมนต์อธิบายไว้ในโค้ดและเป็นเหตุผลที่ Temporal มีค่าจริงตอนไปถึง Phase 2.5)
+**Phase 2.5 (Temporal migration) ทำเสร็จแล้วก่อนกำหนด**: `internal/workflow` เดิมเป็น engine เขียนเองแบบเบา (ไม่มี durable execution, ไม่มี retry policy ต่อ step, scheduler เขียนเอง) — ตอนนี้ย้ายไปใช้ **Temporal** จริงจังทั้งหมดแล้ว: `internal/workflow` มี `Execute` (Temporal workflow function) + `Activities.RunStep` (Temporal Activity adapter ที่เรียก `bot.Bot.Run`) แทนที่ `Runner`/`RunRepository` เดิม, `internal/scheduler` ถูกลบทิ้งทั้ง package เพราะใช้ **Temporal Schedules** แทน ดูรายละเอียดที่หัวข้อ "Workflow และ Scheduler" ด้านล่าง และ [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) สำหรับ decision log ของ Open Question ที่ตัดสินใจไว้ระหว่างย้าย
 
 ยังไม่ทำ (ของ Phase 0 ที่เหลือ) — ดู checklist เต็มที่ [roadmap Phase 0](../../FULLSTACK-INFRA-ROADMAP.md#phase-0--golang-สร้าง-bot-execution-engine):
 
@@ -18,40 +18,52 @@ Phase 0 (`Golang: สร้าง Bot Execution Engine`) ทำแล้ว: `Bo
 ## สถาปัตยกรรม
 
 ```
-cmd/bop/main.go          ประกอบทุกอย่างเข้าด้วยกัน (dependency injection แบบ manual)
+cmd/bop/main.go          HTTP API server — ประกอบส่วนที่เกี่ยวกับ job เดี่ยวๆ + Temporal client (อ่านอย่างเดียว)
+cmd/bop-worker/main.go   Temporal Worker process แยกต่างหาก — ประกอบ Activities + Temporal Schedule
    │
    ├── internal/bot        Bot interface — ทุก bot implement อันนี้ ไม่รู้จัก HTTP/DB/logger เลย
    ├── internal/job        Job entity + Repository interface
    ├── internal/logger     Logger interface (persist + live-subscribe ในตัวเดียว)
-   ├── internal/worker     Pool — concurrency core, รัน bot ผ่าน semaphore-bounded goroutine
-   │                       (Submit = fire-and-forget, SubmitAndWait = รอผลก่อนไปต่อ)
+   ├── internal/worker     Pool — concurrency core สำหรับ job เดี่ยวๆ (POST /bots/{name}/jobs)
+   │                       รัน bot ผ่าน semaphore-bounded goroutine (Submit = fire-and-forget,
+   │                       SubmitAndWait = รอผลก่อนไปต่อ) — ไม่เกี่ยวกับ workflow อีกต่อไป
    │
-   ├── internal/workflow   Workflow/Step/Run + Runner — รัน step หลายตัวเรียงลำดับผ่าน
-   │                       worker.Pool.SubmitAndWait, หยุดทันทีถ้า step ไหนล้มเหลว
-   ├── internal/scheduler  Schedule interface + Interval + Scheduler — คอย trigger
-   │                       workflow ตามเวลา (เทียบเท่า cron ของระบบนี้)
+   ├── internal/workflow   Workflow/Step (input schema) + Execute (Temporal workflow function)
+   │                       + Activities.RunStep (Temporal Activity ที่เรียก bot.Bot.Run) —
+   │                       แทนที่ Runner/RunRepository/internal-scheduler เดิมทั้งหมด ดู
+   │                       TEMPORAL-MIGRATION-TODO.md สำหรับเหตุผลการย้าย
    │
    ├── internal/bots/httpstatus     Bot ตัวอย่าง (zero external dependency)
-   ├── internal/repository/memory   Repository implementation (in-memory) — เก็บทั้ง Job และ Run
+   ├── internal/repository/memory   Repository implementation (in-memory) — เก็บ Job เดี่ยวๆ
    ├── internal/logger/memory       Logger implementation (in-memory)
-   └── internal/api/http             HTTP handler — สิ่งเดียวที่ dashboard จะคุยด้วย
+   └── internal/api/http             HTTP handler — สิ่งเดียวที่ dashboard จะคุยด้วย (query
+                                      workflow run ผ่าน Temporal client โดยตรง ไม่มี
+                                      repository ของตัวเองอีกต่อไป)
 ```
 
-ทุก dependency ชี้เข้าหา interface ที่ `internal/bot`, `internal/job`, `internal/logger`, `internal/workflow` (RunRepository), `internal/scheduler` (Schedule) ไม่ใช่ implementation ตรงๆ — สลับ `internal/repository/memory` เป็น `internal/repository/postgres` ทีหลัง (roadmap Phase 0.4) แก้แค่บรรทัดเดียวใน `cmd/bop/main.go` โค้ดส่วนอื่นไม่ต้องแตะเลย เช่นเดียวกับที่จะสลับ `scheduler.Interval` เป็น calendar-based schedule ที่ซับซ้อนกว่าในอนาคต (roadmap Phase 2.5) โดยไม่ต้องแก้ `Scheduler` เลย
+ทุก dependency ชี้เข้าหา interface ที่ `internal/bot`, `internal/job`, `internal/logger` ไม่ใช่ implementation ตรงๆ — สลับ `internal/repository/memory` เป็น `internal/repository/postgres` ทีหลัง (roadmap Phase 0.4) แก้แค่บรรทัดเดียวใน `cmd/bop/main.go` โค้ดส่วนอื่นไม่ต้องแตะเลย ส่วนการรัน workflow ทั้งหมด (durable execution, retry, scheduling) เป็นหน้าที่ของ Temporal server เอง ไม่ใช่โค้ด BOP อีกต่อไป — BOP เหลือแค่ "ประกอบ" (register bot, ประกาศ workflow function) กับ Temporal เท่านั้น
+
+**หมายเหตุเรื่อง zero external dependency**: ตั้งแต่ Phase 2.5 เป็นต้นไป `go.mod` มี `go.temporal.io/sdk` เป็น dependency ภายนอกตัวแรกของโปรเจกต์นี้ — เป็นข้อยกเว้นที่ตั้งใจ (ดูเหตุผลใน TEMPORAL-MIGRATION-TODO.md ข้อ 2) เพราะ durable workflow execution คือสิ่งที่ reinvent เองไม่คุ้มอีกต่อไป ไม่ใช่ความผิดพลาดของ design เดิม
 
 ## รันยังไง
 
 ```bash
-# ตั้ง Go module dependency ให้เรียบร้อยก่อน (ตอนนี้ไม่มี external dependency เลย)
 go build ./...
 go vet ./...
 go test -race ./...
 
-# CLI mode — สั่งรัน bot ตัวเดียวจบแล้ว exit (ไม่ต้องมี server/UI)
+# 1) เปิด Temporal server + UI (ต้องรันก่อนเสมอ ทั้ง cmd/bop และ cmd/bop-worker ต่อ
+#    เข้า localhost:7233) — ดู docker-compose.yml สำหรับ service ที่รัน (Temporal server
+#    + PostgreSQL ของ Temporal เอง + Temporal UI ที่ http://localhost:8233)
+docker compose up -d
+
+# 2) CLI mode — สั่งรัน bot ตัวเดียวจบแล้ว exit (ไม่ต้องมี server/UI, ไม่ต้องพึ่ง Temporal เลย)
 go run ./cmd/bop run --bot=http-status-checker --url=https://example.com
 
-# Server mode (default) — เปิด HTTP API ที่ :8080
-go run ./cmd/bop
+# 3) รัน 2 process คู่กัน (ต้องรันทั้งคู่ให้ workflow ทำงานจริง — ดูเหตุผลการแยก process
+#    ที่หัวไฟล์ cmd/bop-worker/main.go)
+go run ./cmd/bop-worker   # Temporal Worker — รัน workflow/activity จริง + สร้าง Schedule
+go run ./cmd/bop          # HTTP API ที่ :8080 — ให้ dashboard เรียก, อ่านสถานะ workflow ผ่าน Temporal
 ```
 
 ตัวอย่างเรียก API ด้วย curl:
@@ -63,34 +75,36 @@ curl localhost:8080/jobs/<id>
 curl localhost:8080/jobs/<id>/logs
 curl -X DELETE localhost:8080/jobs/<id>   # cancel ถ้า job ยังรันอยู่
 
-curl localhost:8080/workflow-runs         # ดูว่า scheduled workflow รันไปแล้วกี่รอบ
-curl localhost:8080/workflow-runs/<id>    # ดูผลลัพธ์ทีละ step ของ run เดียว
+curl localhost:8080/workflow-runs                # ดูว่า scheduled workflow รันไปแล้วกี่รอบ (query ตรงจาก Temporal)
+curl localhost:8080/workflow-runs/<workflow-id>   # ดูผลลัพธ์ทีละ step ของ run เดียว (workflow-id ดูได้จาก Temporal UI หรือ response ของ list ด้านบน)
 ```
 
-## Workflow และ Scheduler
+## Workflow และ Scheduler (Temporal)
 
-`cmd/bop/main.go` register ตัวอย่าง workflow ไว้ 1 ตัว (`check-example-com`) ที่รัน `http-status-checker` เป็น step เดียว ทุก 1 นาที ผ่าน `scheduler.Interval{Every: time.Minute}` — เปิด server แล้วรอสัก 1-2 นาทีจะเห็น run ใหม่โผล่ใน `GET /workflow-runs` เอง โดยไม่ต้องสั่งอะไรเพิ่ม
+`cmd/bop-worker/main.go` สร้าง Temporal Schedule ให้ workflow ตัวอย่าง (`check-example-com`) ที่รัน `http-status-checker` เป็น step เดียว ทุก 1 นาที ผ่าน `client.ScheduleClient().Create` — เปิด `docker compose up -d` แล้วรัน `go run ./cmd/bop-worker` ทิ้งไว้สัก 1-2 นาทีจะเห็น run ใหม่โผล่ใน `GET /workflow-runs` เอง (หรือดูตรงๆ ผ่าน Temporal UI ที่ http://localhost:8233) โดยไม่ต้องสั่งอะไรเพิ่ม
 
-เพิ่ม step ที่ 2, 3 เข้าไปได้ทันทีโดยไม่ต้องแก้โค้ดส่วนอื่นเลย:
+เพิ่ม step ที่ 2, 3 เข้าไปได้ทันทีโดยไม่ต้องแก้ `internal/workflow/temporal.go` เลย (แก้แค่ `wf` ที่ประกาศไว้ใน `ensureExampleSchedule`):
 
 ```go
-sched.Register(workflow.Workflow{
+wf := workflow.Workflow{
     Name: "check-multiple-sites",
     Steps: []workflow.Step{
         {BotName: "http-status-checker", Config: bot.Config{"url": "https://example.com"}},
         {BotName: "http-status-checker", Config: bot.Config{"url": "https://another-site.com"}},
     },
-}, scheduler.Interval{Every: 5 * time.Minute})
+}
 ```
 
-Runner จะรัน step ที่ 2 ก็ต่อเมื่อ step ที่ 1 จบด้วยสถานะ `succeeded` เท่านั้น — ถ้า step ไหนล้มเหลว workflow ทั้งก้อนหยุดทันทีและถูกบันทึกเป็น `failed` พร้อมระบุว่า step ไหนพังเพราะอะไร (ดู `run.Error`)
+`workflow.Execute` (Temporal workflow function) จะรัน step ที่ 2 ก็ต่อเมื่อ step ที่ 1 สำเร็จเท่านั้น — ถ้า step ไหนล้มเหลว workflow ทั้งก้อนหยุดทันที (ดู `internal/workflow/temporal.go`)
 
-**ข้อจำกัดที่ควรรู้ก่อนใช้จริงจัง** (มีคอมเมนต์อธิบายไว้ในโค้ดทุกจุด ไม่ใช่แค่ตรงนี้):
-- ไม่มี durable execution — process restart กลางทางที่ workflow กำลังรันอยู่ = ความคืบหน้าหายหมด (ต่างจาก Temporal ที่ resume จาก event history ได้ ดู [books/13-temporal/01-workflow-and-activity.md](../../books/13-temporal/01-workflow-and-activity.md))
-- ไม่มี retry policy ต่อ step และไม่มี compensation logic อัตโนมัติ — step ล้มเหลวคือจบเลย ไม่ลองใหม่ ไม่ rollback อะไรให้
-- Scheduler ยังไม่กันเรื่อง overlapping runs (workflow รอบก่อนยังไม่จบ แต่ถึงเวลา trigger รอบใหม่แล้ว จะรันซ้อนกันได้) — ของจริงแบบ Control-M มี "resource pool"/"skip if running" ป้องกันเรื่องนี้ วางแผนไว้เป็น Phase 3
+**สิ่งที่ Temporal แก้ให้จากเวอร์ชันเบาก่อนหน้า** (ดู [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) สำหรับรายละเอียดการย้ายและ Open Question ที่ตัดสินใจไว้):
+- **Durable execution** — worker process ตายกลางทาง Temporal replay history แล้ว resume ต่อจาก step ที่ยังไม่เสร็จได้เอง ไม่ต้องเริ่มใหม่ทั้ง workflow
+- **Retry policy ต่อ step** — ตั้งผ่าน `workflow.ActivityOptions.RetryPolicy` พร้อม `NonRetryableErrorTypes` แยกแยะ error ที่ retry ไปก็ไม่มีประโยชน์ (เช่น `bot.ConfigError` จาก config ที่ user กรอกผิด) ออกจาก error ที่ retry แล้วอาจสำเร็จ (network timeout ชั่วคราว)
+- **Temporal Schedules** แทนที่ `internal/scheduler` ที่เขียนเอง — ยังไม่กันเรื่อง overlapping runs แบบละเอียด (Control-M "resource pool"/"skip if running") อยู่ดี แต่ตอนนี้เป็นเรื่องของ `Overlap` policy ที่ Temporal จัดการให้ ไม่ใช่โค้ดที่ BOP ต้องเขียนเอง
 
-**ทำไมถึงเพิ่มตอนนี้ก่อน Phase 2.5 ทั้งที่ Temporal ทำเรื่องนี้ได้ดีกว่า**: เพื่อพิสูจน์ pattern "sequential step ผ่าน SubmitAndWait" และมี baseline เปรียบเทียบไว้ตอนย้ายไป Temporal จริง — จะเห็นชัดเจนว่า Temporal แก้ปัญหาอะไรที่เวอร์ชันนี้แก้ไม่ได้ (durable execution, retry, compensation) แทนที่จะอ่านแค่ทฤษฎีเฉยๆ
+**ข้อจำกัดที่ยังเหลืออยู่ (ตั้งใจไม่ทำตอนนี้)**:
+- **Compensation logic (Saga)** — ยังไม่มี เพราะ `http-status-checker` ไม่มี side effect ที่ต้อง rollback เลย รอจนมี bot ที่มี side effect จริงจังค่อยออกแบบ (ดู TEMPORAL-MIGRATION-TODO.md ข้อ 4)
+- **Log ของ step ในระหว่าง workflow ดึงผ่าน `GET /jobs/{id}/logs` ไม่ได้** — Activity log เข้า in-memory logger ของ `cmd/bop-worker` (คนละ process กับ `cmd/bop` ที่ HTTP handler อ่าน log อยู่) จนกว่าจะมี logger backend ที่ทั้งสอง process แชร์กันได้จริง (PostgreSQL/OpenSearch, roadmap Phase 2.2) — ดูหมายเหตุเต็มที่ `internal/workflow/activity.go`
 
 ## บทเรียนที่เจอจริงระหว่างสร้าง (คุ้มค่าเก็บไว้เล่าตอนสัมภาษณ์)
 
@@ -104,5 +118,5 @@ Runner จะรัน step ที่ 2 ก็ต่อเมื่อ step ท�
 
 ตามลำดับใน [roadmap](../../FULLSTACK-INFRA-ROADMAP.md):
 1. เก็บ Phase 0 ที่เหลือให้ครบ (chromedp bot, error types, PostgreSQL repository, table-driven test)
-2. เริ่ม Phase 1 — Next.js dashboard เรียก API ชุดนี้ตรงๆ ได้เลยตั้งแต่วันแรก เพราะ endpoint ที่จำเป็น (`POST /bots/{name}/jobs`, `GET /jobs`, `GET /jobs/{id}`, `GET /jobs/{id}/logs`, `GET /workflow-runs`, `GET /workflow-runs/{id}`) มีครบแล้ว
-3. ตอนถึง Phase 2.5 จริงจัง: ย้าย `internal/workflow`/`internal/scheduler` ไปใช้ Temporal แทน — โค้ดปัจจุบันเป็น baseline ที่ดีสำหรับเทียบว่า Temporal แก้ปัญหาอะไรเพิ่มบ้าง (ดูหัวข้อข้อจำกัดด้านบน) มี TODO checklist ละเอียดพร้อม implement แล้วที่ [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md)
+2. เริ่ม Phase 1 — Next.js dashboard เรียก API ชุดนี้ตรงๆ ได้เลยตั้งแต่วันแรก เพราะ endpoint ที่จำเป็น (`POST /bots/{name}/jobs`, `GET /jobs`, `GET /jobs/{id}`, `GET /jobs/{id}/logs`, `GET /workflow-runs`, `GET /workflow-runs/{id}`) มีครบแล้ว (endpoint คู่หลัง query จาก Temporal ตรงๆ แล้วตั้งแต่ Phase 2.5)
+3. **Phase 2.5 (Temporal migration) ทำเสร็จแล้ว** — `internal/workflow` ย้ายไปใช้ Temporal จริงจังทั้งหมด (`internal/scheduler` ถูกลบทิ้ง) ดู decision log เต็มๆ ที่ [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) — สิ่งที่เหลือค้างจากงานนี้: (1) ยังไม่เคยรัน end-to-end จริงกับ Temporal server (build/vet/test -race ผ่านหมด แต่ยังไม่ได้ยิง `docker compose up -d` แล้วดู schedule trigger จริงในเครื่องนี้ เพราะติด Docker permission ตอนที่เขียนโค้ดนี้) (2) compensation logic ยังไม่มี รอ bot ที่มี side effect จริงจังก่อน (3) log ของ step ใน workflow ยังดึงผ่าน HTTP ไม่ได้จนกว่าจะมี logger backend ที่แชร์ข้าม process ได้ (PostgreSQL/OpenSearch, Phase 2.2)
