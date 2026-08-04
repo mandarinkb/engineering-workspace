@@ -20,22 +20,24 @@ import (
 	"bop/internal/bot"
 	"bop/internal/job"
 	"bop/internal/logger"
+	"bop/internal/schedule"
 	"bop/internal/worker"
 	"bop/internal/workflow"
 )
 
 // Server คือ HTTP API ของ BOP รวม handler ทุกตัวไว้ในที่เดียว
 type Server struct {
-	mux      *http.ServeMux // ตัว router มาตรฐานของ Go (ใช้ pattern matching แบบ method+path ของ Go 1.22+)
-	repo     job.Repository
-	log      logger.Logger
-	pool     *worker.Pool
-	temporal client.Client // ใช้ query ผลลัพธ์ workflow run ผ่าน Temporal เอง (แทน workflow.RunRepository เดิม)
+	mux          *http.ServeMux // ตัว router มาตรฐานของ Go (ใช้ pattern matching แบบ method+path ของ Go 1.22+)
+	repo         job.Repository
+	log          logger.Logger
+	pool         *worker.Pool
+	temporal     client.Client       // ใช้ query ผลลัพธ์ workflow run + จัดการ Temporal Schedule
+	scheduleRepo schedule.Repository // เก็บ workflow definition ของแต่ละ schedule (ดู internal/schedule)
 }
 
 // NewServer ผูก handler ทุกตัวเข้ากับ dependency ที่ส่งเข้ามา แล้วลงทะเบียน route ให้เรียบร้อย
-func NewServer(repo job.Repository, log logger.Logger, pool *worker.Pool, temporalClient client.Client) *Server {
-	s := &Server{mux: http.NewServeMux(), repo: repo, log: log, pool: pool, temporal: temporalClient}
+func NewServer(repo job.Repository, log logger.Logger, pool *worker.Pool, temporalClient client.Client, scheduleRepo schedule.Repository) *Server {
+	s := &Server{mux: http.NewServeMux(), repo: repo, log: log, pool: pool, temporal: temporalClient, scheduleRepo: scheduleRepo}
 	s.routes()
 	return s
 }
@@ -57,7 +59,7 @@ const dashboardOrigin = "http://localhost:3000"
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", dashboardOrigin)
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -83,6 +85,16 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /login", s.handleLogin)   // ตรวจ credential แล้วออก JWT ใส่ httpOnly cookie (roadmap ข้อ 1.8)
 	s.mux.HandleFunc("POST /logout", s.handleLogout) // ล้าง cookie ทิ้ง
 	s.mux.HandleFunc("GET /me", s.handleMe)          // เช็คว่า cookie ปัจจุบัน valid อยู่ไหม คืนชื่อ user ถ้าใช่
+
+	s.mux.HandleFunc("POST /schedules", s.handleCreateSchedule)                 // สร้าง schedule ใหม่ (interval หรือ cron)
+	s.mux.HandleFunc("GET /schedules", s.handleListSchedules)                   // list schedule ทั้งหมด
+	s.mux.HandleFunc("GET /schedules/{id}", s.handleGetSchedule)                // ดูรายละเอียด schedule เดียว
+	s.mux.HandleFunc("PUT /schedules/{id}", s.handleUpdateSchedule)             // แทนที่ schedule ทั้งก้อน (full replace)
+	s.mux.HandleFunc("DELETE /schedules/{id}", s.handleDeleteSchedule)          // ลบ schedule ถาวร
+	s.mux.HandleFunc("POST /schedules/{id}/pause", s.handlePauseSchedule)       // หยุดชั่วคราว (เทียบ Control-M "Hold")
+	s.mux.HandleFunc("POST /schedules/{id}/unpause", s.handleUnpauseSchedule)   // เริ่มใหม่หลัง pause (เทียบ "Free")
+	s.mux.HandleFunc("POST /schedules/{id}/trigger", s.handleTriggerSchedule)   // สั่งรันทันที นอกตารางเวลา (เทียบ "Order Now")
+	s.mux.HandleFunc("POST /schedules/{id}/backfill", s.handleBackfillSchedule) // รันย้อนหลังตามช่วงเวลา (เทียบ "Rerun")
 }
 
 // botSummary คือรูปแบบ JSON ที่คืนจาก GET /bots — ห่อ bot.Bot (interface, encode

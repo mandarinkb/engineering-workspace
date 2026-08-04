@@ -87,7 +87,10 @@ func TestRunStep_ConfigErrorIsNonRetryable(t *testing.T) {
 }
 
 // TestRunStep_UnknownBot ทดสอบว่า step ที่อ้างชื่อ bot ที่ไม่ได้ register ไว้เลย คืน error
-// ทันที (ไม่ panic ไม่ค้าง) — ไม่ใช่ ConfigError เพราะปัญหานี้ไม่เกี่ยวกับ config ของ user
+// ทันที (ไม่ panic ไม่ค้าง) เป็น non-retryable ชนิด "UnknownBot" (คนละ Type กับ
+// ConfigError แต่ non-retryable เหมือนกัน) — เพิ่ม assertion นี้หลังเจอปัญหาจริง: ก่อนแก้
+// error ธรรมดาทำให้ Temporal retry ไม่มีที่สิ้นสุดถ้า step.BotName ว่างเปล่า/ผิด (เช่น
+// decode payload เก่าที่ serialize ไว้ก่อนเพิ่ม json tag ให้ Step) ดูรายละเอียดที่ activity.go
 func TestRunStep_UnknownBot(t *testing.T) {
 	activities := workflow.NewActivities(memlogger.New())
 	env := newActivityTestEnv(t, activities)
@@ -95,5 +98,13 @@ func TestRunStep_UnknownBot(t *testing.T) {
 	_, err := env.ExecuteActivity(activities.RunStep, workflow.Step{BotName: "does-not-exist"})
 	if err == nil {
 		t.Fatal("expected error for unknown bot")
+	}
+
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected error chain to contain *temporal.ApplicationError, got %T: %v", err, err)
+	}
+	if appErr.Type() != "UnknownBot" {
+		t.Errorf("expected ApplicationError Type %q, got %q", "UnknownBot", appErr.Type())
 	}
 }

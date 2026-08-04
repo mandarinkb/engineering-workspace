@@ -31,9 +31,14 @@ const ActivityName = "RunStep"
 
 // nonRetryableErrorTypes คือรายชื่อ error type (ต้องตรงกับ Type ที่ตั้งไว้ตอนสร้าง
 // temporal.NewApplicationErrorWithCause ใน activity.go) ที่ Temporal จะไม่ retry ให้เลย
-// แม้แต่ครั้งเดียว — ตอนนี้มีแค่ "ConfigError" เพราะเป็น error ประเภทเดียวที่ retry กี่ครั้ง
-// ก็ได้ผลลัพธ์เดิมเป๊ะ (ดู bot.ConfigError และตัวอย่างการใช้ใน internal/bots/httpstatus)
-var nonRetryableErrorTypes = []string{"ConfigError"}
+// แม้แต่ครั้งเดียว — ทั้งคู่เป็น error ที่ retry กี่ครั้งก็ได้ผลลัพธ์เดิมเป๊ะเสมอ:
+//   - "ConfigError" — user กรอก config ของ bot ผิด/ขาด (ดู bot.ConfigError, ตัวอย่างที่
+//     internal/bots/httpstatus)
+//   - "UnknownBot" — step.BotName ไม่ตรงกับ bot ที่ register ไว้ใน Activities เลย (เพิ่ม
+//     เข้ามาหลังเจอปัญหาจริง: schedule ที่มี Args เก่าซึ่ง serialize ไว้ก่อนเพิ่ม json tag
+//     ให้ Step จะ decode BotName เป็นค่าว่างเปล่า แล้ว retry ไม่มีที่สิ้นสุดโดยไม่จำเป็น —
+//     ดูรายละเอียดที่ activity.go)
+var nonRetryableErrorTypes = []string{"ConfigError", "UnknownBot"}
 
 // Execute คือ Temporal workflow function ของ BOP — แทนที่ Runner.Trigger เวอร์ชันก่อน
 // Temporal ทั้งหมด รับ Workflow (ลำดับของ Step) มาเป็น input แล้ววน ExecuteActivity

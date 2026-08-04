@@ -13,19 +13,22 @@ package workflow
 
 import "bop/internal/bot"
 
-// Step คือขั้นตอนหนึ่งใน workflow — สั่งรัน bot ตัวหนึ่งด้วย config ที่กำหนด
+// Step คือขั้นตอนหนึ่งใน workflow — สั่งรัน bot ตัวหนึ่งด้วย config ที่กำหนด — json tag
+// เป็น snake_case เพราะตอนนี้ type นี้ถูกใช้เป็น request/response body ตรงๆ ของ
+// POST /schedules (ดู internal/api/http/schedule_handler.go) ไม่ใช่แค่ argument ภายใน
+// ที่ส่งผ่าน Temporal payload เหมือนเดิมอย่างเดียวแล้ว
 type Step struct {
-	BotName string
-	Config  bot.Config
+	BotName string     `json:"bot_name"`
+	Config  bot.Config `json:"config"`
 }
 
 // Workflow คือลำดับของ Step ที่ต้องรันเรียงกันตามลำดับ (step แรกสุดในลิสต์รันก่อนเสมอ)
 // — Name ถูกใช้เป็นส่วนหนึ่งของ Temporal Workflow ID ตอนสร้าง Schedule (ดู
-// cmd/bop-worker/main.go) เพื่อให้เปิด Temporal UI แล้วรู้ทันทีว่า run ไหนเป็นของ
-// workflow ที่ชื่ออะไร
+// cmd/bop-worker/main.go, internal/api/http/schedule_handler.go) เพื่อให้เปิด Temporal
+// UI แล้วรู้ทันทีว่า run ไหนเป็นของ workflow ที่ชื่ออะไร
 type Workflow struct {
-	Name  string
-	Steps []Step
+	Name  string `json:"name"`
+	Steps []Step `json:"steps"`
 }
 
 // StepResult คือผลลัพธ์ของ step หนึ่งที่รันไปแล้ว เก็บไว้ใน slice ที่ Execute คืนกลับและ

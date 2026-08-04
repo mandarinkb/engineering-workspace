@@ -7,7 +7,7 @@ import { ApiError } from "@/types/api";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   // body เป็น unknown ไม่ใช่ any โดยตั้งใจ — บังคับให้ผู้เรียกต้องระบุ type จริงตอนใช้งาน
   // ผ่าน generic <T> ของฟังก์ชันนี้เอง ไม่ปล่อยให้ TypeScript เงียบผ่านค่าอะไรก็ได้
   body?: unknown;

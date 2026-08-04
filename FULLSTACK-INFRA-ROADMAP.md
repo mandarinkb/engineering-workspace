@@ -160,10 +160,11 @@ roadmap นี้ผูกทุกหัวข้อเข้ากับกา
 
 **ฟีเจอร์พื้นฐานแนว Control-M ที่เพิ่มเข้ามาใน step นี้** (ยังอยู่ในระดับ "infra ต้องมี" ก่อนจะไปฟีเจอร์ขั้นสูงใน Phase 3):
 
+- [x] **Schedule CRUD + Manual Trigger (Order Now/Rerun)** — ช่องว่างที่พบระหว่างทำ: Phase 2.5 มี Temporal Schedule แล้ว แต่ไม่มีทางจัดการมันเลยนอกจาก hard-code ในโค้ด (เทียบ Control-M คือมี job runner แต่ไม่มีทาง create/edit/trigger job ผ่าน UI/API เลย) — เพิ่ม `internal/api/http/schedule_handler.go` ห่อ `client.ScheduleClient` เป็น HTTP endpoint เต็มชุด: create/list/get/update/delete/pause/unpause/**trigger (manual run)**/backfill (rerun) พร้อม `internal/schedule` เก็บ workflow definition ของแต่ละ schedule เอง (Temporal เก็บแค่ "เมื่อไหร่/สถานะ") ดูรายละเอียดที่ [projects/bot-orchestration-platform/README.md](projects/bot-orchestration-platform/README.md) หัวข้อ "จัดการ Schedule" — เป็นพื้นฐานที่ Job Dependency/Rerun ด้านล่างและฟีเจอร์ Phase 3 ทั้งหมดต้องพึ่งพา
 - [ ] **Job Dependency (DAG)** — job B รันได้ก็ต่อเมื่อ job A สำเร็จแล้ว ใช้ Temporal child workflow หรือ `workflow.Await` รอผลลัพธ์ของ workflow อื่นก่อนเริ่ม
-- [ ] **Calendar-based Scheduling** — ไม่ใช่แค่ cron ธรรมดา แต่รองรับกฎแบบ "ข้ามวันหยุด", "รันเฉพาะวันทำการสุดท้ายของเดือน" — เขียน logic คำนวณวันที่เอง (โจทย์ scheduling ที่มีความลึกน่าสนใจ)
+- [x] **Calendar-based Scheduling** — ไม่ใช่แค่ cron ธรรมดา แต่รองรับกฎแบบ "ข้ามวันหยุด", "รันเฉพาะวันทำการสุดท้ายของเดือน" — ทำผ่าน `POST /schedules` field `spec.cron_expression` (มาตรฐาน cron string เช่น `"0 9 * * MON-FRI"`) ให้ Temporal SDK แปลงเป็น calendar spec ให้เองภายใน ไม่ต้องเขียน logic คำนวณวันที่เอง
 - [ ] **SLA Monitoring + Alert** — ถ้า job ไม่เสร็จภายในเวลาที่คาด (เช่น เกิน 2 เท่าของ duration เฉลี่ยที่ผ่านมา) ยิง alert ทันที ต่อยอดจาก metric ที่เก็บไว้แล้วใน 2.2
-- [ ] **Rerun เฉพาะ Node ที่ Fail** — chain ยาวๆ ถ้า fail กลางทาง ต้อง rerun แค่ node นั้นได้โดยไม่รันทั้ง chain ใหม่ (Temporal รองรับผ่านการ query event history หา checkpoint ล่าสุดที่สำเร็จ)
+- [x] **Rerun (Backfill)** — `POST /schedules/{id}/backfill` สั่ง Temporal ประเมิน schedule ย้อนหลังในช่วงเวลาที่ระบุ — ยังไม่ใช่ "rerun เฉพาะ node ที่ fail กลางทาง chain" (ยังต้องมี DAG ก่อนถึงจะมี "node" ให้เลือก rerun เฉพาะจุดได้จริง — ดู bullet DAG ด้านบนที่ยังไม่ทำ)
 - [ ] **Audit Trail** — บันทึกว่าใครสั่ง/แก้ config job ไหนเมื่อไหร่ ต่อยอดจาก RBAC ที่วางไว้ใน 2.3
 
 ### 2.6 System Design: อธิบายทั้งระบบเป็นคำพูดได้

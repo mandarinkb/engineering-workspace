@@ -51,11 +51,15 @@ func (a *Activities) Register(b bot.Bot) {
 // ผลลัพธ์ (bot.Result.Summary) เป็น output
 //
 // ขั้นตอนการทำงาน:
-//  1. หา bot ที่ตรงกับ step.BotName จาก registry — error ธรรมดาถ้าไม่รู้จัก (ไม่ใช่
-//     ConfigError เพราะปัญหานี้คือ workflow ตั้งชื่อ bot ผิด ไม่ใช่ user กรอก config ของ
-//     bot ผิด แต่ก็ยัง "ไม่ควร retry" เหมือนกันเพราะชื่อ bot ไม่มีทางเปลี่ยนเองระหว่าง
-//     retry — ในเวอร์ชันนี้ยังปล่อยเป็น error ธรรมดาไปก่อนตามหลัก YAGNI เพราะยังไม่มี
-//     use case ที่ workflow อ้างชื่อ bot ผิดจริงๆ ค่อยเพิ่ม error type แยกตอนเจอปัญหาจริง)
+//  1. หา bot ที่ตรงกับ step.BotName จาก registry — ถ้าไม่รู้จัก ห่อเป็น
+//     temporal.NewApplicationError ชนิด "UnknownBot" (non-retryable เหมือน ConfigError
+//     ด้านล่าง ดูเหตุผลที่ nonRetryableErrorTypes ใน temporal.go) **เดิม (ก่อนแก้ไขนี้)
+//     ปล่อยเป็น error ธรรมดาตามหลัก YAGNI เพราะตอนนั้นยังไม่มี use case จริงที่ workflow
+//     อ้างชื่อ bot ผิด — แก้เป็น non-retryable ตอนนี้เพราะเจอปัญหาจริงแล้ว: เวอร์ชันเดิม
+//     ทำให้ schedule ที่มี step.BotName ว่างเปล่า (เช่น decode payload เก่าที่ serialize
+//     ไว้ก่อนเพิ่ม json tag ให้ Step ไม่ตรงกับ struct เวอร์ชันใหม่) retry ไม่มีที่สิ้นสุด
+//     (ไม่มี MaximumAttempts กำกับ) เสีย worker resource ไปเรื่อยๆ ทั้งที่ retry กี่ครั้ง
+//     ก็ได้ผลลัพธ์เดิมแน่นอน (ชื่อ bot ที่ผิดไม่มีทางเปลี่ยนเองระหว่าง retry)
 //  2. เรียก b.Run พร้อม log function ที่ผูก "log ID" ของ step นี้ไว้แล้ว (ดูหมายเหตุยาว
 //     ด้านล่างเรื่อง log ID)
 //  3. ถ้า error เป็น *bot.ConfigError (เช็คด้วย errors.As ซึ่งมองทะลุผ่าน wrapper ไปหา
@@ -84,7 +88,8 @@ func (a *Activities) Register(b bot.Bot) {
 func (a *Activities) RunStep(ctx context.Context, step Step) (string, error) {
 	b, ok := a.bots[step.BotName]
 	if !ok {
-		return "", fmt.Errorf("workflow: unknown bot %q", step.BotName)
+		err := fmt.Errorf("workflow: unknown bot %q", step.BotName)
+		return "", temporal.NewApplicationErrorWithCause(err.Error(), "UnknownBot", err)
 	}
 
 	info := activity.GetInfo(ctx)

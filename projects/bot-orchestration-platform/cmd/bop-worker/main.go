@@ -80,6 +80,14 @@ func main() {
 // — ตัวอย่างเดียวกับที่ cmd/bop/main.go เวอร์ชันก่อน Temporal เคย sched.Register ไว้ตรงๆ
 // ในโค้ด ตอนนี้ย้ายมาไว้ที่นี่เพราะ cmd/bop-worker คือ process ที่ "เป็นเจ้าของ" workflow
 // ที่รันอัตโนมัติตามตาราง ส่วน cmd/bop มีหน้าที่แค่ตอบ HTTP request เท่านั้น
+//
+// หมายเหตุ (หลังเพิ่ม schedule CRUD API ใน internal/api/http/schedule_handler.go):
+// schedule ตัวนี้สร้างตรงผ่าน Temporal SDK ในนี้ ไม่ได้ผ่าน POST /schedules เลย จึงไม่มี
+// entry คู่กันใน schedule.Repository ของ cmd/bop (คนละ process กัน ดู
+// internal/schedule/schedule.go) — GET /schedules/check-example-com-schedule จะเห็น
+// spec/สถานะถูกต้องปกติ (มาจาก Temporal ตรงๆ) แต่ field "steps" จะว่างเปล่า เพราะ BOP
+// ไม่มี bookkeeping ของ workflow definition ตัวนี้เก็บไว้เลย — ไม่ใช่ bug เป็นผลตามมาที่
+// รู้อยู่แล้วจากการมี 2 ช่องทางสร้าง schedule (โค้ดตรงนี้ + HTTP API)
 func ensureExampleSchedule(ctx context.Context, c client.Client) {
 	wf := workflow.Workflow{
 		Name: "check-example-com",

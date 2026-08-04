@@ -38,13 +38,17 @@ cmd/bop-worker/main.go   Temporal Worker process แยกต่างหาก 
    │                       + Activities.RunStep (Temporal Activity ที่เรียก bot.Bot.Run) —
    │                       แทนที่ Runner/RunRepository/internal-scheduler เดิมทั้งหมด ดู
    │                       TEMPORAL-MIGRATION-TODO.md สำหรับเหตุผลการย้าย
+   ├── internal/schedule   Definition + Repository — เก็บ "workflow นี้ทำอะไร" (ชื่อ+steps)
+   │                       ของแต่ละ Temporal Schedule ไว้เอง (Temporal เก็บแค่ "เมื่อไหร่/
+   │                       สถานะ" ให้แล้ว) ใช้กับ schedule CRUD API ด้านล่าง
    │
    ├── internal/bots/httpstatus     Bot ตัวอย่าง (zero external dependency)
    ├── internal/repository/memory   Repository implementation (in-memory) — เก็บ Job เดี่ยวๆ
+   │                                 + Schedule definition เดี่ยวๆ
    ├── internal/logger/memory       Logger implementation (in-memory)
    └── internal/api/http             HTTP handler — สิ่งเดียวที่ dashboard จะคุยด้วย (query
-                                      workflow run ผ่าน Temporal client โดยตรง ไม่มี
-                                      repository ของตัวเองอีกต่อไป)
+                                      workflow run + จัดการ Schedule ผ่าน Temporal client
+                                      โดยตรง ไม่มี repository ของตัวเองสำหรับ workflow run)
 ```
 
 ทุก dependency ชี้เข้าหา interface ที่ `internal/bot`, `internal/job`, `internal/logger` ไม่ใช่ implementation ตรงๆ — สลับ `internal/repository/memory` เป็น `internal/repository/postgres` ทีหลัง (roadmap Phase 0.4) แก้แค่บรรทัดเดียวใน `cmd/bop/main.go` โค้ดส่วนอื่นไม่ต้องแตะเลย ส่วนการรัน workflow ทั้งหมด (durable execution, retry, scheduling) เป็นหน้าที่ของ Temporal server เอง ไม่ใช่โค้ด BOP อีกต่อไป — BOP เหลือแค่ "ประกอบ" (register bot, ประกาศ workflow function) กับ Temporal เท่านั้น
@@ -89,7 +93,43 @@ curl localhost:8080/workflow-runs/<workflow-id>   # ดูผลลัพธ์�
 curl -c cookies.txt -X POST localhost:8080/login -d '{"username":"admin","password":"changeme"}'  # ได้ httpOnly cookie กลับมา (เปลี่ยน credential ก่อน deploy จริงเสมอ)
 curl -b cookies.txt localhost:8080/me             # เช็คว่า session ยัง valid อยู่ไหม
 curl -b cookies.txt -X POST localhost:8080/logout
+
+# Schedule CRUD (ดูหัวข้อ "จัดการ Schedule" ด้านล่างสำหรับรายละเอียดเต็ม)
+curl -X POST localhost:8080/schedules -d '{
+  "id": "check-example-com-v2",
+  "workflow_name": "check-example-com-v2",
+  "steps": [{"bot_name": "http-status-checker", "config": {"url": "https://example.com"}}],
+  "spec": {"interval_seconds": 60}
+}'
+curl localhost:8080/schedules                              # list schedule ทั้งหมด
+curl localhost:8080/schedules/check-example-com-v2          # ดูรายละเอียด (spec, paused, recent runs, steps)
+curl -X PUT localhost:8080/schedules/check-example-com-v2 -d '{...}'   # แทนที่ทั้งก้อน (full replace)
+curl -X POST localhost:8080/schedules/check-example-com-v2/pause
+curl -X POST localhost:8080/schedules/check-example-com-v2/unpause
+curl -X POST localhost:8080/schedules/check-example-com-v2/trigger     # สั่งรันทันที นอกตารางเวลาปกติ
+curl -X POST localhost:8080/schedules/check-example-com-v2/backfill -d '{"start_time":"2026-01-01T00:00:00Z","end_time":"2026-01-02T00:00:00Z"}'
+curl -X DELETE localhost:8080/schedules/check-example-com-v2
 ```
+
+## จัดการ Schedule (CRUD + manual trigger — เทียบเท่า Control-M job management)
+
+`internal/api/http/schedule_handler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK เป็น HTTP endpoint ทั้งชุด — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) BOP เก็บเพิ่มแค่ "workflow definition" (ชื่อ + steps) ไว้ใน `internal/schedule` (in-memory, เหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ อยู่ใน comment ของไฟล์นั้น)
+
+| Endpoint | เทียบ Control-M | หมายเหตุ |
+|---|---|---|
+| `POST /schedules` | New Job Definition | body: `id`, `workflow_name`, `steps[]`, `spec` (`interval_seconds` หรือ `cron_expression` เลือกอย่างใดอย่างหนึ่ง), `overlap` (optional) |
+| `GET /schedules` | Job list | เร็ว เพราะไม่ Describe ทีละตัว |
+| `GET /schedules/{id}` | View Job | รวม overlap policy, ประวัติการรันล่าสุด, next run time, steps |
+| `PUT /schedules/{id}` | Edit Job | full replace ทั้งก้อน (ไม่ใช่ partial patch) |
+| `DELETE /schedules/{id}` | Delete Job | ลบถาวรทั้งฝั่ง Temporal และ definition ของ BOP |
+| `POST /schedules/{id}/pause` | Hold | หยุดชั่วคราว ไม่ลบ |
+| `POST /schedules/{id}/unpause` | Free | เริ่มใหม่หลัง pause |
+| `POST /schedules/{id}/trigger` | **Order Now / Run Now** | สั่งรันทันที นอกตารางเวลาปกติ (รอบถัดไปตามตารางยังมาตามเดิม) |
+| `POST /schedules/{id}/backfill` | Rerun | รันย้อนหลังตามช่วงเวลาที่ระบุ ราวกับเวลานั้นเพิ่งผ่านไปตอนนี้ |
+
+**ข้อจำกัดที่ต้องรู้**: `internal/schedule` เป็น in-memory ล้วนๆ (เหมือน `job.Repository` ก่อนต่อ PostgreSQL จริงใน Phase 0.4) — restart `cmd/bop` แล้ว field `steps` ใน `GET /schedules/{id}` จะหายไป (Temporal เองยังรัน schedule ต่อปกติ ไม่กระทบการทำงานจริง แค่ BOP ลืมว่า workflow นั้น "ทำอะไร") เช่นเดียวกับ `check-example-com-schedule` ที่ `cmd/bop-worker` สร้างตรงผ่าน SDK (ไม่ผ่าน API นี้) จะไม่มี steps ให้ดูเลยตั้งแต่ต้น — ดู comment เต็มที่ `internal/schedule/schedule.go`
+
+**ยังไม่ทดสอบ end-to-end จริง** (ต้องมี Temporal server รันอยู่ — ติด Docker permission ตอนเขียนโค้ดนี้เหมือนเดิม) มีแค่ unit test ของ validation logic (`buildScheduleSpec`, `parseOverlapPolicy`) และ HTTP-level test ของ path ที่ error ก่อนแตะ Temporal client (`internal/api/http/schedule_internal_test.go`, `handler_test.go`)
 
 ## Workflow และ Scheduler (Temporal)
 
@@ -132,3 +172,4 @@ wf := workflow.Workflow{
 1. เก็บ Phase 0 ที่เหลือให้ครบ (chromedp bot, error types, PostgreSQL repository, table-driven test)
 2. **Phase 2.5 (Temporal migration) ทำเสร็จแล้ว** — `internal/workflow` ย้ายไปใช้ Temporal จริงจังทั้งหมด (`internal/scheduler` ถูกลบทิ้ง) ดู decision log เต็มๆ ที่ [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) — สิ่งที่เหลือค้างจากงานนี้: (1) ยังไม่เคยรัน end-to-end จริงกับ Temporal server (build/vet/test -race ผ่านหมด แต่ยังไม่ได้ยิง `docker compose up -d` แล้วดู schedule trigger จริงในเครื่องนี้ เพราะติด Docker permission ตอนที่เขียนโค้ดนี้) (2) compensation logic ยังไม่มี รอ bot ที่มี side effect จริงจังก่อน (3) log ของ step ใน workflow ยังดึงผ่าน HTTP ไม่ได้จนกว่าจะมี logger backend ที่แชร์ข้าม process ได้ (PostgreSQL/OpenSearch, Phase 2.2)
 3. **Phase 1 (Next.js dashboard) ทำแล้วเช่นกัน** — ทั้ง backend prerequisite (endpoint ใหม่ครบตามที่ระบุด้านบน) และตัว dashboard เองที่ [projects/bop-dashboard/](../bop-dashboard/README.md) (implement ครบ 1.1-1.9 ตาม [PHASE1-DASHBOARD-TODO.md](../bop-dashboard/PHASE1-DASHBOARD-TODO.md)) — `go test -race ./...` ผ่านหมดรวม `internal/api/http` (smoke test เต็มผ่าน `httptest` ครอบคลุม bots/jobs/auth/CORS โดยไม่ต้องพึ่ง Docker/Temporal เลย) ฝั่ง dashboard เองก็ typecheck/lint/test/build ผ่านหมดเช่นกัน — **ที่ยังไม่ verify คือ end-to-end จริงกับ Temporal server** (เหตุผลเดียวกับข้อ 2: ติด Docker permission ในเครื่องที่เขียนโค้ดนี้)
+4. **Schedule CRUD + manual trigger (ช่องว่างระหว่าง Phase 2.5 กับ Phase 3) ทำแล้ว** — ห่อ `client.ScheduleClient` ของ Temporal เป็น HTTP API เต็มชุด (create/list/get/update/delete/pause/unpause/**trigger**/backfill) เทียบเท่าการจัดการ job ของ Control-M ดูรายละเอียดที่หัวข้อ "จัดการ Schedule" ด้านบน — เป็นพื้นฐานที่ฟีเจอร์ Phase 3 (resource pool, flow control, approval gate ฯลฯ) ต้องพึ่งพา ยังไม่ verify end-to-end เหตุผลเดียวกับข้อ 2-3

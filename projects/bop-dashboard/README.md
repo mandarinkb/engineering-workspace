@@ -29,7 +29,7 @@ Feature-based structure ดูคำอธิบายเหตุผลแล�
 ```
 src/
 ├── app/            routing/layout เท่านั้น (ไม่มี business logic)
-├── features/       1 feature = 1 โฟลเดอร์ (bots, jobs, workflow-runs, auth)
+├── features/       1 feature = 1 โฟลเดอร์ (bots, jobs, schedules, workflow-runs, auth)
 ├── components/ui   UI component กลาง ไม่ผูก feature ไหน (StatusBadge ฯลฯ)
 ├── components/layout  NavBar
 ├── lib/            api-client, query-client, sse-client (infrastructure กลาง)
@@ -37,10 +37,16 @@ src/
 └── middleware.ts   protected route (UX shortcut — security ตัวจริงอยู่ที่ backend)
 ```
 
+**ข้อยกเว้นกติกา import ที่ตั้งใจ**: ปกติ `features/X` ห้าม import จาก `features/Y` ตรงๆ แต่ `features/schedules` import `useBots`/`ConfigField` จาก `features/bots` เพราะ "bot catalog" เป็นข้อมูลอ้างอิงที่ทั้งสอง feature ต้องใช้จริง (เลือก bot ต่อ step ของ schedule ก็ต้องรู้ config schema เหมือนตอนสร้าง job เดี่ยว) — เหตุผลเดียวกับที่ `NavBar` import จาก `features/auth` ดู comment เต็มที่ `schedule-form.tsx`
+
+## Feature: Schedules (จัดการ cron job แบบ Control-M)
+
+CRUD + manual trigger เต็มรูปแบบสำหรับ Temporal Schedule ผ่าน `features/schedules/` — สร้าง/แก้ไข/ลบ, pause/unpause, **Run Now** (trigger ทันที นอกตารางเวลา), backfill (rerun ย้อนหลัง) ดูรายละเอียด endpoint ที่ backend เรียกที่ [backend README](../bot-orchestration-platform/README.md) หัวข้อ "จัดการ Schedule" — ฟอร์มสร้าง/แก้ไขรองรับหลาย step ต่อ schedule (แต่ละ step เลือก bot + กรอก config แบบ dynamic เหมือน `bot-form.tsx`) และเลือกได้ทั้ง interval (ทุก N วินาที) หรือ cron expression (รองรับ "เฉพาะวันทำการ" ฯลฯ ผ่าน Temporal เอง)
+
 ## สถานะ (เทียบกับ checklist เต็มใน PHASE1-DASHBOARD-TODO.md)
 
-ทำแล้ว: 1.1-1.9 ครบทุกข้อ (bot list + dynamic form, job history + filter + pagination, live job monitor ผ่าน SSE, workflow runs, auth + protected route, styling, Vitest + RTL test) — `npm run typecheck`/`lint`/`test`/`build` ผ่านหมด และทดสอบ `npm run dev` จริงแล้วว่า redirect ไป `/login` ถูกต้อง
+ทำแล้ว: 1.1-1.9 ครบทุกข้อ (bot list + dynamic form, job history + filter + pagination, live job monitor ผ่าน SSE, workflow runs, auth + protected route, styling, Vitest + RTL test) บวก feature Schedules เพิ่มเติมนอก roadmap เดิม (ดูหัวข้อด้านบน) — `npm run typecheck`/`lint`/`test`/`build` ผ่านหมด และทดสอบ `npm run dev` จริงแล้วว่า redirect ไป `/login` ถูกต้องทุก route รวม `/schedules/*`
 
-**ยังไม่ verify แบบเต็ม end-to-end กับ backend จริง** (สร้าง bot job จริง ดู live log ไหลจริงผ่าน SSE, ดู workflow run จริงจาก Temporal) เพราะ session ที่เขียนโค้ดนี้ติด Docker permission ในเครื่อง (`permission denied` ที่ `/var/run/docker.sock`) ทำให้รัน Temporal server ไม่ได้ — ต้องให้ผู้ใช้ทดสอบเองตามขั้นตอนใน backend README
+**ยังไม่ verify แบบเต็ม end-to-end กับ backend จริง** (สร้าง bot job จริง ดู live log ไหลจริงผ่าน SSE, ดู workflow run จริงจาก Temporal, สร้าง/trigger schedule จริง) เพราะ session ที่เขียนโค้ดนี้ติด Docker permission ในเครื่อง (`permission denied` ที่ `/var/run/docker.sock`) ทำให้รัน Temporal server ไม่ได้ — ต้องให้ผู้ใช้ทดสอบเองตามขั้นตอนใน backend README
 
 **ยังไม่ทำ**: deploy ขึ้น Vercel จริง (ข้อ 1.9 ส่วนหลัง) เพราะต้องใช้ account/สิทธิ์ของเจ้าของโปรเจกต์

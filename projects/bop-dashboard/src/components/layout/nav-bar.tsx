@@ -9,6 +9,7 @@ import { useAuth } from "@/features/auth/hooks/use-auth";
 const NAV_LINKS = [
   { href: "/bots", label: "Bots" },
   { href: "/jobs", label: "Jobs" },
+  { href: "/schedules", label: "Schedules" },
   { href: "/workflow-runs", label: "Workflow Runs" },
 ];
 

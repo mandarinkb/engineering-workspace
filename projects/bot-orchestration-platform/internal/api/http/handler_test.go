@@ -40,8 +40,9 @@ func newTestServer(t *testing.T) *httptest.Server {
 	log := memlogger.New()
 	pool := worker.NewPool(2, 5*time.Second, repo, log)
 	pool.Register(stubBot{})
+	scheduleRepo := memrepo.NewScheduleRepository()
 
-	srv := apihttp.NewServer(repo, log, pool, nil)
+	srv := apihttp.NewServer(repo, log, pool, nil, scheduleRepo)
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 	return ts
@@ -234,5 +235,54 @@ func TestCORSHeaders(t *testing.T) {
 	}
 	if got := resp.Header.Get("Access-Control-Allow-Origin"); got == "" {
 		t.Error("expected Access-Control-Allow-Origin to be set")
+	}
+}
+
+// TestScheduleValidation_RejectsBadRequestsBeforeTouchingTemporal ทดสอบ path ที่
+// schedule_handler.go ต้อง validate request ก่อนแตะ Temporal client เสมอ — สำคัญเพราะ
+// newTestServer ในไฟล์นี้ไม่มี Temporal client จริงให้ต่อ (temporal เป็น nil) ทำให้
+// ทดสอบ "สร้าง schedule สำเร็จจริง" ในนี้ไม่ได้ (ต้องมี Temporal server รันอยู่จริง —
+// ทดสอบแยกแบบ end-to-end เท่านั้น ดู README) แต่ยังทดสอบได้ว่า handler ปฏิเสธ
+// request ที่ผิดตั้งแต่ต้นโดยไม่ panic เพราะพยายามเรียก method บน nil client
+func TestScheduleValidation_RejectsBadRequestsBeforeTouchingTemporal(t *testing.T) {
+	ts := newTestServer(t)
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"missing id", `{"workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60}}`},
+		{"missing steps", `{"id":"s1","workflow_name":"wf","steps":[],"spec":{"interval_seconds":60}}`},
+		{"missing spec", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}]}`},
+		{"both interval and cron", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60,"cron_expression":"* * * * *"}}`},
+		{"bad overlap policy", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60},"overlap":"not-a-policy"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := http.Post(ts.URL+"/schedules", "application/json", bytes.NewBufferString(tc.body))
+			if err != nil {
+				t.Fatalf("POST /schedules: %v", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", resp.StatusCode)
+			}
+		})
+	}
+}
+
+// TestScheduleBackfill_RejectsInvalidTimeRange ทดสอบว่า start_time >= end_time โดน
+// ปฏิเสธก่อนแตะ Temporal client เหมือนกัน
+func TestScheduleBackfill_RejectsInvalidTimeRange(t *testing.T) {
+	ts := newTestServer(t)
+
+	body := `{"start_time":"2026-01-02T00:00:00Z","end_time":"2026-01-01T00:00:00Z"}`
+	resp, err := http.Post(ts.URL+"/schedules/does-not-matter/backfill", "application/json", bytes.NewBufferString(body))
+	if err != nil {
+		t.Fatalf("POST backfill: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }

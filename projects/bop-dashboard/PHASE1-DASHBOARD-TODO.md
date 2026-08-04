@@ -8,6 +8,8 @@
 > - **ต้อง Node.js >= 22** จริงๆ ไม่ใช่แค่ >= 20 — เครื่องที่พัฒนามี Node v19.9.0 ซึ่งเก่าเกินสำหรับ `@tailwindcss/oxide` (native binding), Vitest 4, และ `jsdom`/`undici` (`webidl.util.markAsUncloneable is not a function` บน Node 20) ติดตั้ง Node 22 ผ่าน `nvm` แล้วทุกอย่างผ่านสะอาด ไม่มี engine warning เลย — ดู `.nvmrc`
 > - **Backend Prerequisite ข้อ 4 (Logger) เข้าใจผิดตอนวางแผน**: `logger.Logger`/`internal/logger/memory` มี persist + per-jobID broadcast (`Subscribe`) ให้ครบอยู่แล้วตั้งแต่ Phase 0 (ไม่ได้เขียนตอนนี้) สิ่งที่ต้องเพิ่มจริงๆ มีแค่ SSE HTTP handler (`GET /jobs/{id}/logs/stream`) ที่เรียก `Subscribe`/`History` ที่มีอยู่แล้วเท่านั้น — งานเบากว่าที่วางแผนไว้มาก
 > - SSE endpoint ออกแบบให้ **ส่ง backfill (log เก่า) เป็นส่วนหนึ่งของ stream เดียวกันเลย** (ไม่ใช่แยก REST call ต่างหากแล้วค่อยเปิด SSE) เพื่อไม่ให้ log ซ้ำ — ดูผลกระทบต่อ `use-job-log-stream.ts` ในหัวข้อ TODO Checklist ข้อ 1.5 ด้านล่าง (ต่างจากแผนเดิมที่เขียนไว้เล็กน้อย)
+>
+> **เพิ่มเติมนอกขอบเขต Phase 1 เดิม**: หลัง Phase 1 เสร็จ เจ้าของ repo ขอ feature **Schedules** (CRUD + manual trigger ของ Temporal Schedule เทียบเท่าการจัดการ job ของ Control-M) เพิ่ม — ไม่ใช่ส่วนหนึ่งของ roadmap Phase 1 เดิมที่เอกสารนี้วางแผนไว้ (เอกสารนี้พูดถึงแค่ bots/jobs/workflow-runs/auth) แต่ implement ด้วย pattern เดียวกันทุกประการ (`features/schedules/`) ดูรายละเอียดที่ [README.md](README.md) หัวข้อ "Feature: Schedules"
 
 ## บริบท
 

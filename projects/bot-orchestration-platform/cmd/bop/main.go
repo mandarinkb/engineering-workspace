@@ -28,6 +28,7 @@ import (
 	"bop/internal/logger"
 	memlogger "bop/internal/logger/memory"   // alias เพราะซ้ำชื่อกับ repository/memory ด้านล่าง
 	memrepo "bop/internal/repository/memory" // alias เพราะซ้ำชื่อกับ logger/memory ด้านบน
+	"bop/internal/schedule"
 	"bop/internal/worker"
 	"bop/internal/workflow"
 )
@@ -64,7 +65,12 @@ func main() {
 	}
 	defer temporalClient.Close()
 
-	// ขั้นตอนที่ 5: เช็คว่าถูกเรียกแบบ CLI mode หรือไม่ (มี argument แรกเป็นคำว่า "run")
+	// ขั้นตอนที่ 5: bookkeeping ของ schedule definition (ชื่อ workflow + steps ต่อ
+	// schedule หนึ่งตัว) — ดูเหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ ที่
+	// internal/schedule/schedule.go
+	scheduleRepo := memrepo.NewScheduleRepository()
+
+	// ขั้นตอนที่ 6: เช็คว่าถูกเรียกแบบ CLI mode หรือไม่ (มี argument แรกเป็นคำว่า "run")
 	// ถ้าใช่ ให้ทำงานแบบ CLI แล้วจบโปรแกรมทันทีหลังจากนั้น ไม่เปิด HTTP server ต่อ
 	if len(os.Args) > 1 && os.Args[1] == "run" {
 		runCLI(repo, pool, os.Args[2:])
@@ -72,7 +78,7 @@ func main() {
 	}
 
 	// ถ้าไม่ใช่ CLI mode ให้เปิด HTTP API server ตามปกติ (ค่า default ของโปรแกรมนี้)
-	serve(repo, appLogger, pool, temporalClient)
+	serve(repo, appLogger, pool, temporalClient, scheduleRepo)
 }
 
 // runCLI คือโหมดสำหรับทดสอบ engine โดยไม่ต้องเปิด server หรือมี UI เลย ใช้แบบนี้:
@@ -131,8 +137,8 @@ func runCLI(repo job.Repository, pool *worker.Pool, args []string) {
 // serve เปิด HTTP API server ที่ port 8080 — ผูก dependency ทั้งหมดเข้ากับ Server
 // ที่ประกาศไว้ใน internal/api/http แล้วปล่อยให้ http.ListenAndServe รับ request เข้ามาเรื่อยๆ
 // จนกว่าโปรแกรมจะถูกปิด (Ctrl+C หรือ signal อื่น)
-func serve(repo job.Repository, l logger.Logger, pool *worker.Pool, temporalClient client.Client) {
-	srv := apihttp.NewServer(repo, l, pool, temporalClient)
+func serve(repo job.Repository, l logger.Logger, pool *worker.Pool, temporalClient client.Client, scheduleRepo schedule.Repository) {
+	srv := apihttp.NewServer(repo, l, pool, temporalClient, scheduleRepo)
 	addr := ":8080"
 	fmt.Printf("bop api listening on %s\n", addr)
 	if err := http.ListenAndServe(addr, srv); err != nil {
