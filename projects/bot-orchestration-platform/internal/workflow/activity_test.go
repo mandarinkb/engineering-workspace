@@ -24,7 +24,8 @@ type stubBot struct {
 	err    error
 }
 
-func (b *stubBot) Name() string { return b.name }
+func (b *stubBot) Name() string                    { return b.name }
+func (b *stubBot) ConfigSchema() []bot.ConfigField { return nil }
 func (b *stubBot) Run(_ context.Context, log bot.LogFunc, _ bot.Config) (bot.Result, error) {
 	log("stub bot running")
 	return b.result, b.err

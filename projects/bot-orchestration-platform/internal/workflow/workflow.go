@@ -34,8 +34,8 @@ type Workflow struct {
 // เก็บไว้เฉพาะ job เดี่ยวๆ ที่สั่งตรงผ่าน POST /bots/{name}/jobs เท่านั้น (Open Question
 // ข้อ 3 ใน TEMPORAL-MIGRATION-TODO.md — ดูหมายเหตุเรื่อง log ID ใน activity.go ประกอบ)
 type StepResult struct {
-	StepIndex int
-	BotName   string
-	Summary   string // มีค่าก็ต่อเมื่อ step นี้สำเร็จ
-	Error     string // มีค่าก็ต่อเมื่อ step นี้ล้มเหลว
+	StepIndex int    `json:"step_index"`
+	BotName   string `json:"bot_name"`
+	Summary   string `json:"summary,omitempty"` // มีค่าก็ต่อเมื่อ step นี้สำเร็จ
+	Error     string `json:"error,omitempty"`   // มีค่าก็ต่อเมื่อ step นี้ล้มเหลว
 }

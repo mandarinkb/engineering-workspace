@@ -26,6 +26,15 @@ func New() *Bot { return &Bot{} }
 // ตอนสร้าง job (เช่น POST /bots/http-status-checker/jobs)
 func (b *Bot) Name() string { return "http-status-checker" }
 
+// ConfigSchema ประกาศว่า bot นี้ต้องการ config field เดียวคือ "url" (บังคับกรอก) —
+// ตรงกับที่ Run ด้านล่างเช็คหา cfg["url"] เป๊ะ ถ้าเพิ่ม config key ใหม่ให้ Run อ่าน
+// ต้องกลับมาเพิ่ม ConfigField ที่นี่ด้วยเสมอ ไม่งั้น dashboard จะไม่รู้จัก field นั้นเลย
+func (b *Bot) ConfigSchema() []bot.ConfigField {
+	return []bot.ConfigField{
+		{Key: "url", Label: "URL", Type: bot.ConfigFieldURL, Required: true},
+	}
+}
+
 // Run คือ logic การทำงานจริงของ bot นี้ ขั้นตอน:
 //  1. อ่านค่า "url" จาก config ที่ user ส่งมา ถ้าไม่มีหรือว่างเปล่าให้ error ทันที
 //  2. สร้าง HTTP request แบบผูกกับ ctx (สำคัญมาก: ถ้า ctx ถูกยกเลิกหรือหมดเวลาระหว่าง

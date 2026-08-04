@@ -19,7 +19,8 @@ import (
 // internet หรือ service ภายนอกใดๆ
 type stubBot struct{ delay time.Duration } // delay คือเวลาที่ bot ปลอมนี้จะ "แกล้งทำงาน" นานแค่ไหน
 
-func (b *stubBot) Name() string { return "stub" }
+func (b *stubBot) Name() string                    { return "stub" }
+func (b *stubBot) ConfigSchema() []bot.ConfigField { return nil }
 
 // Run แกล้งทำงานเป็นเวลา delay แล้วคืนค่าสำเร็จ — แต่ถ้า ctx ถูกยกเลิกก่อนครบเวลา
 // (เช่นถูกเรียก Cancel หรือ timeout) จะหยุดทำงานทันทีและคืน error ของ ctx ออกไปแทน

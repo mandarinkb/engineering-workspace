@@ -47,72 +47,72 @@ roadmap นี้ผูกทุกหัวข้อเข้ากับกา
 
 ## Phase 1 — React + Next.js: สร้าง Dashboard ควบคุม BOP
 
-เป้าหมาย: dashboard ที่ backend dev ทั่วไปสร้างไม่ได้ง่ายๆ (real-time, form ซับซ้อน) ไม่ใช่แค่ CRUD ธรรมดา
+เป้าหมาย: dashboard ที่ backend dev ทั่วไปสร้างไม่ได้ง่ายๆ (real-time, form ซับซ้อน) ไม่ใช่แค่ CRUD ธรรมดา — **implement ครบ 1.1-1.9 แล้ว** ที่ [projects/bop-dashboard/](projects/bop-dashboard/README.md) ตามแผนที่ [projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md](projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md) วางไว้ (decision log + สิ่งที่ต่างจากแผนเดิมอยู่ในเอกสารนั้น) — **ยังไม่ verify end-to-end กับ Temporal server จริง** (ติด Docker permission ในเครื่องที่ implement เหมือนตอน Phase 2.5) และยังไม่ deploy ขึ้น Vercel จริง (ข้อ 1.9 ส่วนหลัง ต้องใช้ account ของเจ้าของโปรเจกต์)
 
 ### 1.1 พื้นฐานก่อนแตะ React
 
-- [ ] JavaScript ES6+ ที่ใช้บ่อย: arrow function, destructuring, spread/rest, template literal, `async/await`, module import/export
-- [ ] **TypeScript ตั้งแต่ต้น** (ไม่ใช่เรียน JS ล้วนก่อน) — นิยาม type ของ `Bot`, `Job`, `JobStatus` ให้ตรงกับ struct ฝั่ง Go เพื่อความคุ้นเคย (mental model เดียวกับ struct ที่ใช้อยู่แล้ว)
+- [x] JavaScript ES6+ ที่ใช้บ่อย: arrow function, destructuring, spread/rest, template literal, `async/await`, module import/export
+- [x] **TypeScript ตั้งแต่ต้น** (ไม่ใช่เรียน JS ล้วนก่อน) — นิยาม type ของ `Bot`, `Job`, `JobStatus` ให้ตรงกับ struct ฝั่ง Go เพื่อความคุ้นเคย (mental model เดียวกับ struct ที่ใช้อยู่แล้ว)
 
 ### 1.2 React Core ผ่านหน้า Bot List
 
-- [ ] Component, JSX, props — สร้าง `<BotCard />`, `<BotList />` แสดงรายการ bot ที่มี
-- [ ] `useState` — state ของ filter/search ในหน้า list
-- [ ] `useEffect` — โหลดรายการ bot ตอน mount, cleanup ตอน unmount
-- [ ] Conditional rendering + list rendering + `key` prop — แสดง empty state ถ้ายังไม่มี bot, render list พร้อม key ที่ถูกต้อง
-- [ ] `useRef`, `useContext` — เก็บ reference ของ modal, แชร์ user session ผ่าน context
+- [x] Component, JSX, props — สร้าง `<BotCard />`, `<BotList />` แสดงรายการ bot ที่มี
+- [x] `useState` — state ของ filter/search ในหน้า list
+- [x] `useEffect` — โหลดรายการ bot ตอน mount, cleanup ตอน unmount (ผ่าน TanStack Query ที่ห่อ `useEffect` ไว้ข้างในให้แล้ว)
+- [x] Conditional rendering + list rendering + `key` prop — แสดง empty state ถ้ายังไม่มี bot, render list พร้อม key ที่ถูกต้อง
+- [ ] `useRef`, `useContext` — **ยังไม่ได้ใช้จริง** เพราะยังไม่มี modal ใน UI ตอนนี้ (`useContext` ก็ไม่จำเป็นเพราะ auth state ผ่าน TanStack Query cache แทนอยู่แล้ว ไม่ได้ใช้ React Context เอง)
 
 ### 1.3 Dynamic Form: สร้าง/แก้ไข Bot Config
 
-- [ ] **react-hook-form + zod** — form สร้าง bot ที่ field เปลี่ยนตามประเภท bot ที่เลือก (price-checker ต้องการ URL + selector, notification bot ต้องการ webhook URL) — โจทย์ dynamic form ที่ยากกว่า tutorial ทั่วไป
-- [ ] Validation ฝั่ง client ด้วย zod schema ที่ mapping กับ validation ฝั่ง Go (ความคิดคล้าย struct tag validation ที่คุ้นเคย)
-- [ ] Controlled input ทั้งหมด, error message ที่ user เข้าใจได้
+- [x] **react-hook-form + zod** — form สร้าง bot ที่ field เปลี่ยนตามประเภท bot ที่เลือก — dynamic schema สร้างจาก `config_schema` ที่ backend ประกาศต่อ bot จริง (ดู `bot.Bot.ConfigSchema()`) ไม่ใช่ hard-code ไว้ฝั่ง frontend
+- [x] Validation ฝั่ง client ด้วย zod schema ที่ mapping กับ validation ฝั่ง Go (`ConfigField.Required`/`Type`)
+- [x] Controlled input ทั้งหมด, error message ที่ user เข้าใจได้
 
 ### 1.4 หน้า Job History
 
-- [ ] Table แสดงประวัติการรัน (status badge, เวลาเริ่ม/จบ, ผลลัพธ์), pagination
-- [ ] **TanStack Query** — โหลด/cache ข้อมูล job history, retry อัตโนมัติถ้า request fail (mental model ตรงกับ cache-aside ที่เคยอ่านใน [books/06-redis/01-caching-and-ttl.md](books/06-redis/01-caching-and-ttl.md))
-- [ ] Filter ตาม bot/status/ช่วงเวลา — ฝึก sync state ระหว่าง URL query param กับ UI filter
+- [x] Table แสดงประวัติการรัน (status badge, เวลาเริ่ม/จบ, ผลลัพธ์), pagination (client-side)
+- [x] **TanStack Query** — โหลด/cache ข้อมูล job history, retry อัตโนมัติถ้า request fail (ไม่ retry error 4xx ตามหลักการเดียวกับ `NonRetryableErrorTypes` ฝั่ง Temporal)
+- [x] Filter ตาม bot/status — sync state ระหว่าง URL query param กับ UI filter (ยังไม่มี filter ตามช่วงเวลา — ไม่ได้ทำเพราะยังไม่มี use case จริงที่ต้องใช้)
 
 ### 1.5 หน้า Live Job Monitor (จุดที่ยากที่สุดและมีค่าที่สุดของ phase นี้)
 
-**ฝั่ง Go API — ออกแบบ log pipeline ก่อนเขียน WebSocket handler**:
+**ฝั่ง Go API**:
 
-- [ ] นิยาม `Logger` interface กลาง (`Log(jobID, level, message string)`) ที่ bot ทุกตัวเรียกใช้แทนการ `fmt.Println` ตรงๆ — ทำ 2 อย่างเสมอทุกครั้งที่เรียก: (1) insert log line ลง PostgreSQL table `job_logs` ทันที (2) broadcast เข้า in-memory pub/sub ที่แยกตาม `jobID`
-- [ ] **Persist ก่อนเสมอ แล้วค่อย stream** — ห้ามให้ log วิ่งเข้า WebSocket ตรงๆ โดยไม่เก็บ DB เพราะ WebSocket ปิด connection ปุ๊บข้อมูลหายทันที ต้องมีที่เก็บถาวรให้กลับมาดูย้อนหลังได้เสมอ (ต่อยอดจาก `JobRepository` ที่ทำไว้ใน 0.4 แล้ว)
-- [ ] **Broadcast แบบ per-jobID** (ไม่ใช่ channel เดียวทั้งระบบ) — ป้องกันไม่ให้ client ที่ดู job A เห็น log ของ job B ปนกัน ออกแบบเป็น map ของ `jobID → []chan LogLine` หรือใช้ broadcaster pattern เล็กๆ เอง
-- [ ] **REST endpoint สำหรับ backfill**: `GET /jobs/{id}/logs` ดึง log ทั้งหมดที่มีอยู่แล้วจาก DB ก่อน แล้วค่อยเปิด WebSocket ต่อรับเฉพาะ line ใหม่ที่เกิดหลังจากนั้น — แก้ปัญหา "ปิดเบราว์เซอร์แล้วเปิดใหม่ระหว่าง job กำลังรัน" ไม่ให้ log ที่พลาดไปหายไปเลย
+- [x] `Logger` interface กลาง — **มีอยู่แล้วตั้งแต่ Phase 0** (ไม่ต้องเขียนใหม่ตอน Phase 1 อย่างที่วางแผนไว้ในนี้) `Log()` ทำทั้ง persist + broadcast per-jobID ในตัวเดียวอยู่แล้ว
+- [x] **Persist ก่อนเสมอ แล้วค่อย stream** — SSE handler (`GET /jobs/{id}/logs/stream`) เรียก `Subscribe()` ก่อน `History()` เสมอ (ลำดับสำคัญ กัน log หายในช่วงรอยต่อ)
+- [x] **Broadcast แบบ per-jobID** — มีอยู่แล้วใน `internal/logger/memory` (`map[jobID][]chan Line`)
+- [x] **REST endpoint สำหรับ backfill**: `GET /jobs/{id}/logs` (เดิม) — แต่ SSE endpoint ใหม่ (`/logs/stream`) ส่ง backfill มาเป็นส่วนหนึ่งของ stream เดียวกันเองด้วย ทำให้ frontend ไม่ต้องยิงสอง request แยกกัน (ต่างจากแผนเดิมเล็กน้อย ดู PHASE1-DASHBOARD-TODO.md)
 
 **ฝั่ง Next.js**:
 
-- [ ] **WebSocket หรือ Server-Sent Events (SSE)** — เชื่อมต่อกับ Go backend เพื่อดู log/สถานะ bot ที่กำลังรันแบบ real-time ไม่ใช่ polling — ทักษะนี้ portfolio ทั่วไปมักไม่มีเพราะ tutorial ส่วนใหญ่สอนแค่ CRUD
-- [ ] จัดการ connection lifecycle (reconnect ถ้าหลุด, cleanup ตอนออกจากหน้า) ด้วย `useEffect`
-- [ ] แสดง log แบบ stream (auto-scroll, บอกสถานะ connecting/connected/disconnected ให้ user เห็น)
-- [ ] โหลด log เก่าจาก REST endpoint ก่อน render แล้วค่อย append line ใหม่ที่มาจาก WebSocket ต่อท้าย (ไม่ใช่รอ WebSocket อย่างเดียวตั้งแต่แรก)
+- [x] **Server-Sent Events (SSE)** (เลือกแทน WebSocket — log stream เป็น one-way, SSE มี auto-reconnect ในตัวผ่าน `EventSource` ไม่ต้องเขียนเอง ดูเหตุผลเต็มที่ PHASE1-DASHBOARD-TODO.md)
+- [x] จัดการ connection lifecycle ด้วย `useEffect` cleanup (`src/features/jobs/api/use-job-log-stream.ts`)
+- [x] แสดง log แบบ stream (auto-scroll, badge สถานะ connecting/connected/disconnected)
+- [x] โหลด log เก่า+ใหม่ผ่าน SSE connection เดียวกัน (backend ส่ง backfill ให้เองในสตรีมเดียวกันแล้ว — ไม่ต้องแยกยิง REST ก่อนตามที่ข้อนี้เคยระบุไว้)
 
-> **หมายเหตุสำหรับตอน scale ขึ้น K8s (Phase 2.1)**: in-memory pub/sub ใช้ได้ตราบใดที่ API ยังมี instance เดียว พอ scale เป็นหลาย replica, worker อาจ report กลับมาที่ replica คนละตัวกับที่ user เปิด WebSocket ค้างอยู่ — ตอนนั้นต้องสลับ broadcaster จาก in-memory เป็น **Redis Pub/Sub** ([books/06-redis/02-pubsub-and-streams.md](books/06-redis/02-pubsub-and-streams.md)) แทน ออกแบบ broadcaster เป็น interface แยกไว้ตั้งแต่ต้นเพื่อสลับ implementation ทีหลังได้โดยไม่แก้โค้ดส่วนอื่น
+> **หมายเหตุสำหรับตอน scale ขึ้น K8s (Phase 2.1)**: in-memory pub/sub ใช้ได้ตราบใดที่ API ยังมี instance เดียว พอ scale เป็นหลาย replica, worker อาจ report กลับมาที่ replica คนละตัวกับที่ user เปิด SSE ค้างอยู่ — ตอนนั้นต้องสลับ broadcaster จาก in-memory เป็น **Redis Pub/Sub** ([books/06-redis/02-pubsub-and-streams.md](books/06-redis/02-pubsub-and-streams.md)) แทน (ยังไม่ทำตอนนี้ — `logger.Logger` เป็น interface อยู่แล้วเลยสลับ implementation ทีหลังได้โดยไม่แก้ caller)
 
 ### 1.6 Next.js เฉพาะทาง
 
-- [ ] **App Router** — `layout.tsx` สำหรับ nav bar ที่ใช้ร่วมทุกหน้า, `page.tsx` แยกตามฟีเจอร์ (`/bots`, `/jobs`, `/jobs/[id]`)
-- [ ] **Server Component vs Client Component** — หน้า list ที่ดึงข้อมูลแรกใช้ Server Component (เร็วกว่า), ส่วนที่ต้อง interactive (form, WebSocket) ต้องเป็น Client Component (`"use client"`) — เข้าใจว่าทำไมแยกแบบนี้
-- [ ] Route Handler — เขียน endpoint เล็กๆ ใน Next.js เอง (เช่น proxy บาง request ไป Go API พร้อมแนบ auth header)
-- [ ] Environment variable (`NEXT_PUBLIC_API_URL` vs server-only secret)
+- [x] **App Router** — `layout.tsx` สำหรับ nav bar ที่ใช้ร่วมทุกหน้า (route group `(dashboard)`), `page.tsx` แยกตามฟีเจอร์ (`/bots`, `/jobs`, `/jobs/[id]`, `/workflow-runs`, `/workflow-runs/[id]`)
+- [x] **Server Component vs Client Component** — หน้า list ที่ดึงข้อมูลแรกใช้ Server Component บาง (แค่ import feature component), ส่วนที่ต้อง interactive (form, SSE, `useSearchParams`) เป็น Client Component
+- [ ] **Route Handler proxy — ไม่ได้ทำ**: dashboard เรียก Go API ตรงๆ ผ่าน CORS แทน (ไม่ผ่าน Next.js Route Handler proxy) เพราะตัดสินใจแยก repo/deploy backend-frontend ตั้งแต่ต้น ทำให้ proxy ผ่าน Next.js เองไม่มีประโยชน์ชัดเจนพอที่จะเพิ่ม layer ขึ้นมา
+- [x] Environment variable (`NEXT_PUBLIC_API_URL`) — ดู `.env.example`
 
 ### 1.7 Styling
 
-- [ ] **Tailwind CSS** — status badge สี (running=เหลือง, success=เขียว, failed=แดง), layout ของ dashboard
+- [x] **Tailwind CSS** — status badge สี (running=เหลือง, succeeded=เขียว, failed=แดง), layout ของ dashboard
 
 ### 1.8 Authentication
 
-- [ ] จัดการ JWT ที่ Go API ออกให้ เก็บใน httpOnly cookie (เชื่อมกับ [books/09-authentication/01-session-and-jwt.md](books/09-authentication/01-session-and-jwt.md))
-- [ ] Protected route — ต้อง login ก่อนเห็น dashboard
-- [ ] (Optional) NextAuth.js ถ้าอยาก login ผ่าน GitHub OAuth — เชื่อมกับ [books/09-authentication/02-oauth2-and-oidc.md](books/09-authentication/02-oauth2-and-oidc.md)
+- [x] จัดการ JWT ที่ Go API ออกให้ เก็บใน httpOnly cookie — JWT เขียนเองด้วย stdlib ล้วนๆ (`internal/auth/jwt.go`) ไม่ใช้ library ภายนอก
+- [x] Protected route — `src/middleware.ts` (cookie-presence check ที่ edge, verify signature จริงเกิดที่ backend ผ่าน `GET /me`)
+- [ ] (Optional) NextAuth.js — ยังไม่ทำ ตามที่ระบุว่าเป็น Optional (YAGNI จนกว่าจะมี use case OAuth จริง)
 
 ### 1.9 Testing + Deploy
 
-- [ ] Vitest + React Testing Library — test form validation logic, test ว่า status badge render สีถูกต้องตาม status
-- [ ] Deploy ขึ้น Vercel ก่อนเพื่อ demo เร็ว แล้วค่อย containerize ด้วย Docker ต่อใน Phase 2
+- [x] Vitest + React Testing Library — test form validation logic (`bot-config.schema.test.ts`), test ว่า status badge render สีถูกต้องตาม status ทุกค่า (`job-status-badge.test.tsx`)
+- [ ] Deploy ขึ้น Vercel — **ยังไม่ทำ** ต้องใช้ account ของเจ้าของโปรเจกต์ ไม่ใช่สิ่งที่ session implement ทำเองได้
 
 **เป้าหมายเมื่อจบ phase**: dashboard ที่ login ได้, สร้าง/แก้ bot config ได้, ดู job history ได้, และดู log แบบ real-time ของ job ที่กำลังรันอยู่ได้จริง
 

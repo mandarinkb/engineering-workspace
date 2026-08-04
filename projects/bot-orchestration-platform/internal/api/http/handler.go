@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 
+	"bop/internal/auth"
+	"bop/internal/bot"
 	"bop/internal/job"
 	"bop/internal/logger"
 	"bop/internal/worker"
@@ -37,23 +40,69 @@ func NewServer(repo job.Repository, log logger.Logger, pool *worker.Pool, tempor
 	return s
 }
 
-// ServeHTTP ทำให้ Server เป็น http.Handler ได้ (ส่งต่อทุก request ให้ mux ภายในจัดการ)
-// เพื่อให้ใช้กับ http.ListenAndServe ได้ตรงๆ
+// dashboardOrigin คือ origin ของ Next.js dev server (projects/bop-dashboard/) — ต้องเปิด
+// CORS ให้ origin นี้เรียก API ได้ เพราะ dashboard แยก repo/deploy ออกจาก backend ไปเลย
+// (ไม่ใช่ same-origin) ดู decision log ที่ projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md
+// — hardcode ไปก่อนเหมือนค่าคงที่อื่นๆ ในไฟล์นี้ (เช่น addr ":8080" ใน cmd/bop/main.go)
+// พอ deploy จริงค่อยเปลี่ยนเป็นอ่านจาก environment variable
+const dashboardOrigin = "http://localhost:3000"
+
+// ServeHTTP ทำให้ Server เป็น http.Handler ได้ — ก่อนส่งต่อให้ mux ภายในจัดการ จะใส่
+// CORS header ให้ทุก response ก่อนเสมอ (Access-Control-Allow-Credentials ต้องเป็น "true"
+// เพราะ dashboard ส่ง JWT ผ่าน httpOnly cookie มาด้วยทุก request — ตาม spec ของ CORS
+// การอนุญาต credentials แบบนี้ "ห้าม" ใช้ Access-Control-Allow-Origin: "*" เด็ดขาด ต้องระบุ
+// origin ที่อนุญาตตรงๆ เท่านั้น) request แบบ OPTIONS (preflight ที่เบราว์เซอร์ส่งมาก่อน
+// request จริงเองอัตโนมัติเวลามี custom header อย่าง Authorization) ตอบ 204 ทันทีโดยไม่ต้อง
+// ส่งต่อให้ mux เลย เพราะไม่มี route ไหนใน routes() รองรับ method OPTIONS ตรงๆ
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", dashboardOrigin)
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	s.mux.ServeHTTP(w, r)
 }
 
 // routes ลงทะเบียน endpoint ทั้งหมดของ API — ใช้ syntax "METHOD /path" ของ Go 1.22+
 // ที่รองรับ wildcard แบบ {name} ในตัว ServeMux เองโดยไม่ต้องพึ่ง library ภายนอก
 func (s *Server) routes() {
-	s.mux.HandleFunc("POST /bots/{name}/jobs", s.handleCreateJob) // สร้าง job ใหม่และสั่งรันทันที
-	s.mux.HandleFunc("GET /jobs", s.handleListJobs)               // ดูรายการ job ทั้งหมด
-	s.mux.HandleFunc("GET /jobs/{id}", s.handleGetJob)            // ดูรายละเอียด job เดียว (รวมสถานะล่าสุด)
-	s.mux.HandleFunc("GET /jobs/{id}/logs", s.handleGetJobLogs)   // ดู log ทั้งหมดของ job เดียว
-	s.mux.HandleFunc("DELETE /jobs/{id}", s.handleCancelJob)      // สั่งยกเลิก job ที่กำลังรันอยู่
+	s.mux.HandleFunc("GET /bots", s.handleListBots)                       // ดูรายชื่อ bot ที่ register ไว้ทั้งหมด + config schema ของแต่ละตัว
+	s.mux.HandleFunc("POST /bots/{name}/jobs", s.handleCreateJob)         // สร้าง job ใหม่และสั่งรันทันที
+	s.mux.HandleFunc("GET /jobs", s.handleListJobs)                       // ดูรายการ job ทั้งหมด
+	s.mux.HandleFunc("GET /jobs/{id}", s.handleGetJob)                    // ดูรายละเอียด job เดียว (รวมสถานะล่าสุด)
+	s.mux.HandleFunc("GET /jobs/{id}/logs", s.handleGetJobLogs)           // ดู log ทั้งหมดของ job เดียว (REST snapshot ไว้ backfill)
+	s.mux.HandleFunc("GET /jobs/{id}/logs/stream", s.handleStreamJobLogs) // ดู log แบบ real-time ผ่าน SSE (roadmap ข้อ 1.5)
+	s.mux.HandleFunc("DELETE /jobs/{id}", s.handleCancelJob)              // สั่งยกเลิก job ที่กำลังรันอยู่
 
 	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)    // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
 	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun) // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
+
+	s.mux.HandleFunc("POST /login", s.handleLogin)   // ตรวจ credential แล้วออก JWT ใส่ httpOnly cookie (roadmap ข้อ 1.8)
+	s.mux.HandleFunc("POST /logout", s.handleLogout) // ล้าง cookie ทิ้ง
+	s.mux.HandleFunc("GET /me", s.handleMe)          // เช็คว่า cookie ปัจจุบัน valid อยู่ไหม คืนชื่อ user ถ้าใช่
+}
+
+// botSummary คือรูปแบบ JSON ที่คืนจาก GET /bots — ห่อ bot.Bot (interface, encode
+// ตรงๆ ไม่ได้เพราะไม่รู้จัก concrete type) ให้เหลือแค่สิ่งที่ dashboard ต้องใช้จริง:
+// ชื่อ (ไปใช้เป็น {name} ใน POST /bots/{name}/jobs) กับ config schema (ไปสร้าง
+// dynamic form ตาม roadmap ข้อ 1.3)
+type botSummary struct {
+	Name         string            `json:"name"`
+	ConfigSchema []bot.ConfigField `json:"config_schema"`
+}
+
+// handleListBots คืนรายชื่อ bot ที่ register ไว้ทั้งหมดพร้อม config schema ของแต่ละตัว —
+// เรียงตามชื่อ (a-z) ตาม worker.Pool.List
+func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
+	bots := s.pool.List()
+	out := make([]botSummary, 0, len(bots))
+	for _, b := range bots {
+		out = append(out, botSummary{Name: b.Name(), ConfigSchema: b.ConfigSchema()})
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // handleCreateJob รับ config เป็น JSON object (key-value เป็น string ล้วน ตรงกับ bot.Config)
@@ -62,10 +111,6 @@ func (s *Server) routes() {
 // client ทันทีด้วยสถานะ 202 Accepted พร้อมข้อมูล job (ที่ยังเป็น pending อยู่ เพราะ
 // job เพิ่งถูกส่งเข้า queue ยังไม่ได้เริ่มทำงานจริง — client ต้องไปเช็คสถานะทีหลังเองผ่าน
 // GET /jobs/{id})
-//
-// TODO(Phase 1.5): พอมี WebSocket handler แล้ว ให้ stream ผ่าน s.log.Subscribe(job.ID)
-// เพื่อให้ dashboard เห็นข้อมูลแบบ real-time แทนที่จะต้อง poll ซ้ำๆ ด้วย GET /jobs/{id}
-// และ GET /jobs/{id}/logs
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	botName := r.PathValue("name") // ดึงค่าจาก {name} ใน path pattern
 
@@ -130,6 +175,186 @@ func (s *Server) handleGetJobLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, lines)
+}
+
+// handleStreamJobLogs สตรีม log ของ job ที่ระบุแบบ real-time ผ่าน Server-Sent Events
+// (SSE) — เลือกใช้ SSE แทน WebSocket เพราะ log stream เป็นทิศทางเดียว (server→client
+// เท่านั้น dashboard ไม่เคยต้องส่งอะไรกลับผ่าน channel นี้เลย) SSE เป็น HTTP ธรรมดา
+// (`Content-Type: text/event-stream`) เบราว์เซอร์มี auto-reconnect ในตัวผ่าน
+// `EventSource` โดยไม่ต้องเขียน reconnect logic เอง และฝั่ง Go เขียนง่ายกว่า WebSocket
+// มาก (ไม่ต้องพึ่ง library ภายนอกอย่าง gorilla/websocket เพื่อรักษาหลักการ dependency
+// น้อยที่สุดของโปรเจกต์นี้) — ดู decision log เต็มๆ ที่
+// projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md
+//
+// ขั้นตอนการทำงาน (ลำดับสำคัญมาก อย่าสลับ):
+//  1. Subscribe เข้า logger.Logger ก่อนเสมอ — เปิด channel รับ log บรรทัดใหม่ที่จะเกิดขึ้น
+//     "นับจากตอนนี้เป็นต้นไป" ก่อน
+//  2. ค่อยเรียก History เอา log ทั้งหมดที่เคยบันทึกไว้ก่อนหน้านี้มาส่งเป็น backfill —
+//     ลำดับนี้ (Subscribe ก่อน History) ป้องกันไม่ให้พลาด log บรรทัดที่เกิดขึ้นระหว่าง
+//     สอง call นี้ (ถ้าสลับเป็น History ก่อน Subscribe จะมีช่วงเวลาสั้นๆ ที่ log ใหม่
+//     เกิดขึ้นแล้วไม่มีใครจับไว้เลย ข้อมูลหายจริง) — ข้อเสียที่ยอมรับได้ของลำดับนี้คือ
+//     "อาจ" เห็น log บรรทัดเดียวกันซ้ำ 2 ครั้งได้ในกรณีที่ Log() ถูกเรียกพอดีในช่วงเวลา
+//     สั้นๆ ระหว่าง Subscribe กับ History (ซ้ำแต่ไม่หาย ยอมรับได้มากกว่าหายไปเงียบๆ)
+//  3. ส่ง history ทั้งหมดออกไปก่อน (backfill) แล้ว flush ทันทีให้ client เห็นของเก่าครบ
+//  4. เข้าลูป: รอ log บรรทัดใหม่จาก channel แล้วส่งต่อทันที หรือรอ ctx ของ request ถูก
+//     ยกเลิก (client ปิดแท็บ/network หลุด) ก็เลิกลูปแล้ว unsubscribe ทิ้ง (ผ่าน defer)
+func (s *Server) handleStreamJobLogs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ch, unsubscribe := s.log.Subscribe(id)
+	defer unsubscribe()
+
+	history, err := s.log.History(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	for _, line := range history {
+		writeSSELine(w, line)
+	}
+	flusher.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done(): // client ปิด connection แล้ว ไม่ต้องส่งต่ออีก
+			return
+		case line, ok := <-ch:
+			if !ok { // channel ถูกปิด (ปกติเกิดจาก unsubscribe ของเราเอง ไม่ควรเข้า case นี้ตอนอื่น)
+				return
+			}
+			writeSSELine(w, line)
+			flusher.Flush()
+		}
+	}
+}
+
+// writeSSELine เข้ารหัส log บรรทัดหนึ่งเป็น JSON แล้วเขียนตาม format ของ Server-Sent
+// Events ("data: <payload>\n\n" — ต้องมี \n\n คั่นท้ายเสมอ ไม่งั้นเบราว์เซอร์จะยังไม่ถือว่า
+// event นี้จบ) EventSource ฝั่ง client จะได้ event แต่ละอันเป็น log.Line ในรูป JSON string
+// พร้อม JSON.parse ต่อได้ทันที
+func writeSSELine(w http.ResponseWriter, line logger.Line) {
+	b, err := json.Marshal(line)
+	if err != nil {
+		return // ข้าม line นี้ถ้า encode ไม่ได้ (ไม่ควรเกิดจริง เพราะ logger.Line เป็น plain struct ล้วนๆ)
+	}
+	fmt.Fprintf(w, "data: %s\n\n", b)
+}
+
+// cookieName คือชื่อ cookie ที่เก็บ JWT — ใช้ชื่อเดียวกันทั้งตอน set (handleLogin),
+// ตอนอ่าน (handleMe), และตอนล้าง (handleLogout)
+const cookieName = "bop_session"
+
+// authSecret คือ key ที่ใช้เซ็น/ตรวจ JWT (ดู internal/auth) — hardcode ไปก่อนสำหรับ
+// local dev เหมือนค่าคงที่อื่นๆ ในไฟล์นี้ **ห้ามใช้ค่านี้ใน production เด็ดขาด** ต้อง
+// เปลี่ยนไปอ่านจาก environment variable ก่อน deploy จริง (บันทึกไว้เป็น Open Question
+// ใน projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md แล้ว)
+var authSecret = []byte("bop-dev-secret-change-me-before-deploying")
+
+// adminUsername/adminPassword คือ credential เดียวที่ระบบรู้จักตอนนี้ — hardcode ไปก่อน
+// เพราะยังไม่มี user database เลย (BOP เป็น single-operator tool ควบคุม bot ของตัวเอง
+// ไม่ใช่ multi-tenant SaaS ที่ต้องมี user table จริงจังตั้งแต่ต้น) เปลี่ยนเป็นอ่านจาก
+// environment variable ก่อน deploy จริงเหมือน authSecret ด้านบน
+const (
+	adminUsername = "admin"
+	adminPassword = "changeme"
+)
+
+// loginRequest คือ JSON body ที่ POST /login ต้องรับ
+type loginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// handleLogin ตรวจ username/password กับค่าที่ hardcode ไว้ (ดูหมายเหตุด้านบน) ถ้าถูกต้อง
+// ออก JWT (ผ่าน internal/auth) แล้วฝังใน httpOnly cookie ส่งกลับไป
+//
+// ทำไมเก็บ token ใน httpOnly cookie แทนที่จะให้ frontend เก็บเองใน localStorage:
+// httpOnly cookie เข้าถึงจาก JavaScript ฝั่ง client ไม่ได้เลย (แม้แต่โค้ดของ dashboard
+// เองก็อ่านไม่ได้) ป้องกัน token ถูกขโมยผ่าน XSS (ถ้ามี script อันตรายหลุดเข้ามารันบน
+// หน้าเว็บ) เบราว์เซอร์แนบ cookie ให้เองอัตโนมัติทุก request ถัดไปที่ยิงไป backend
+// origin เดียวกันตาม cookie policy โดย frontend ไม่ต้องจัดการเรื่องแนบ header เอง
+//
+// SameSite=Lax + Secure=false: dashboard (localhost:3000) กับ backend (localhost:8080)
+// เป็นคนละ origin (คนละ port) แต่ยังนับเป็น "same site" ตาม spec ของเบราว์เซอร์ (site
+// กำหนดจาก registrable domain ไม่นับ port) SameSite=Lax จึงยังใช้งานได้ปกติตอน local
+// dev โดยไม่ต้องเปิด HTTPS — **ต้องกลับมาทบทวนค่านี้ก่อน deploy จริง** ถ้า dashboard กับ
+// backend อยู่คนละ domain จริงๆ (ไม่ใช่แค่คนละ port บน localhost) ต้องเปลี่ยนเป็น
+// SameSite=None + Secure=true (บังคับต้องผ่าน HTTPS เท่านั้น ไม่งั้นเบราว์เซอร์จะทิ้ง
+// cookie นี้ไปเงียบๆ)
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Username != adminUsername || req.Password != adminPassword {
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	const ttl = 24 * time.Hour
+	token, err := auth.Issue(authSecret, req.Username, ttl)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false, // TODO: true ตอน deploy จริงผ่าน HTTPS (ดูหมายเหตุด้านบน)
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(ttl.Seconds()),
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleLogout ล้าง cookie ทิ้งด้วยการตั้ง MaxAge เป็นค่าติดลบ (สั่งเบราว์เซอร์ให้ลบ
+// cookie นี้ทันที) — ไม่ต้องเช็ค token เดิมเลยก่อนล้าง เพราะการล้าง cookie ปลอดภัยเสมอ
+// ไม่ว่า token เดิมจะยังใช้ได้อยู่หรือหมดอายุไปแล้วก็ตาม
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleMe ตรวจ cookie ปัจจุบันว่ายัง valid อยู่ไหม (signature ถูกต้อง + ยังไม่หมดอายุ)
+// คืนชื่อ user ถ้าผ่าน — dashboard เรียก endpoint นี้ตอนโหลดหน้าแรกเพื่อรู้ว่า user
+// ยัง login ค้างอยู่ไหม (แทนที่จะพยายามอ่าน/ถอดรหัส JWT เองฝั่ง client ซึ่งทำไม่ได้อยู่
+// แล้วเพราะ cookie เป็น httpOnly)
+func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		http.Error(w, "not authenticated", http.StatusUnauthorized)
+		return
+	}
+	claims, err := auth.Verify(authSecret, cookie.Value)
+	if err != nil {
+		http.Error(w, "not authenticated", http.StatusUnauthorized)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"username": claims.Subject})
 }
 
 // handleCancelJob สั่งยกเลิก job ที่กำลังรันอยู่ คืน 409 Conflict ถ้า job นั้นไม่ได้

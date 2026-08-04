@@ -1,12 +1,14 @@
 # Bot Orchestration Platform (BOP)
 
-Go core of the flagship project described in [FULLSTACK-INFRA-ROADMAP.md](../../FULLSTACK-INFRA-ROADMAP.md). This is the "core/control plane" that owns bot execution, job state, and log output — the Next.js dashboard (Phase 1, not started yet) will be a client of the HTTP API defined here, nothing more.
+Go core of the flagship project described in [FULLSTACK-INFRA-ROADMAP.md](../../FULLSTACK-INFRA-ROADMAP.md). This is the "core/control plane" that owns bot execution, job state, and log output — the Next.js dashboard ([projects/bop-dashboard/](../bop-dashboard/README.md), Phase 1) is a client of the HTTP API defined here, nothing more.
 
 ## สถานะปัจจุบัน
 
 Phase 0 (`Golang: สร้าง Bot Execution Engine`) ทำแล้ว: `Bot` interface, worker pool ที่รันพร้อมกันได้หลาย job แบบมี timeout/cancel, in-memory repository + logger (persist + live-subscribe design พร้อมสลับเป็น PostgreSQL/OpenSearch ทีหลังโดยไม่แก้ caller), bot ตัวอย่างที่ implement interface จริง, และ HTTP API ที่ dashboard ใน Phase 1 จะเรียกใช้ได้ทันที — ทั้งหมด build/vet/test -race ผ่าน และลองยิงจริงทั้ง CLI กับ HTTP server แล้ว
 
 **Phase 2.5 (Temporal migration) ทำเสร็จแล้วก่อนกำหนด**: `internal/workflow` เดิมเป็น engine เขียนเองแบบเบา (ไม่มี durable execution, ไม่มี retry policy ต่อ step, scheduler เขียนเอง) — ตอนนี้ย้ายไปใช้ **Temporal** จริงจังทั้งหมดแล้ว: `internal/workflow` มี `Execute` (Temporal workflow function) + `Activities.RunStep` (Temporal Activity adapter ที่เรียก `bot.Bot.Run`) แทนที่ `Runner`/`RunRepository` เดิม, `internal/scheduler` ถูกลบทิ้งทั้ง package เพราะใช้ **Temporal Schedules** แทน ดูรายละเอียดที่หัวข้อ "Workflow และ Scheduler" ด้านล่าง และ [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) สำหรับ decision log ของ Open Question ที่ตัดสินใจไว้ระหว่างย้าย
+
+**Backend prerequisite ของ Phase 1 (Next.js dashboard) ทำเสร็จแล้วเช่นกัน**: [projects/bop-dashboard/](../bop-dashboard/README.md) (แยก repo/deploy จาก backend ตั้งใจ) ต้องการ endpoint/กลไกเพิ่มที่ backend ยังไม่มี — เพิ่มครบแล้วทั้งหมด: `GET /bots` (list bot + config schema ผ่าน `bot.Bot.ConfigSchema()` ที่เพิ่มเข้า interface ใหม่), CORS middleware (ดู `dashboardOrigin` ใน `internal/api/http/handler.go`), `GET /jobs/{id}/logs/stream` (SSE — real-time log สำหรับ job เดี่ยวๆ ที่ไม่ผ่าน workflow), `POST /login`/`POST /logout`/`GET /me` (JWT แบบเขียนเอง ดู `internal/auth/jwt.go`), และ normalize JSON ทั้ง API ให้เป็น snake_case สม่ำเสมอกัน (`job.Job`/`logger.Line` เดิมเป็น PascalCase default ของ Go) ดู decision log เต็มๆ ที่ [projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md](../bop-dashboard/PHASE1-DASHBOARD-TODO.md)
 
 ยังไม่ทำ (ของ Phase 0 ที่เหลือ) — ดู checklist เต็มที่ [roadmap Phase 0](../../FULLSTACK-INFRA-ROADMAP.md#phase-0--golang-สร้าง-bot-execution-engine):
 
@@ -21,9 +23,13 @@ Phase 0 (`Golang: สร้าง Bot Execution Engine`) ทำแล้ว: `Bo
 cmd/bop/main.go          HTTP API server — ประกอบส่วนที่เกี่ยวกับ job เดี่ยวๆ + Temporal client (อ่านอย่างเดียว)
 cmd/bop-worker/main.go   Temporal Worker process แยกต่างหาก — ประกอบ Activities + Temporal Schedule
    │
-   ├── internal/bot        Bot interface — ทุก bot implement อันนี้ ไม่รู้จัก HTTP/DB/logger เลย
-   ├── internal/job        Job entity + Repository interface
-   ├── internal/logger     Logger interface (persist + live-subscribe ในตัวเดียว)
+   ├── internal/bot        Bot interface (Name/ConfigSchema/Run) — ทุก bot implement อันนี้
+   │                       ไม่รู้จัก HTTP/DB/logger เลย ConfigSchema() ประกาศ config field
+   │                       ให้ dashboard สร้าง dynamic form ได้ (roadmap Phase 1.3)
+   ├── internal/job        Job entity + Repository interface (json tag snake_case)
+   ├── internal/logger     Logger interface (persist + live-subscribe ในตัวเดียว, json tag
+   │                       snake_case) — GET /jobs/{id}/logs/stream (SSE) ใช้ Subscribe()
+   ├── internal/auth       JWT (HS256) เขียนเอง — ใช้กับ POST /login (roadmap Phase 1.8)
    ├── internal/worker     Pool — concurrency core สำหรับ job เดี่ยวๆ (POST /bots/{name}/jobs)
    │                       รัน bot ผ่าน semaphore-bounded goroutine (Submit = fire-and-forget,
    │                       SubmitAndWait = รอผลก่อนไปต่อ) — ไม่เกี่ยวกับ workflow อีกต่อไป
@@ -66,17 +72,23 @@ go run ./cmd/bop-worker   # Temporal Worker — รัน workflow/activity จ�
 go run ./cmd/bop          # HTTP API ที่ :8080 — ให้ dashboard เรียก, อ่านสถานะ workflow ผ่าน Temporal
 ```
 
-ตัวอย่างเรียก API ด้วย curl:
+ตัวอย่างเรียก API ด้วย curl (response ทั้งหมดเป็น JSON แบบ snake_case สม่ำเสมอกันทั้ง API):
 
 ```bash
+curl localhost:8080/bots                                                       # list bot + config schema (ใช้ทำ dynamic form)
 curl -X POST localhost:8080/bots/http-status-checker/jobs -d '{"url":"https://example.com"}'
 curl localhost:8080/jobs
 curl localhost:8080/jobs/<id>
-curl localhost:8080/jobs/<id>/logs
-curl -X DELETE localhost:8080/jobs/<id>   # cancel ถ้า job ยังรันอยู่
+curl localhost:8080/jobs/<id>/logs                # snapshot log ทั้งหมด ณ ตอนนี้ (REST)
+curl -N localhost:8080/jobs/<id>/logs/stream      # log แบบ real-time (SSE — ส่ง backfill มาก่อนแล้วค่อย stream ต่อ, -N กัน curl buffer)
+curl -X DELETE localhost:8080/jobs/<id>           # cancel ถ้า job ยังรันอยู่
 
 curl localhost:8080/workflow-runs                # ดูว่า scheduled workflow รันไปแล้วกี่รอบ (query ตรงจาก Temporal)
 curl localhost:8080/workflow-runs/<workflow-id>   # ดูผลลัพธ์ทีละ step ของ run เดียว (workflow-id ดูได้จาก Temporal UI หรือ response ของ list ด้านบน)
+
+curl -c cookies.txt -X POST localhost:8080/login -d '{"username":"admin","password":"changeme"}'  # ได้ httpOnly cookie กลับมา (เปลี่ยน credential ก่อน deploy จริงเสมอ)
+curl -b cookies.txt localhost:8080/me             # เช็คว่า session ยัง valid อยู่ไหม
+curl -b cookies.txt -X POST localhost:8080/logout
 ```
 
 ## Workflow และ Scheduler (Temporal)
@@ -118,5 +130,5 @@ wf := workflow.Workflow{
 
 ตามลำดับใน [roadmap](../../FULLSTACK-INFRA-ROADMAP.md):
 1. เก็บ Phase 0 ที่เหลือให้ครบ (chromedp bot, error types, PostgreSQL repository, table-driven test)
-2. เริ่ม Phase 1 — Next.js dashboard เรียก API ชุดนี้ตรงๆ ได้เลยตั้งแต่วันแรก เพราะ endpoint ที่จำเป็น (`POST /bots/{name}/jobs`, `GET /jobs`, `GET /jobs/{id}`, `GET /jobs/{id}/logs`, `GET /workflow-runs`, `GET /workflow-runs/{id}`) มีครบแล้ว (endpoint คู่หลัง query จาก Temporal ตรงๆ แล้วตั้งแต่ Phase 2.5)
-3. **Phase 2.5 (Temporal migration) ทำเสร็จแล้ว** — `internal/workflow` ย้ายไปใช้ Temporal จริงจังทั้งหมด (`internal/scheduler` ถูกลบทิ้ง) ดู decision log เต็มๆ ที่ [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) — สิ่งที่เหลือค้างจากงานนี้: (1) ยังไม่เคยรัน end-to-end จริงกับ Temporal server (build/vet/test -race ผ่านหมด แต่ยังไม่ได้ยิง `docker compose up -d` แล้วดู schedule trigger จริงในเครื่องนี้ เพราะติด Docker permission ตอนที่เขียนโค้ดนี้) (2) compensation logic ยังไม่มี รอ bot ที่มี side effect จริงจังก่อน (3) log ของ step ใน workflow ยังดึงผ่าน HTTP ไม่ได้จนกว่าจะมี logger backend ที่แชร์ข้าม process ได้ (PostgreSQL/OpenSearch, Phase 2.2)
+2. **Phase 2.5 (Temporal migration) ทำเสร็จแล้ว** — `internal/workflow` ย้ายไปใช้ Temporal จริงจังทั้งหมด (`internal/scheduler` ถูกลบทิ้ง) ดู decision log เต็มๆ ที่ [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) — สิ่งที่เหลือค้างจากงานนี้: (1) ยังไม่เคยรัน end-to-end จริงกับ Temporal server (build/vet/test -race ผ่านหมด แต่ยังไม่ได้ยิง `docker compose up -d` แล้วดู schedule trigger จริงในเครื่องนี้ เพราะติด Docker permission ตอนที่เขียนโค้ดนี้) (2) compensation logic ยังไม่มี รอ bot ที่มี side effect จริงจังก่อน (3) log ของ step ใน workflow ยังดึงผ่าน HTTP ไม่ได้จนกว่าจะมี logger backend ที่แชร์ข้าม process ได้ (PostgreSQL/OpenSearch, Phase 2.2)
+3. **Phase 1 (Next.js dashboard) ทำแล้วเช่นกัน** — ทั้ง backend prerequisite (endpoint ใหม่ครบตามที่ระบุด้านบน) และตัว dashboard เองที่ [projects/bop-dashboard/](../bop-dashboard/README.md) (implement ครบ 1.1-1.9 ตาม [PHASE1-DASHBOARD-TODO.md](../bop-dashboard/PHASE1-DASHBOARD-TODO.md)) — `go test -race ./...` ผ่านหมดรวม `internal/api/http` (smoke test เต็มผ่าน `httptest` ครอบคลุม bots/jobs/auth/CORS โดยไม่ต้องพึ่ง Docker/Temporal เลย) ฝั่ง dashboard เองก็ typecheck/lint/test/build ผ่านหมดเช่นกัน — **ที่ยังไม่ verify คือ end-to-end จริงกับ Temporal server** (เหตุผลเดียวกับข้อ 2: ติด Docker permission ในเครื่องที่เขียนโค้ดนี้)

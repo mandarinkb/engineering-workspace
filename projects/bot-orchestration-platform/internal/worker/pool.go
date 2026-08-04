@@ -6,6 +6,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -44,6 +45,24 @@ func NewPool(concurrency int, jobTimeout time.Duration, repo job.Repository, log
 // เริ่มโปรแกรม (ก่อน Submit) ครั้งเดียวต่อ bot หนึ่งชนิด
 func (p *Pool) Register(b bot.Bot) {
 	p.bots[b.Name()] = b
+}
+
+// List คืน bot ทั้งหมดที่ register ไว้ เรียงตามชื่อ (a-z) — ใช้ให้ HTTP handler ตอบ
+// GET /bots (ดู internal/api/http/handler.go) โดย handler ไม่ต้องรู้จัก concrete
+// bot.Bot ใดๆ เลย แค่เอา Name()/ConfigSchema() ของแต่ละตัวไปแปลงเป็น JSON ต่อ
+//
+// หมายเหตุเรื่อง concurrency: อ่าน p.bots ตรงๆ โดยไม่ล็อค เพราะ p.bots ถูกเขียนแค่ตอน
+// Register (เรียกครั้งเดียวตอน wiring ใน cmd/bop/main.go ก่อนเปิด HTTP server เสมอ ยังไม่มี
+// goroutine อื่นใดเริ่มทำงานพร้อมกัน) หลังจากนั้น map นี้จะถูก "อ่านอย่างเดียว" ตลอดอายุ
+// โปรแกรม ไม่มีการเขียนซ้อนเข้ามาอีก — ถ้าในอนาคตมี dynamic bot registration ระหว่างที่
+// โปรแกรมรันอยู่แล้ว (ไม่ใช่แค่ตอน startup) ต้องกลับมาใส่ mutex ป้องกันตรงนี้ด้วย
+func (p *Pool) List() []bot.Bot {
+	out := make([]bot.Bot, 0, len(p.bots))
+	for _, b := range p.bots {
+		out = append(out, b)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
+	return out
 }
 
 // Submit สั่งเริ่ม job แบบไม่รอผล (asynchronous / "fire-and-forget") — return ทันที

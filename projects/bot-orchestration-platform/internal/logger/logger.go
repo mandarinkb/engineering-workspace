@@ -21,12 +21,13 @@ const (
 	LevelError Level = "error" // ข้อผิดพลาดที่ทำให้ job ทำงานต่อไม่ได้
 )
 
-// Line คือ log หนึ่งบรรทัดที่ถูกเก็บ/ส่งต่อ ผูกกับ job หนึ่งรายการเสมอผ่าน JobID
+// Line คือ log หนึ่งบรรทัดที่ถูกเก็บ/ส่งต่อ ผูกกับ job หนึ่งรายการเสมอผ่าน JobID — json tag
+// เป็น snake_case ให้ casing สม่ำเสมอกับ job.Job และ endpoint กลุ่ม /workflow-runs
 type Line struct {
-	JobID   string    // job ที่ log บรรทัดนี้เป็นของ
-	Time    time.Time // เวลาที่เกิด log บรรทัดนี้
-	Level   Level     // ระดับความสำคัญ
-	Message string    // ข้อความ log
+	JobID   string    `json:"job_id"`
+	Time    time.Time `json:"time"`
+	Level   Level     `json:"level"`
+	Message string    `json:"message"`
 }
 
 // Logger คือ interface หลักที่ worker pool ใช้ส่ง log ออกมาระหว่างที่ job กำลังทำงาน

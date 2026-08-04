@@ -25,16 +25,20 @@ const (
 // กำลังทำงานอยู่ (ดู internal/worker) จึงต้องระวังเรื่อง concurrent access เป็นพิเศษ
 // (ดูคำอธิบายละเอียดใน internal/repository/memory ว่าทำไมถึงต้อง copy struct นี้
 // ทุกครั้งที่ส่งเข้า-ออกจาก repository)
+// json tag ทุก field เป็น snake_case ตั้งใจให้ตรงกับ endpoint กลุ่ม /workflow-runs
+// (ดู internal/api/http/handler.go) เพื่อให้ JSON ที่ dashboard (projects/bop-dashboard/)
+// ได้รับมี casing สม่ำเสมอกันทั้ง API ไม่ใช่ผสมกันระหว่าง PascalCase (ค่า default ของ Go
+// ตอนไม่มี tag) กับ snake_case แบบที่เคยเป็นมาก่อนหน้านี้
 type Job struct {
-	ID        string            // รหัสเฉพาะของ job นี้ (สุ่มสร้างตอนสร้าง job ใหม่)
-	BotName   string            // ชื่อ bot ที่ใช้รัน job นี้ (ตรงกับ Bot.Name())
-	Config    map[string]string // ค่า config ที่ user กรอกมาตอนสร้าง job
-	Status    Status            // สถานะปัจจุบันของ job (ดู const ด้านบน)
-	Summary   string            // ข้อความสรุปผลลัพธ์ (มีค่าก็ต่อเมื่อ Status = succeeded)
-	Error     string            // ข้อความ error (มีค่าก็ต่อเมื่อ Status = failed หรือ cancelled)
-	CreatedAt time.Time         // เวลาที่สร้าง job นี้ (ก่อนเริ่มรันจริง)
-	StartedAt *time.Time        // เวลาที่ worker เริ่มรันจริง (เป็น pointer เพราะยังไม่มีค่าตอน pending)
-	EndedAt   *time.Time        // เวลาที่ job จบ ไม่ว่าจะสำเร็จ/ล้มเหลว/ถูกยกเลิก (เป็น pointer ด้วยเหตุผลเดียวกัน)
+	ID        string            `json:"id"`                   // รหัสเฉพาะของ job นี้ (สุ่มสร้างตอนสร้าง job ใหม่)
+	BotName   string            `json:"bot_name"`             // ชื่อ bot ที่ใช้รัน job นี้ (ตรงกับ Bot.Name())
+	Config    map[string]string `json:"config"`               // ค่า config ที่ user กรอกมาตอนสร้าง job
+	Status    Status            `json:"status"`               // สถานะปัจจุบันของ job (ดู const ด้านบน)
+	Summary   string            `json:"summary,omitempty"`    // ข้อความสรุปผลลัพธ์ (มีค่าก็ต่อเมื่อ Status = succeeded)
+	Error     string            `json:"error,omitempty"`      // ข้อความ error (มีค่าก็ต่อเมื่อ Status = failed หรือ cancelled)
+	CreatedAt time.Time         `json:"created_at"`           // เวลาที่สร้าง job นี้ (ก่อนเริ่มรันจริง)
+	StartedAt *time.Time        `json:"started_at,omitempty"` // เวลาที่ worker เริ่มรันจริง (เป็น pointer เพราะยังไม่มีค่าตอน pending)
+	EndedAt   *time.Time        `json:"ended_at,omitempty"`   // เวลาที่ job จบ ไม่ว่าจะสำเร็จ/ล้มเหลว/ถูกยกเลิก (เป็น pointer ด้วยเหตุผลเดียวกัน)
 }
 
 // Repository คือ interface สำหรับเก็บและค้นหา Job — ตอนนี้มี implementation เดียวคือ
