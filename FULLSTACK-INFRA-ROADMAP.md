@@ -76,9 +76,21 @@ roadmap นี้ผูกทุกหัวข้อเข้ากับกา
 
 ### 1.5 หน้า Live Job Monitor (จุดที่ยากที่สุดและมีค่าที่สุดของ phase นี้)
 
+**ฝั่ง Go API — ออกแบบ log pipeline ก่อนเขียน WebSocket handler**:
+
+- [ ] นิยาม `Logger` interface กลาง (`Log(jobID, level, message string)`) ที่ bot ทุกตัวเรียกใช้แทนการ `fmt.Println` ตรงๆ — ทำ 2 อย่างเสมอทุกครั้งที่เรียก: (1) insert log line ลง PostgreSQL table `job_logs` ทันที (2) broadcast เข้า in-memory pub/sub ที่แยกตาม `jobID`
+- [ ] **Persist ก่อนเสมอ แล้วค่อย stream** — ห้ามให้ log วิ่งเข้า WebSocket ตรงๆ โดยไม่เก็บ DB เพราะ WebSocket ปิด connection ปุ๊บข้อมูลหายทันที ต้องมีที่เก็บถาวรให้กลับมาดูย้อนหลังได้เสมอ (ต่อยอดจาก `JobRepository` ที่ทำไว้ใน 0.4 แล้ว)
+- [ ] **Broadcast แบบ per-jobID** (ไม่ใช่ channel เดียวทั้งระบบ) — ป้องกันไม่ให้ client ที่ดู job A เห็น log ของ job B ปนกัน ออกแบบเป็น map ของ `jobID → []chan LogLine` หรือใช้ broadcaster pattern เล็กๆ เอง
+- [ ] **REST endpoint สำหรับ backfill**: `GET /jobs/{id}/logs` ดึง log ทั้งหมดที่มีอยู่แล้วจาก DB ก่อน แล้วค่อยเปิด WebSocket ต่อรับเฉพาะ line ใหม่ที่เกิดหลังจากนั้น — แก้ปัญหา "ปิดเบราว์เซอร์แล้วเปิดใหม่ระหว่าง job กำลังรัน" ไม่ให้ log ที่พลาดไปหายไปเลย
+
+**ฝั่ง Next.js**:
+
 - [ ] **WebSocket หรือ Server-Sent Events (SSE)** — เชื่อมต่อกับ Go backend เพื่อดู log/สถานะ bot ที่กำลังรันแบบ real-time ไม่ใช่ polling — ทักษะนี้ portfolio ทั่วไปมักไม่มีเพราะ tutorial ส่วนใหญ่สอนแค่ CRUD
 - [ ] จัดการ connection lifecycle (reconnect ถ้าหลุด, cleanup ตอนออกจากหน้า) ด้วย `useEffect`
 - [ ] แสดง log แบบ stream (auto-scroll, บอกสถานะ connecting/connected/disconnected ให้ user เห็น)
+- [ ] โหลด log เก่าจาก REST endpoint ก่อน render แล้วค่อย append line ใหม่ที่มาจาก WebSocket ต่อท้าย (ไม่ใช่รอ WebSocket อย่างเดียวตั้งแต่แรก)
+
+> **หมายเหตุสำหรับตอน scale ขึ้น K8s (Phase 2.1)**: in-memory pub/sub ใช้ได้ตราบใดที่ API ยังมี instance เดียว พอ scale เป็นหลาย replica, worker อาจ report กลับมาที่ replica คนละตัวกับที่ user เปิด WebSocket ค้างอยู่ — ตอนนั้นต้องสลับ broadcaster จาก in-memory เป็น **Redis Pub/Sub** ([books/06-redis/02-pubsub-and-streams.md](books/06-redis/02-pubsub-and-streams.md)) แทน ออกแบบ broadcaster เป็น interface แยกไว้ตั้งแต่ต้นเพื่อสลับ implementation ทีหลังได้โดยไม่แก้โค้ดส่วนอื่น
 
 ### 1.6 Next.js เฉพาะทาง
 
@@ -121,9 +133,10 @@ roadmap นี้ผูกทุกหัวข้อเข้ากับกา
 ### 2.2 Observability: มองเห็นว่า Bot ไหนพังเพราะอะไร
 
 - [ ] [Prometheus + Grafana](books/14-observability/01-metrics.md) — เก็บ metric: job success/fail count, job duration histogram, worker pool utilization
-- [ ] [Fluent Bit + OpenSearch](books/14-observability/02-logging.md) — ส่ง structured log ของทุก job ไปเก็บรวม ค้นหาย้อนหลังได้ (เช่น "หา job ทั้งหมดที่ bot X fail ใน 7 วันที่ผ่านมา")
+- [ ] **[Fluent Bit + OpenSearch](books/14-observability/02-logging.md) — ย้าย log storage ของ job logs จาก PostgreSQL (ที่ทำไว้ชั่วคราวใน 1.5) มาที่นี่จริงจัง**: Go เขียน log line ออกเป็น structured output ตามปกติ (ไม่ยิง OpenSearch API ตรงจากโค้ด Go) → Fluent Bit อ่าน/parse/ส่งต่อเข้า OpenSearch → ค้นหาย้อนหลังได้แบบ full-text (เช่น "หา job ทั้งหมดที่ error message มีคำว่า selector not found") พร้อมตั้ง index lifecycle ลบ log เก่าอัตโนมัติ — **ข้อสำคัญ**: ย้ายเฉพาะเนื้อหา log text เท่านั้น ส่วน job metadata/status ยังอยู่ PostgreSQL เหมือนเดิม (ต้องการ transactional consistency ที่ OpenSearch ให้ไม่ได้) เพราะออกแบบผ่าน `Logger` interface ไว้แล้วตั้งแต่ 1.5 การสลับ storage backend นี้ไม่ต้องแก้โค้ด bot/API เลย
 - [ ] [OpenTelemetry + Jaeger](books/14-observability/03-tracing.md) — trace request ตั้งแต่ dashboard กดสั่งรัน → API รับ → worker execute → เห็นทั้งเส้นทางว่าช้าตรงไหน
 - [ ] ตั้ง alert: ถ้า bot ตัวใดตัวหนึ่ง fail ติดกันเกิน N ครั้ง (สัญญาณคลาสสิกว่าเว็บเป้าหมายเปลี่ยน HTML structure) ให้แจ้งเตือนอัตโนมัติ
+- [ ] ย้าย broadcaster ของ live log (จาก 1.5) จาก in-memory ไปเป็น Redis Pub/Sub ถ้า API ถูก scale เป็นหลาย replica แล้ว (WebSocket แต่ละ client อาจต่อกับ replica คนละตัวกับที่ worker report เข้ามา)
 
 ### 2.3 Auth และ Gateway ระดับ Production
 
@@ -140,7 +153,7 @@ roadmap นี้ผูกทุกหัวข้อเข้ากับกา
 
 - [ ] [Microservices — Retry/Circuit Breaker](books/11-microservices/04-saga-and-resilience.md) — ใส่ retry with backoff ตอนยิง request หาเว็บเป้าหมาย, circuit breaker ตัดการยิงถ้าเว็บเป้าหมายล่มต่อเนื่อง
 - [ ] [Kafka](books/12-kafka/README.md) — แทนที่ channel/Redis queue เดิมด้วย Kafka topic สำหรับ dispatch job ให้ worker หลายตัว รองรับ scale ออกแนวนอน, ทำ DLQ สำหรับ job ที่ fail ซ้ำๆ ให้คนมาดูทีหลังแทนที่จะหายไปเงียบๆ
-- [ ] **[Temporal](books/13-temporal/README.md) — จุดที่คุ้มค่าที่สุดของทั้ง roadmap** เขียน bot execution flow ใหม่เป็น Temporal workflow: แต่ละ step (fetch page → parse → validate → save result → notify) เป็น Activity ที่มี retry policy ของตัวเอง ถ้า step "notify" fail หลังจาก "save result" สำเร็จแล้ว ให้เขียน compensation logic จัดการอย่างถูกต้อง (ตัวอย่างจริงตรงกับที่อธิบายไว้ใน [books/13-temporal/02-retry-and-compensation.md](books/13-temporal/02-retry-and-compensation.md))
+- [ ] **[Temporal](books/13-temporal/README.md) — จุดที่คุ้มค่าที่สุดของทั้ง roadmap** เขียน bot execution flow ใหม่เป็น Temporal workflow: แต่ละ step (fetch page → parse → validate → save result → notify) เป็น Activity ที่มี retry policy ของตัวเอง ถ้า step "notify" fail หลังจาก "save result" สำเร็จแล้ว ให้เขียน compensation logic จัดการอย่างถูกต้อง (ตัวอย่างจริงตรงกับที่อธิบายไว้ใน [books/13-temporal/02-retry-and-compensation.md](books/13-temporal/02-retry-and-compensation.md)) — มี lightweight version (`internal/workflow` + `internal/scheduler`) สร้างไว้ล่วงหน้าแล้วเป็น baseline พร้อม TODO checklist การย้ายไป Temporal จริงที่ [projects/bot-orchestration-platform/TEMPORAL-MIGRATION-TODO.md](projects/bot-orchestration-platform/TEMPORAL-MIGRATION-TODO.md)
 - [ ] [Kubernetes CronJob](books/08-kubernetes/04-scaling-and-control-plane.md) — ให้ bot บางตัวรันตาม schedule (ทุกชั่วโมง) แทนที่จะสั่งมือ, ตั้ง HPA scale worker ตาม queue depth
 
 **ฟีเจอร์พื้นฐานแนว Control-M ที่เพิ่มเข้ามาใน step นี้** (ยังอยู่ในระดับ "infra ต้องมี" ก่อนจะไปฟีเจอร์ขั้นสูงใน Phase 3):

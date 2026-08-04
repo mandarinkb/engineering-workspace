@@ -6,9 +6,10 @@
 
 | โปรเจกต์ | จุดโฟกัส |
 |---|---|
-| [monolith/](monolith/README.md) | จุดเริ่มต้นแบบ monolith ก่อนแตกเป็น microservices |
-| [ecommerce/](ecommerce/README.md) | Final Project — รวมทุก Volume เข้าด้วยกัน |
-| [payment/](payment/README.md) | Consistency, idempotency, Saga |
-| [chat/](chat/README.md) | Realtime, WebSocket, pub/sub |
+| [bot-orchestration-platform/](bot-orchestration-platform/README.md) | **Flagship project ที่ใช้งานจริง** — ดูรายละเอียดที่ [FULLSTACK-INFRA-ROADMAP.md](../FULLSTACK-INFRA-ROADMAP.md) |
+| [monolith/](monolith/README.md) | จุดเริ่มต้นแบบ monolith ก่อนแตกเป็น microservices (แบบฝึกหัดสำรอง) |
+| [ecommerce/](ecommerce/README.md) | Final Project เดิม — รวมทุก Volume เข้าด้วยกัน (แบบฝึกหัดสำรอง) |
+| [payment/](payment/README.md) | Consistency, idempotency, Saga (แบบฝึกหัดสำรอง) |
+| [chat/](chat/README.md) | Realtime, WebSocket, pub/sub (แบบฝึกหัดสำรอง) |
 
-ลำดับแนะนำ: เริ่มจาก `monolith/` เพื่อฝึกพื้นฐานก่อน แล้วค่อยแยกเป็น `payment/` และ `chat/` เป็น service ย่อย ก่อนประกอบทุกอย่างเข้าด้วยกันใน `ecommerce/`
+**โปรเจกต์ที่กำลังพัฒนาจริงคือ `bot-orchestration-platform/`** ตาม roadmap เฉพาะที่ผูกกับเป้าหมาย layoff-prep — ส่วน `monolith/`, `ecommerce/`, `payment/`, `chat/` เป็นแนวคิดตั้งต้นที่ยังใช้เป็นแบบฝึกหัดแยกได้ถ้าอยากลองแพทเทิร์นเฉพาะทาง (เช่น payment consistency, realtime chat) แต่ไม่ใช่ทางหลักอีกต่อไป

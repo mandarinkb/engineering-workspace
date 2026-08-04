@@ -15,7 +15,19 @@
       "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-a6e5803c921e5f07b/books/06-redis/*.md /home/m710q/Workspace/engineering-workspace/books/06-redis/)",
       "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/11-microservices/*.md /home/m710q/Workspace/engineering-workspace/books/11-microservices/)",
       "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/12-kafka/*.md /home/m710q/Workspace/engineering-workspace/books/12-kafka/)",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/13-temporal/01-workflow-and-activity.md /home/m710q/Workspace/engineering-workspace/books/13-temporal/)"
+      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/13-temporal/01-workflow-and-activity.md /home/m710q/Workspace/engineering-workspace/books/13-temporal/)",
+      "Bash(go version *)",
+      "Bash(go build *)",
+      "Bash(go vet *)",
+      "Bash(go test *)",
+      "Bash(go run *)",
+      "Bash(git status *)",
+      "Bash(gofmt -l .)",
+      "Bash(gofmt -w .)",
+      "Bash(echo \"---exit: $?---\")",
+      "Bash(lsof -ti:8080)",
+      "Bash(xargs -r kill -9)",
+      "Bash(kill -9 17779)"
     ]
   }
 }
