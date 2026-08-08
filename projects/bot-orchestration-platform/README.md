@@ -149,6 +149,21 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 
 **ข้อจำกัดที่ต้องรู้**: เหมือนกับ endpoint กลุ่ม `/schedules` — `POST /workflow-runs` ยังไม่เคยทดสอบ end-to-end จริงกับ Temporal server (ติด Docker permission ตอนเขียนโค้ดนี้เหมือนเดิม) มีแค่ unit test ของ validation logic ที่ error ก่อนแตะ Temporal client (`internal/api/http/handler_test.go`) และ regression test ว่า `Step.TaskQueue` ไม่ทำให้ `Execute` panic/error (`internal/workflow/temporal_test.go`) — การพิสูจน์ว่า activity ถูก route ข้าม task queue จริงต้องมี Temporal server จริงและ worker อย่างน้อย 2 ตัว (`TestWorkflowEnvironment` ของ SDK รัน activity ทุกตัว in-process เสมอ ไม่ simulate หลาย queue จริง)
 
+## รัน step ผ่าน Kubernetes Job (ephemeral container ต่อการรันหนึ่งครั้ง)
+
+ทางเลือกที่สาม (คู่กับ `externaljob` และ remote Temporal worker ด้านบน) — ดู design doc เต็มๆ พร้อมตารางเทียบทั้ง 3 ทางเลือกที่ [K8S-JOB-HYBRID-EXECUTION-TODO.md](K8S-JOB-HYBRID-EXECUTION-TODO.md) แทนที่จะมี worker รันค้างไว้ตลอด (poll task queue) ให้ **Temporal Activity ของ `cmd/bop-worker` เองสั่งสร้าง Kubernetes `Job` (ephemeral container) ต่อการรันหนึ่งครั้ง** แล้วรอดูผล — container image เป็นอะไรก็ได้ ไม่ต้อง embed Temporal SDK เข้าไปในโค้ดของ job เองเลยด้วยซ้ำ (ต่างจาก remote worker) แลกกับ cold-start latency ที่สูงกว่า
+
+- **`workflow.Step.K8sJob *K8sJobSpec`** (optional) — nil = รันผ่าน `bot.Bot` registry/remote task queue ตามเดิมทุกประการ ถ้าไม่ nil จะข้ามทั้งสองทางนั้นไปเลย แล้วเรียก activity คนละตัว/คนละ registry (`K8sJobActivityName = "RunKubernetesJob"`) แทน — `K8sJobSpec` มี `image` (required), `command`/`args`/`env` (optional), `namespace` (optional, default `bop-jobs`)
+- **`internal/workflow/k8sjob.go`** (`K8sJobActivities.RunKubernetesJob`) — สร้าง `batchv1.Job` ด้วย **`BackoffLimit: 0` เสมอ** (สำคัญมาก — ให้ Temporal `RetryPolicy` เป็นเจ้าของ retry decision แต่ผู้เดียว ไม่ให้ K8s retry ซ้อนอีกชั้น) poll สถานะเป็นระยะพร้อม `activity.RecordHeartbeat`, stream log ของ Pod เข้า BOP logger ทันทีที่ Job จบ (ก่อน TTL controller ลบ Job ทิ้ง), และลบ Job ทิ้งทันทีถ้า activity ถูกยกเลิก/timeout (กัน orphan Job ทำงานต่อในเบื้องหลัง)
+- **Register แบบ best-effort ใน `cmd/bop-worker/main.go`** — ลอง `rest.InClusterConfig()` ก่อน ถ้าล้มเหลว (เช่น รันบนเครื่อง dev ธรรมดา ไม่ได้อยู่ใน K8s Pod) แค่ log คำเตือนแล้วข้ามไป ไม่ `log.Fatalf` ปิด process ทั้งตัว — bot local/remote task queue อื่นๆ ยังใช้งานได้ปกติ
+
+```json
+// ตัวอย่าง step ที่มี K8sJob (ใช้ใน POST /workflow-runs หรือ POST /schedules ก็ได้)
+{"bot_name": "generate-report", "k8s_job": {"image": "registry.example.com/report-job:v1", "args": ["--jobcode=SEND_REPORT"]}}
+```
+
+**สถานะ**: unit test ผ่านหมด (`internal/workflow/k8sjob_test.go`, mock ด้วย `k8s.io/client-go/kubernetes/fake`) แต่**ยังไม่เคยทดสอบกับ K8s cluster จริงเลย** — รอ Phase 2.1 (containerize BOP เข้า K8s) เสร็จก่อน ดู Open Questions ที่ยังไม่ได้ตัดสินใจ (image registry, RBAC manifest, resource limit, timeout ของ image pull) ที่ K8S-JOB-HYBRID-EXECUTION-TODO.md
+
 ## จัดการ Schedule (CRUD + manual trigger — เทียบเท่า Control-M job management)
 
 `internal/api/http/schedule_handler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK เป็น HTTP endpoint ทั้งชุด — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) BOP เก็บเพิ่มแค่ "workflow definition" (ชื่อ + steps) ไว้ใน `internal/schedule` (in-memory, เหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ อยู่ใน comment ของไฟล์นั้น)

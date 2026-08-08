@@ -22,6 +22,8 @@ import (
 	"go.temporal.io/sdk/client"
 	sdktemporal "go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"bop/internal/bot"
 	"bop/internal/bots/externaljob"
@@ -29,6 +31,13 @@ import (
 	memlogger "bop/internal/logger/memory"
 	"bop/internal/workflow"
 )
+
+// k8sJobDefaultNamespace คือ namespace ที่ K8s Job hybrid execution (ดู
+// K8S-JOB-HYBRID-EXECUTION-TODO.md) จะสร้าง Job ถ้า workflow.Step.K8sJob.Namespace ไม่ได้
+// ระบุมา — ตั้งใจแยกจาก namespace ที่ BOP เอง/Temporal worker รันอยู่ (blast radius,
+// resource quota แยกกันชัดเจน ดู Open Question ข้อ 3 ของเอกสารนั้น) hardcode ไปก่อนตาม
+// pattern เดียวกับค่าคงที่อื่นๆ ในโปรเจกต์นี้ (เช่น ":8080" ใน cmd/bop/main.go)
+const k8sJobDefaultNamespace = "bop-jobs"
 
 func main() {
 	// ขั้นตอนที่ 1: ต่อ Temporal client เข้ากับ Temporal server (ดู docker-compose.yml
@@ -63,6 +72,26 @@ func main() {
 	w := worker.New(c, workflow.TaskQueueName, worker.Options{})
 	w.RegisterWorkflow(workflow.Execute)
 	w.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: workflow.ActivityName})
+
+	// ขั้นตอนที่ 3.5: register K8s Job hybrid execution (workflow.Step.K8sJob) แบบ
+	// "best-effort" — ต่างจาก activities.Register ด้านบนที่ fail แล้ว log.Fatalf ได้เลย
+	// (เพราะ Temporal connection คือ dependency ที่ต้องมีเสมอ) แต่ rest.InClusterConfig()
+	// ใช้ไม่ได้เลยตอนรัน cmd/bop-worker บนเครื่อง dev ธรรมดา (ยังไม่ได้ containerize เข้า
+	// K8s ตาม Phase 2.1 — ดู K8S-JOB-HYBRID-EXECUTION-TODO.md) เพราะฟังก์ชันนี้ใช้ได้เฉพาะ
+	// ตอนโปรเซสรันอยู่ "ข้างใน" Pod ของ K8s จริงๆ เท่านั้น (อ่าน ServiceAccount token ที่
+	// K8s mount ให้อัตโนมัติ) — ถ้า error แค่ log คำเตือนแล้วข้ามไป ปล่อยให้ worker เริ่ม
+	// ทำงานต่อได้ปกติ (bot local + remote task queue ยังใช้งานได้เต็มที่ แค่ step ที่มี
+	// K8sJob จะ fail ตอนถูกเรียกจริงเพราะไม่มี activity ไหน register ไว้รับ) แทนที่จะ
+	// log.Fatalf ปิด process ทั้งตัวเพราะฟีเจอร์ที่ยังไม่มี cluster ให้ใช้เลย
+	if cfg, err := rest.InClusterConfig(); err != nil {
+		log.Printf("k8s in-cluster config unavailable, skipping K8s Job hybrid execution: %v", err)
+	} else if clientset, err := kubernetes.NewForConfig(cfg); err != nil {
+		log.Printf("k8s clientset init failed, skipping K8s Job hybrid execution: %v", err)
+	} else {
+		k8sActivities := workflow.NewK8sJobActivities(clientset, k8sJobDefaultNamespace, appLogger)
+		w.RegisterActivityWithOptions(k8sActivities.RunKubernetesJob, activity.RegisterOptions{Name: workflow.K8sJobActivityName})
+		log.Printf("k8s job hybrid execution enabled (default namespace %q)", k8sJobDefaultNamespace)
+	}
 
 	// ขั้นตอนที่ 4: สร้าง Temporal Schedule ให้ workflow ตัวอย่างรันทุก 1 นาที (ค่าเดียวกับ
 	// scheduler.Interval{Every: time.Minute} ในเวอร์ชันก่อน Temporal) — เรียกตอน startup

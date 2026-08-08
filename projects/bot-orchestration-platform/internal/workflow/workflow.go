@@ -40,6 +40,40 @@ type Step struct {
 	// repository และ deploy คนละจังหวะกับ BOP จริงๆ จนไม่คุ้มทำเป็น bot.Bot ภายใน BOP เอง
 	// (ดู REMOTE-JOB-WORKER-TODO.md สำหรับ contract เต็มที่ remote worker ต้อง implement)
 	TaskQueue string `json:"task_queue,omitempty"`
+	// K8sJob ไม่เป็น nil หมายความว่า step นี้ไม่รันผ่าน bot.Bot registry หรือ remote task
+	// queue เลย แต่ให้ Temporal Activity ของ cmd/bop-worker เองเป็นคนสั่งสร้าง Kubernetes
+	// Job (ephemeral container) ต่อการรันหนึ่งครั้ง แล้วรอดูผล — เป็นทางเลือกที่สาม (คู่กับ
+	// TaskQueue ด้านบน) สำหรับ job ที่อยากรันด้วย container image อะไรก็ได้โดยไม่ต้อง embed
+	// Temporal SDK เข้าไปในโค้ดของ job เองเลยด้วยซ้ำ (ต่างจาก remote worker ที่ต้อง embed
+	// SDK) แลกกับ cold-start latency ที่สูงกว่า (ต้อง schedule pod + pull image ทุกครั้ง) —
+	// ดู K8S-JOB-HYBRID-EXECUTION-TODO.md สำหรับ design doc เต็มๆ และตารางเทียบ 3 ทางเลือก
+	//
+	// BotName/Config/TaskQueue ด้านบนจะถูกละเว้นทั้งหมดถ้า K8sJob ไม่ nil (K8sJob เป็นคน
+	// กำหนดว่าจะรันอะไรแทน) — ห้ามตั้งทั้ง TaskQueue และ K8sJob พร้อมกันในกรณีปกติ (ยังไม่มี
+	// error validation ตรงนี้ ปล่อยเป็น TODO ของตอน implement จริง)
+	K8sJob *K8sJobSpec `json:"k8s_job,omitempty"`
+}
+
+// K8sJobSpec คือ input ของ Kubernetes Job hybrid execution (ดู Step.K8sJob ด้านบน) —
+// เทียบเท่า bot.Config ของ bot.Bot ปกติ แต่เป็น field ตายตัวแทนที่จะเป็น map[string]string
+// เพราะค่าพวกนี้ (image, command, args) เป็น "รูปร่างของ container ที่จะรัน" ไม่ใช่ค่า
+// config อิสระที่ bot แต่ละตัวกำหนดเอง
+type K8sJobSpec struct {
+	// Image คือ container image ที่จะรัน (required — ไม่มี default เพราะไม่มี image
+	// ทั่วไปที่ใช้ได้กับทุกงาน) เช่น "registry.example.com/report-job:v1.2.3"
+	Image string `json:"image"`
+	// Command override entrypoint ของ image (ไม่บังคับ — ถ้าไม่ระบุใช้ ENTRYPOINT เดิมของ
+	// image นั้น)
+	Command []string `json:"command,omitempty"`
+	// Args คือ argument ที่ส่งต่อให้ container (เช่น jobcode flag คล้าย externaljob)
+	Args []string `json:"args,omitempty"`
+	// Env คือ environment variable เพิ่มเติมที่ set ให้ container
+	Env map[string]string `json:"env,omitempty"`
+	// Namespace คือ K8s namespace ที่จะสร้าง Job — ถ้าเป็นค่าว่าง ใช้ default namespace ที่
+	// K8sJobActivities ถูก config ไว้ตอน wiring ใน cmd/bop-worker/main.go (ไม่ hardcode
+	// namespace ไว้ในนี้ตรงๆ เพราะอยากให้ต่าง environment (dev/staging/prod) ตั้งค่า
+	// namespace default ต่างกันได้โดยไม่ต้องแก้ workflow.Step ทุกจุดที่เรียกใช้)
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // Workflow คือลำดับของ Step ที่ต้องรันเรียงกันตามลำดับ (step แรกสุดในลิสต์รันก่อนเสมอ)

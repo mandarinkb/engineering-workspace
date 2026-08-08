@@ -1,6 +1,6 @@
 # TODO: K8s Job Hybrid Execution (Temporal Activity สั่งสร้าง Kubernetes Job ต่อ step)
 
-> **สถานะ**: ยัง**ไม่เริ่ม implement** — เป็นแค่ design doc เขียนไว้ล่วงหน้าตอนคุยกันเรื่อง production pattern เทียบกับ [REMOTE-JOB-WORKER-TODO.md](REMOTE-JOB-WORKER-TODO.md) — รอ **Phase 2.1 (containerize BOP เข้า K8s)** เสร็จก่อนถึงจะเริ่มทำได้จริง (ต้องมี K8s cluster + BOP รันอยู่ใน cluster นั้นแล้วถึงจะมี ServiceAccount/RBAC ให้ BOP สร้าง Job ของ cluster ตัวเองได้) — session ที่หยิบเอกสารนี้ไปทำต่อ **ต้องถาม Open Questions ให้ครบก่อนเริ่มโค้ดจริง** เหมือนกับที่ [EXTERNAL-JOB-BOT-TODO.md](EXTERNAL-JOB-BOT-TODO.md) ทำไว้เป็นแบบอย่าง
+> **สถานะ**: **โค้ดหลักทำเสร็จแล้ว** (`Step.K8sJob`/`K8sJobSpec` ใน `internal/workflow/workflow.go`, dispatch logic ใน `Execute()`, `K8sJobActivities.RunKubernetesJob` ใน `internal/workflow/k8sjob.go`, register แบบ best-effort ใน `cmd/bop-worker/main.go`, unit test ด้วย `k8s.io/client-go/kubernetes/fake` ที่ `internal/workflow/k8sjob_test.go`) — Open Questions ทั้ง 6 ข้อ**ยังไม่ได้ถามเจ้าของ repo จริง** ตอน implement รอบนี้ (ทำต่อจากคำสั่ง "implement ต่อได้เลย" โดยใช้ค่า default/แนวทางเดียวกับ `externaljob`/`remote-job-worker` แทนการถามใหม่ทุกข้อ — ดูหมายเหตุกำกับแต่ละข้อด้านล่างว่าข้อไหน "ตัดสินใจแทนแล้ว" กับข้อไหนยังต้องถามจริงก่อนใช้งาน production) **ยังไม่เคยทดสอบกับ K8s cluster จริงเลย** — รอ **Phase 2.1 (containerize BOP เข้า K8s)** เสร็จก่อน (ไม่มี cluster ให้ทดสอบตอนนี้)
 
 ## บริบท
 
@@ -64,35 +64,37 @@ type K8sJobSpec struct {
 
 ใช้ convention เดียวกับ `externaljob`: exit code `0` = สำเร็จ, อื่นๆ = error ธรรมดา (retryable) — jobcode/config ผิดที่รู้จากภายนอก K8s Job ไม่ได้ (K8s ไม่มีแนวคิด "config error" ในตัวเอง) ต้องคิดเพิ่มตอน implement จริงว่าจะแยก non-retryable ได้ยังไง (ดู Open Question ข้อ 4)
 
-## Open Questions (ต้องตอบให้ครบก่อนเริ่มโค้ดจริง — ยังไม่ได้ถามตอนเขียนเอกสารนี้)
+## Open Questions
 
-1. **Container image มาจากไหน** — registry เดียวกับ image ของ BOP เอง (Phase 2.1) ไหม? เป็น 1 image ทั่วไปที่มี jobcode dispatch ข้างในเหมือน `externaljob`/`remote-job-worker` (generic, ไม่ hard-code ต่อ jobcode) หรือ 1 image ต่อ 1 ประเภทงาน?
-2. **RBAC** — BOP เอง (ที่รันบน K8s แล้วตาม Phase 2.1) ต้องมี ServiceAccount ที่มีสิทธิ์สร้าง/ดู/ลบ `Job` และอ่าน log ของ `Pod` — ต้อง scope ให้แคบที่สุด (namespace เฉพาะสำหรับ job พวกนี้ ไม่ใช่ cluster-wide) เชื่อมกับ Phase 2.7 (Security) ที่วางแผนไว้แล้ว
-3. **Namespace แยกจาก BOP เอง** — แนะนำให้รัน Job ใน namespace แยกต่างหาก (เช่น `bop-jobs`) ไม่ปนกับ namespace ที่ BOP/dashboard/Temporal worker รันอยู่ (blast radius, resource quota แยกกันชัดเจน)
-4. **วิธีแยก non-retryable error โดยไม่มี concept "config error" จาก K8s ตรงๆ** — อาจต้องกำหนด convention เอง เช่น exit code เฉพาะ (เช่น `exit 78` ตาม `sysexits.h` convention ที่มีอยู่แล้วสำหรับ "config error") ให้ job เขียนตามได้ถ้าต้องการ ต้องคุยกับเจ้าของ job แต่ละตัวเหมือนที่ `EXTERNAL-JOB-BOT-TODO.md` Open Question ข้อ 4 เคยทำ
-5. **Resource request/limit ต่อ Job** — บังคับให้ทุก `K8sJobSpec` ต้องระบุ CPU/memory request+limit ไหม (กัน job เดียวกิน resource node จนตัวอื่นล้ม) หรือใช้ `LimitRange` default ของ namespace แทน — เชื่อมกับ Phase 3.2 (Resource Pools) ที่วางแผนไว้ในอนาคต
-6. **Timeout ระหว่าง `Step.TimeoutSeconds` (Temporal ActivityOptions) กับเวลาที่ K8s ใช้ schedule+pull image** — ถ้า image ใหญ่/cluster busy การ pull image เองอาจกินเวลานานจนชน `StartToCloseTimeout` ก่อน Job จะเริ่มรันจริงด้วยซ้ำ ต้องคิดว่าจะแยก "เวลารอ pod ready" ออกจาก "เวลารันงานจริง" ไหม
+> อัปเดตหลัง implement: ข้อ 3/4 ตัดสินใจแทนแบบ YAGNI โดยอิง precedent จาก `externaljob`/`remote-job-worker` ที่ทำไปแล้วในรอบก่อนหน้า (ไม่ได้ถามเจ้าของ repo ใหม่) — ข้อ 1/2/5/6 **ยังไม่ได้ตัดสินใจจริง** เพราะเป็นเรื่อง deployment/ops ที่ต้องมี K8s cluster จริงถึงจะมีคำตอบที่ใช้งานได้ (image registry จริง, RBAC manifest จริง, resource quota จริงของ cluster) — ต้องถามให้ครบก่อนใช้งาน production จริง ไม่ใช่แค่ก่อนเริ่มโค้ด (โค้ดหลักทำเสร็จแล้ว)
+
+1. **[ยังไม่ตัดสินใจ] Container image มาจากไหน** — registry เดียวกับ image ของ BOP เอง (Phase 2.1) ไหม? เป็น 1 image ทั่วไปที่มี jobcode dispatch ข้างในเหมือน `externaljob`/`remote-job-worker` (generic, ไม่ hard-code ต่อ jobcode) หรือ 1 image ต่อ 1 ประเภทงาน? — โค้ดรองรับทั้งสองแบบอยู่แล้ว (`K8sJobSpec.Image` เป็น string อิสระต่อ step) แค่ยังไม่รู้ image จริงที่จะใช้
+2. **[ยังไม่ตัดสินใจ] RBAC** — ต้องเขียน Role/RoleBinding manifest จริงตอน deploy (ยังไม่มีในเอกสารนี้/โค้ด — เป็นงานของ Phase 2.1) ให้ ServiceAccount ของ `cmd/bop-worker` มีสิทธิ์แค่ create/get/list/delete `Job` และ get `Pod`/`Pod log` ใน namespace เดียว (ไม่ cluster-wide) เชื่อมกับ Phase 2.7
+3. **[ตัดสินใจแทนแล้ว] Namespace แยกจาก BOP เอง** — ใช้ `k8sJobDefaultNamespace = "bop-jobs"` (constant ใน `cmd/bop-worker/main.go`) เป็นค่า default ถ้า `K8sJobSpec.Namespace` ไม่ได้ระบุมา — namespace นี้ยังไม่ถูกสร้างจริงใน cluster ไหนเลย (ต้องสร้างตอน deploy จริง เชื่อมกับ Open Question ข้อ 2)
+4. **[ตัดสินใจแทนแล้ว] วิธีแยก non-retryable error** — **ไม่แยก** — ทุก error จาก Job ที่ล้มเหลว (`Status.Failed > 0`) ถือเป็น error ธรรมดา/retryable ทั้งหมด เหมือน convention ที่ตัดสินใจไว้กับ `externaljob` ตอน exit code ไม่ใช่ 0 (K8s ไม่มีทางบอกได้จากภายนอกว่า container fail เพราะ config ผิดหรือปัญหาชั่วคราว) `ConfigError` (non-retryable) สงวนไว้เฉพาะกรณีที่ BOP รู้แน่ชัดเอง คือ `K8sJobSpec.Image` ว่างเปล่า — ถ้าอยากแยกละเอียดกว่านี้ (เช่น convention `exit 78` ตาม `sysexits.h`) ต้องคุยกับเจ้าของ job แต่ละตัวเพิ่มทีหลัง
+5. **[ยังไม่ตัดสินใจ] Resource request/limit ต่อ Job** — โค้ดปัจจุบัน**ไม่ได้ตั้ง** `resources.requests`/`resources.limits` ให้ container เลย (ปล่อยว่าง) — ต้องตัดสินใจว่าจะบังคับผ่าน `K8sJobSpec` field ใหม่ หรือพึ่ง `LimitRange` default ของ namespace `bop-jobs` แทน ก่อนใช้งานจริงกับ cluster ที่มี workload อื่นแชร์กันอยู่ (ไม่งั้น job เดียวกิน resource node จนตัวอื่นล้มได้)
+6. **[ยังไม่ตัดสินใจ] Timeout ระหว่าง `Step.TimeoutSeconds` กับเวลา schedule+pull image** — โค้ดปัจจุบันใช้ `StartToCloseTimeout` เดียวครอบคลุมทั้งกระบวนการ (schedule pod + pull image + รันจริง) ไม่ได้แยกเป็น 2 เฟส — ถ้า image ใหญ่/cluster busy อาจ timeout ก่อน Job จะเริ่มรันจริงด้วยซ้ำ ยังไม่ได้แก้เพราะยังไม่มี cluster จริงให้วัด latency ที่แท้จริง
 
 ## TODO Checklist
 
 ### 1. ก่อนเริ่มโค้ด
-- [ ] Phase 2.1 (containerize BOP เข้า K8s) ต้องเสร็จก่อน — ไม่มี cluster ให้ BOP คุยด้วยเลยตอนนี้
-- [ ] ถามเจ้าของ repo ให้ครบ Open Questions ทั้ง 6 ข้อด้านบน
+- [x] ~~Phase 2.1 (containerize BOP เข้า K8s) ต้องเสร็จก่อน~~ — โค้ดเขียนได้โดยไม่ต้องรอ (unit test ผ่าน `k8s.io/client-go/kubernetes/fake` แทน) แต่ **ยังต้องรอ Phase 2.1 ก่อนใช้งานจริง** (`cmd/bop-worker` ยัง `rest.InClusterConfig()` ไม่ผ่านเพราะยังไม่ได้รันอยู่ในเครื่อง/container ใน K8s เลย — ดู best-effort registration ใน `cmd/bop-worker/main.go`)
+- [x] ~~ถามเจ้าของ repo ให้ครบ Open Questions ทั้ง 6 ข้อ~~ — ถามแค่บางส่วน ดูหมายเหตุที่หัวข้อ Open Questions ด้านบนว่าข้อไหนตัดสินใจแทนแล้ว
 
 ### 2. Implement
-- [ ] เพิ่ม `Step.K8sJob *K8sJobSpec` ใน `internal/workflow/workflow.go`
-- [ ] เพิ่ม dependency `k8s.io/client-go` เข้า `go.mod` ของ BOP (เป็น external dependency ตัวใหม่ — เหมือนตอนเพิ่ม `go.temporal.io/sdk` ใน Phase 2.5 ที่เป็นข้อยกเว้นตั้งใจ ดู `TEMPORAL-MIGRATION-TODO.md`)
-- [ ] เขียน `Activities.RunKubernetesJob` ใน `internal/workflow/` (ไฟล์ใหม่ เช่น `k8sjob.go`) ตามร่างข้อ 2 ด้านบน
-- [ ] แก้ `Execute()` ใน `temporal.go` ให้เลือก activity name ตามว่า `step.K8sJob` เป็น nil หรือไม่
-- [ ] Register `RunKubernetesJob` ใน `cmd/bop-worker/main.go`
+- [x] เพิ่ม `Step.K8sJob *K8sJobSpec` ใน `internal/workflow/workflow.go`
+- [x] เพิ่ม dependency `k8s.io/client-go` เข้า `go.mod` ของ BOP (`go get k8s.io/client-go@latest` + `go mod tidy` — ดึง `k8s.io/api`/`k8s.io/apimachinery` มาด้วยอัตโนมัติ)
+- [x] เขียน `K8sJobActivities.RunKubernetesJob` ที่ `internal/workflow/k8sjob.go`
+- [x] แก้ `Execute()` ใน `temporal.go` ให้เลือก activity name ตามว่า `step.K8sJob` เป็น nil หรือไม่
+- [x] Register `RunKubernetesJob` ใน `cmd/bop-worker/main.go` — แบบ **best-effort** (`rest.InClusterConfig()` ล้มเหลวตอน local dev เป็นเรื่องปกติที่คาดไว้แล้ว แค่ log คำเตือนแล้วข้าม ไม่ `log.Fatalf` ปิด process ทั้งตัว)
 
 ### 3. Testing
-- [ ] unit test ที่ไม่ต้องพึ่ง K8s cluster จริง (mock `client-go` ผ่าน `k8s.io/client-go/kubernetes/fake`)
-- [ ] end-to-end จริงต้องมี K8s cluster ทดสอบ (local: kind/minikube พอ ไม่ต้องรอ production cluster)
+- [x] unit test ที่ไม่ต้องพึ่ง K8s cluster จริง — `internal/workflow/k8sjob_test.go` ใช้ `k8s.io/client-go/kubernetes/fake` (จำลอง Job controller เองด้วย goroutine เพราะ fake clientset เป็นแค่ CRUD store ไม่มี controller logic จริง)
+- [ ] end-to-end จริงต้องมี K8s cluster ทดสอบ (local: kind/minikube พอ ไม่ต้องรอ production cluster) — **ยังไม่ได้ทำ**
 
 ### 4. Docs
-- [ ] อัปเดต README.md เพิ่มหัวข้อที่ 3 คู่กับ "Bot: external-job" และ "รัน step ผ่าน remote Temporal worker"
-- [ ] อัปเดตตารางเทียบ 3 ทางเลือกในเอกสารนี้ถ้า trade-off จริงต่างจากที่ร่างไว้
+- [x] อัปเดต README.md เพิ่มหัวข้อที่ 3 คู่กับ "Bot: external-job" และ "รัน step ผ่าน remote Temporal worker"
+- [x] อัปเดตตารางเทียบ 3 ทางเลือกในเอกสารนี้ (ไม่มีอะไรเปลี่ยนจากที่ร่างไว้ — trade-off จริงตรงกับที่คาดไว้)
 
 ## Reference
 

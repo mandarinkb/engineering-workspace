@@ -29,6 +29,14 @@ const TaskQueueName = "bop-workflows"
 // (export ไว้เพราะ cmd/bop-worker ต้องใช้ชื่อเดียวกันนี้ตอน RegisterActivityWithOptions)
 const ActivityName = "RunStep"
 
+// K8sJobActivityName คือชื่อ Activity คนละตัวกับ ActivityName ด้านบน — ใช้เฉพาะ step ที่มี
+// Step.K8sJob ไม่เป็น nil (ดู workflow.go) ต้องตรงกับชื่อที่ K8sJobActivities.RunKubernetesJob
+// (k8sjob.go) ถูก register ไว้ใน cmd/bop-worker เป๊ะ — แยกชื่อ/registry ออกจาก ActivityName
+// ตั้งใจ เพราะเป็น activity คนละความหมายกันเลย (RunStep หา bot.Bot จาก registry แล้วเรียก
+// bot.Bot.Run ตรงๆ ในกระบวนการเดียวกัน ส่วน RunKubernetesJob สั่งสร้าง K8s Job แล้วรอดูผล
+// จากภายนอกกระบวนการทั้งหมด) ไม่ควรผสมสอง concept นี้ไว้ใน activity เดียวกัน
+const K8sJobActivityName = "RunKubernetesJob"
+
 // nonRetryableErrorTypes คือรายชื่อ error type (ต้องตรงกับ Type ที่ตั้งไว้ตอนสร้าง
 // temporal.NewApplicationErrorWithCause ใน activity.go) ที่ Temporal จะไม่ retry ให้เลย
 // แม้แต่ครั้งเดียว — ทั้งคู่เป็น error ที่ retry กี่ครั้งก็ได้ผลลัพธ์เดิมเป๊ะเสมอ:
@@ -102,7 +110,17 @@ func Execute(ctx workflow.Context, wf Workflow) ([]StepResult, error) {
 			},
 		})
 
-		activityErr := workflow.ExecuteActivity(stepCtx, ActivityName, step).Get(stepCtx, &res.Summary)
+		// step.K8sJob ไม่เป็น nil หมายความว่า step นี้ไม่ผ่าน bot.Bot registry เลย (ทั้ง local
+		// และ remote task queue) แต่สั่งผ่าน K8sJobActivities.RunKubernetesJob แทน — คนละ
+		// activity name/registry กับ ActivityName ("RunStep") ปกติ (ดู K8sJobActivityName
+		// ด้านบน และ workflow.go เรื่อง Step.K8sJob) ส่ง *step.K8sJob (ไม่ใช่ step ทั้งก้อน)
+		// เป็น input เพราะ activity นี้ไม่สนใจ BotName/Config/TaskQueue เลย
+		var activityErr error
+		if step.K8sJob != nil {
+			activityErr = workflow.ExecuteActivity(stepCtx, K8sJobActivityName, *step.K8sJob).Get(stepCtx, &res.Summary)
+		} else {
+			activityErr = workflow.ExecuteActivity(stepCtx, ActivityName, step).Get(stepCtx, &res.Summary)
+		}
 		if activityErr != nil {
 			// step ล้มเหลว (หมดจำนวน retry ตาม RetryPolicy แล้ว หรือเป็น error ที่ตั้งไว้
 			// ว่าห้าม retry เลย) — บันทึกผลลัพธ์ของ step นี้ไว้ใน results ก่อน แล้วหยุด
