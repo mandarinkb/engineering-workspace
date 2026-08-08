@@ -20,6 +20,26 @@ import "bop/internal/bot"
 type Step struct {
 	BotName string     `json:"bot_name"`
 	Config  bot.Config `json:"config"`
+	// TimeoutSeconds คือ StartToCloseTimeout เฉพาะของ step นี้ (หน่วยวินาที) — ถ้าเป็น 0
+	// (ไม่ได้ระบุมา) Execute (temporal.go) จะใช้ defaultActivityTimeout กลางแทน เพิ่ม field
+	// นี้ด้วยเหตุผลเดียวกับ job.Job.TimeoutSeconds: bot บางตัว (เช่น externaljob) ใช้เวลา
+	// ทำงานนานกว่า 30 วินาทีที่เป็นค่าเริ่มต้นของทั้งระบบมาก ต้องกำหนดได้ต่อ step แทนที่จะ
+	// บังคับใช้ค่าเดียวกันทุก step ในทุก workflow (ดู EXTERNAL-JOB-BOT-TODO.md)
+	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
+	// TaskQueue คือชื่อ Temporal Task Queue ที่ Activity ของ step นี้จะถูกส่งไปให้รัน — ถ้า
+	// เป็นค่าว่าง (ไม่ได้ระบุมา) ใช้ task queue เดียวกับตัว workflow เอง (TaskQueueName คงที่
+	// "bop-workflows") ซึ่งมีแค่ cmd/bop-worker เป็นคน poll อยู่ ทำให้ Activities.RunStep
+	// (activity.go) เป็นคนรับงานไปหา bot.Bot จาก local registry ตามปกติ (พฤติกรรมเดิมก่อน
+	// เพิ่ม field นี้ ไม่มีอะไรเปลี่ยน)
+	//
+	// ถ้าระบุ TaskQueue เป็นชื่ออื่น: Temporal จะส่ง Activity call ไปยัง worker process
+	// ที่ poll task queue ชื่อนั้นแทน — worker นั้นไม่จำเป็นต้องเป็น cmd/bop-worker เลยด้วยซ้ำ
+	// (อยู่คนละ repo/binary/แม้แต่คนละภาษาก็ได้ ขอแค่ register activity function ภายใต้ชื่อ
+	// "RunStep" ตรงกับ ActivityName ด้านล่างเป๊ะ และรับ/คืนค่าที่ serialize เข้ากันได้กับ
+	// Step/string ผ่าน JSON default DataConverter ของ Temporal) — ใช้กรณี job/bot อยู่คนละ
+	// repository และ deploy คนละจังหวะกับ BOP จริงๆ จนไม่คุ้มทำเป็น bot.Bot ภายใน BOP เอง
+	// (ดู REMOTE-JOB-WORKER-TODO.md สำหรับ contract เต็มที่ remote worker ต้อง implement)
+	TaskQueue string `json:"task_queue,omitempty"`
 }
 
 // Workflow คือลำดับของ Step ที่ต้องรันเรียงกันตามลำดับ (step แรกสุดในลิสต์รันก่อนเสมอ)

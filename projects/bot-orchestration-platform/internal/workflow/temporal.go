@@ -40,6 +40,12 @@ const ActivityName = "RunStep"
 //     ดูรายละเอียดที่ activity.go)
 var nonRetryableErrorTypes = []string{"ConfigError", "UnknownBot"}
 
+// defaultActivityTimeout คือ StartToCloseTimeout ที่ใช้กับ step ที่ไม่ได้ระบุ
+// Step.TimeoutSeconds ของตัวเองมา (ดูคำอธิบายที่ workflow.go) — ค่าเดิมก่อนเพิ่ม
+// per-step timeout คือ 30 วินาทีตายตัวทุก step เหมือนกันหมด ค่านี้คือ fallback ที่รักษา
+// พฤติกรรมเดิมไว้ให้ step ที่ไม่ได้ตั้งค่าอะไรเพิ่ม
+const defaultActivityTimeout = 30 * time.Second
+
 // Execute คือ Temporal workflow function ของ BOP — แทนที่ Runner.Trigger เวอร์ชันก่อน
 // Temporal ทั้งหมด รับ Workflow (ลำดับของ Step) มาเป็น input แล้ววน ExecuteActivity
 // ทีละ step ตามลำดับเหมือน Runner เดิมทุกประการ (step ถัดไปเริ่มได้ก็ต่อเมื่อ step ก่อน
@@ -57,14 +63,6 @@ var nonRetryableErrorTypes = []string{"ConfigError", "UnknownBot"}
 // เดิมและพัง (Temporal SDK มี workflow.Now()/workflow.SideEffect ให้ใช้แทนถ้าจำเป็นจริงๆ
 // แต่ workflow นี้ยังไม่ต้องใช้เพราะ I/O ทั้งหมดถูกย้ายไปทำใน Activity ที่ activity.go แทน)
 func Execute(ctx workflow.Context, wf Workflow) ([]StepResult, error) {
-	ao := workflow.ActivityOptions{
-		StartToCloseTimeout: 30 * time.Second,
-		RetryPolicy: &temporal.RetryPolicy{
-			NonRetryableErrorTypes: nonRetryableErrorTypes,
-		},
-	}
-	ctx = workflow.WithActivityOptions(ctx, ao)
-
 	var results []StepResult
 
 	// SetQueryHandler เปิดให้ฝั่งนอก (internal/api/http ผ่าน client.QueryWorkflow) เรียก
@@ -84,7 +82,27 @@ func Execute(ctx workflow.Context, wf Workflow) ([]StepResult, error) {
 	for i, step := range wf.Steps {
 		res := StepResult{StepIndex: i, BotName: step.BotName}
 
-		activityErr := workflow.ExecuteActivity(ctx, ActivityName, step).Get(ctx, &res.Summary)
+		// timeout ต่อ step: ใช้ step.TimeoutSeconds ถ้าระบุมา (>0) มิฉะนั้น fallback ไปที่
+		// defaultActivityTimeout — คำนวณ ActivityOptions ใหม่ทุกรอบใน loop (ต่างจากเดิมที่
+		// ตั้งครั้งเดียวนอก loop แล้วใช้ ctx เดิมตลอด) เพราะแต่ละ step อาจต้องการ timeout
+		// ไม่เท่ากัน (ดู workflow.go เรื่อง Step.TimeoutSeconds)
+		timeout := defaultActivityTimeout
+		if step.TimeoutSeconds > 0 {
+			timeout = time.Duration(step.TimeoutSeconds) * time.Second
+		}
+		// step.TaskQueue ค่าว่าง (ปกติ) ปล่อยให้ SDK fallback ไปใช้ task queue เดียวกับตัว
+		// workflow เอง ("bop-workflows") โดยอัตโนมัติ — ระบุมาเมื่อไหร่ Temporal จะส่ง
+		// Activity call ไปยัง worker process ที่ poll queue ชื่อนั้นแทน ซึ่งไม่จำเป็นต้อง
+		// เป็น cmd/bop-worker เลยด้วยซ้ำ (ดู workflow.go เรื่อง Step.TaskQueue)
+		stepCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: timeout,
+			TaskQueue:           step.TaskQueue,
+			RetryPolicy: &temporal.RetryPolicy{
+				NonRetryableErrorTypes: nonRetryableErrorTypes,
+			},
+		})
+
+		activityErr := workflow.ExecuteActivity(stepCtx, ActivityName, step).Get(stepCtx, &res.Summary)
 		if activityErr != nil {
 			// step ล้มเหลว (หมดจำนวน retry ตาม RetryPolicy แล้ว หรือเป็น error ที่ตั้งไว้
 			// ว่าห้าม retry เลย) — บันทึกผลลัพธ์ของ step นี้ไว้ใน results ก่อน แล้วหยุด

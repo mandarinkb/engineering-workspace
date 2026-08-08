@@ -43,6 +43,7 @@ cmd/bop-worker/main.go   Temporal Worker process แยกต่างหาก 
    │                       สถานะ" ให้แล้ว) ใช้กับ schedule CRUD API ด้านล่าง
    │
    ├── internal/bots/httpstatus     Bot ตัวอย่าง (zero external dependency)
+   ├── internal/bots/externaljob    Bot ที่ shell out ไปเรียก Go binary ภายนอก (jobcode) ผ่าน os/exec
    ├── internal/repository/memory   Repository implementation (in-memory) — เก็บ Job เดี่ยวๆ
    │                                 + Schedule definition เดี่ยวๆ
    ├── internal/logger/memory       Logger implementation (in-memory)
@@ -81,6 +82,7 @@ go run ./cmd/bop          # HTTP API ที่ :8080 — ให้ dashboard เ
 ```bash
 curl localhost:8080/bots                                                       # list bot + config schema (ใช้ทำ dynamic form)
 curl -X POST localhost:8080/bots/http-status-checker/jobs -d '{"url":"https://example.com"}'
+curl -X POST 'localhost:8080/bots/external-job/jobs?timeout_seconds=120' -d '{"jobcode":"SEND_REPORT","extra_args":"--dry-run"}'  # timeout_seconds เป็น query param (optional) — ดูหัวข้อ "Bot: external-job" ด้านล่าง
 curl localhost:8080/jobs
 curl localhost:8080/jobs/<id>
 curl localhost:8080/jobs/<id>/logs                # snapshot log ทั้งหมด ณ ตอนนี้ (REST)
@@ -110,6 +112,42 @@ curl -X POST localhost:8080/schedules/check-example-com-v2/trigger     # สั�
 curl -X POST localhost:8080/schedules/check-example-com-v2/backfill -d '{"start_time":"2026-01-01T00:00:00Z","end_time":"2026-01-02T00:00:00Z"}'
 curl -X DELETE localhost:8080/schedules/check-example-com-v2
 ```
+
+## Bot: external-job (shell out ไปเรียก binary ภายนอก)
+
+`internal/bots/externaljob` คือ bot ที่ห่อ Go binary แยกต่างหาก (compile ไว้แล้ว ไม่ใช่ source code ส่วนหนึ่งของ repo นี้) ที่มี "jobcode" หลายตัวรวมอยู่ในไฟล์เดียว (`./your-binary --jobcode=SEND_REPORT`) ให้สั่งรัน/schedule ผ่าน BOP ได้เหมือน bot อื่นๆ **โดยไม่แก้โค้ดของ binary เดิมเลยแม้แต่บรรทัดเดียว** — ดู decision log เต็มๆ ที่ [EXTERNAL-JOB-BOT-TODO.md](EXTERNAL-JOB-BOT-TODO.md)
+
+- **Generic bot เดียว ไม่ใช่ 1 bot ต่อ 1 jobcode** — `ConfigSchema()` มี `jobcode` (required, free text) และ `extra_args` (optional, free text คั่นด้วยช่องว่าง ต่อท้าย `--jobcode=<code>` เป็น argument เพิ่ม) เพิ่ม jobcode ใหม่ในไฟล์ binary เดิมทีหลังไม่ต้อง build/deploy BOP ใหม่เลย
+- **Path ของ binary** — hardcode เป็น `defaultBinaryPath` ใน `internal/bots/externaljob/externaljob.go` (ปัจจุบันเป็น placeholder เพราะยังไม่มี binary จริงให้ทดสอบ) — ต้องแก้ค่านี้ตรงๆ ให้ตรง path จริงบนเครื่อง/container ที่รัน `cmd/bop` และ `cmd/bop-worker` ก่อนใช้งานจริง และต้อง copy binary เข้า Dockerfile ของทั้งสอง process ตอน containerize (roadmap Phase 2.1 — ยังไม่ทำ)
+- **Exit code semantics** — exit code `0` = สำเร็จ, อื่นๆ = ล้มเหลวด้วย error ธรรมดา (retryable — Temporal/worker pool จะ retry ได้ตาม RetryPolicy ปกติ เพราะถือว่า exit code ที่ไม่ใช่ 0 อาจเกิดจากปัญหาชั่วคราวของ binary เอง) ต่างจาก jobcode ที่ไม่ได้ระบุมาเลยซึ่งเป็น `bot.ConfigError` (non-retryable)
+- **Log streaming** — stdout/stderr ของ process ลูกถูกอ่านคนละ goroutine พร้อมกัน (กัน deadlock ตอน pipe เต็ม) แล้วส่งเข้า `log()` แบบ real-time ทันที บรรทัดจาก stderr มี prefix `[stderr] ` กำกับ
+- **Cancellation ฆ่าทั้ง process group** — ตั้ง `Setpgid: true` แล้ว kill ทั้งกลุ่ม (`syscall.Kill(-pid, ...)`) ไม่ใช่แค่ process ลูกโดยตรง เพราะถ้า binary เปิด subprocess ของตัวเองต่ออีกที (เช่น shell script ที่เรียก `sleep`/`curl`) การ kill แค่ตัวแรกจะทิ้ง grandchild เป็น orphan ที่ยังถือ stdout/stderr pipe ค้างไว้ ทำให้ log streaming ค้างรอ EOF ไม่มีวันมาถึง (พิสูจน์จริงด้วย test `TestRun_ContextCancelKillsProcess`)
+
+### Timeout ต่อ job/step (per-job/per-step timeout)
+
+เดิมทั้งระบบใช้ timeout เดียวตายตัว 30 วินาที (`worker.NewPool` ใน `cmd/bop/main.go`, `ActivityOptions.StartToCloseTimeout` ใน `internal/workflow/temporal.go`) ทุก bot เหมือนกันหมด — ไม่พอสำหรับ `external-job` ที่ jobcode บางตัวอาจใช้เวลานานกว่านั้นมาก จึงเพิ่มความสามารถกำหนด timeout ได้ต่อ job/step แต่ละครั้งแทน (ยังคง 30 วินาทีเป็นค่า default ถ้าไม่ได้ระบุมา — bot เดิมอย่าง `http-status-checker` ไม่กระทบเลย):
+
+- **Job เดี่ยว** (`POST /bots/{name}/jobs`) — ระบุผ่าน query parameter `timeout_seconds` (จำนวนเต็มบวก หน่วยวินาที) เช่น `POST /bots/external-job/jobs?timeout_seconds=120` — เลือกใช้ query param แทนที่จะห่อ JSON body ใหม่ เพราะ body เดิมคือ `bot.Config` ล้วนๆ (flat map) อยู่แล้ว การเปลี่ยนรูปแบบ body จะทำลาย wire format ที่ dashboard เรียกอยู่
+- **Workflow step / schedule** — `workflow.Step` มี field `timeout_seconds` (optional) เพิ่มมาแล้ว ใช้ได้ทันทีใน `POST /schedules` เช่น `{"bot_name": "external-job", "config": {...}, "timeout_seconds": 300}`
+- ทั้งสองทางเก็บค่าเป็น `int` (`job.Job.TimeoutSeconds`/`workflow.Step.TimeoutSeconds`) — `0` (ไม่ได้ระบุ) แปลว่า "ใช้ default ของระบบ" เสมอ
+
+## รัน step ผ่าน remote Temporal worker (task queue แยกกัน คนละ repo)
+
+ทางเลือกที่สอง (คู่กับ `internal/bots/externaljob` ด้านบน) สำหรับ job/binary ที่อยู่ **คนละ repository และ deploy คนละจังหวะกับ BOP จริงๆ** — แทนที่จะ shell out ในเครื่อง/container เดียวกัน ให้ repo นั้นรัน Temporal Worker ของตัวเอง (embed `go.temporal.io/sdk` เอง — repo นั้นแก้โค้ดได้ ต่างจาก `externaljob` ที่ตั้งใจไม่แตะ binary เดิม) แล้ว BOP route ไปหา task queue นั้นแทนที่จะรันผ่าน local `bot.Bot` registry เลย รายละเอียด contract เต็มๆ ที่ repo ภายนอกต้อง implement อยู่ที่ [REMOTE-JOB-WORKER-TODO.md](REMOTE-JOB-WORKER-TODO.md)
+
+- **`workflow.Step.TaskQueue`** (optional) — ค่าว่าง (default) ใช้ local `Activities.RunStep` ตามเดิมทุกประการ (lookup `bot.Bot` จาก registry ของ `cmd/bop-worker`) ถ้าระบุ Temporal จะส่ง Activity call ไปยัง worker process ที่ poll task queue ชื่อนั้นแทน (คนละ repo/binary/แม้แต่คนละภาษาก็ได้) — กลไกนี้เป็นของ Temporal เองล้วนๆ (`workflow.ActivityOptions.TaskQueue`) ไม่ได้เขียน routing logic เพิ่มเองเลยสักบรรทัด
+- **`POST /workflow-runs`** — endpoint ใหม่ รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน ใช้ได้ทั้งกับ step local และ step ที่มี `task_queue` (เพราะ routing ตัดสินใจต่อ step อยู่แล้ว) — คือช่องทางที่ทำให้ "job เดี่ยว" route ไป remote task queue ได้ (ต่างจาก `POST /bots/{name}/jobs` ที่ผ่าน `worker.Pool` ล้วนๆ ไม่มี Temporal เกี่ยวข้องเลย จึง route ข้าม task queue ไม่ได้)
+
+```bash
+curl -X POST localhost:8080/workflow-runs -d '{
+  "workflow_name": "send-report-remote",
+  "steps": [{"bot_name": "external-report-job", "config": {"jobcode": "SEND_REPORT"}, "task_queue": "external-job-queue"}]
+}'
+# ได้ {"workflow_id": "...", "run_id": "..."} กลับมาทันที (fire-and-forget เหมือน POST /bots/{name}/jobs)
+curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผลลัพธ์ผ่าน endpoint เดิมที่มีอยู่แล้ว ไม่ต้องเพิ่มอะไรใหม่
+```
+
+**ข้อจำกัดที่ต้องรู้**: เหมือนกับ endpoint กลุ่ม `/schedules` — `POST /workflow-runs` ยังไม่เคยทดสอบ end-to-end จริงกับ Temporal server (ติด Docker permission ตอนเขียนโค้ดนี้เหมือนเดิม) มีแค่ unit test ของ validation logic ที่ error ก่อนแตะ Temporal client (`internal/api/http/handler_test.go`) และ regression test ว่า `Step.TaskQueue` ไม่ทำให้ `Execute` panic/error (`internal/workflow/temporal_test.go`) — การพิสูจน์ว่า activity ถูก route ข้าม task queue จริงต้องมี Temporal server จริงและ worker อย่างน้อย 2 ตัว (`TestWorkflowEnvironment` ของ SDK รัน activity ทุกตัว in-process เสมอ ไม่ simulate หลาย queue จริง)
 
 ## จัดการ Schedule (CRUD + manual trigger — เทียบเท่า Control-M job management)
 

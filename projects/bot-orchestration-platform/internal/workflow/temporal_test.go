@@ -124,3 +124,30 @@ func TestExecute_StopsAtFirstFailedStep(t *testing.T) {
 		t.Errorf("expected second step result to record the failure, got %+v", queried[1])
 	}
 }
+
+// TestExecute_StepWithTaskQueueStillExecutes เป็น regression test สำหรับ Step.TaskQueue —
+// พิสูจน์แค่ว่า Execute ไม่ error/panic เมื่อ step ระบุ TaskQueue มา (ค่าอะไรก็ได้) ไม่ได้
+// พิสูจน์ว่า activity ถูก route ไปยัง task queue นั้นจริงๆ เพราะ TestWorkflowEnvironment
+// ของ Temporal SDK รัน activity ทุกตัวแบบ in-process เสมอ ไม่ได้ simulate การมี worker
+// หลายตัวคนละ task queue จริง — การพิสูจน์ routing ข้าม task queue จริงต้องทดสอบแบบ
+// end-to-end กับ Temporal server จริงและ worker อย่างน้อย 2 ตัว (ดู README.md หัวข้อ
+// "รัน step ผ่าน remote Temporal worker")
+func TestExecute_StepWithTaskQueueStillExecutes(t *testing.T) {
+	env := newTestEnv(t)
+	env.OnActivity(workflow.ActivityName, mock.Anything, mock.Anything).Return("ok", nil)
+
+	wf := workflow.Workflow{
+		Name: "step-with-remote-task-queue",
+		Steps: []workflow.Step{
+			{BotName: "remote-bot", TaskQueue: "external-job-queue"},
+		},
+	}
+	env.ExecuteWorkflow(workflow.Execute, wf)
+
+	if !env.IsWorkflowCompleted() {
+		t.Fatal("expected workflow to complete")
+	}
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}

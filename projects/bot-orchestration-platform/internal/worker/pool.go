@@ -154,8 +154,14 @@ func (p *Pool) run(b bot.Bot, j job.Job, done chan<- *job.Job) {
 	defer func() { <-p.sem }() // เมื่อ job นี้จบ (ไม่ว่าสำเร็จ/ล้มเหลว) คืนที่ว่างกลับให้ job อื่นใช้ต่อ
 
 	// ขั้นตอนที่ 2: สร้าง context ที่มี timeout ผูกกับ job นี้โดยเฉพาะ และเก็บ cancel
-	// function ไว้ใน map เพื่อให้ Cancel() ข้างบนสามารถหามาเรียกได้ทีหลัง
-	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
+	// function ไว้ใน map เพื่อให้ Cancel() ข้างบนสามารถหามาเรียกได้ทีหลัง — ถ้า job ระบุ
+	// TimeoutSeconds ของตัวเองมา (เช่น bot ที่ทำงานนานผิดปกติอย่าง externaljob) ใช้ค่านั้น
+	// แทน p.timeout กลางของ pool ทั้งก้อน มิฉะนั้น (ค่าเริ่มต้น 0) ใช้ p.timeout ตามเดิม
+	timeout := p.timeout
+	if j.TimeoutSeconds > 0 {
+		timeout = time.Duration(j.TimeoutSeconds) * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	p.mu.Lock()
 	p.cancels[j.ID] = cancel
 	p.mu.Unlock()

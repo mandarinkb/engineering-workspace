@@ -123,3 +123,47 @@ func TestPool_CancelStopsAJobInFlight(t *testing.T) {
 	}
 	t.Fatal("job was not marked cancelled in time")
 }
+
+// TestPool_PerJobTimeoutOverridesDefault ทดสอบว่า job.Job.TimeoutSeconds (ถ้าระบุมา)
+// ใช้แทน timeout กลางของ pool ทั้งก้อนได้จริง — ตั้ง pool ให้มี timeout กลางยาวมาก (10
+// วินาที) แต่ job นี้ระบุ TimeoutSeconds=1 (สั้นกว่ามาก) ด้วย bot ที่ตั้งใจทำงานนาน 5
+// วินาที ถ้า override ทำงานถูกต้อง job ต้อง "หมดเวลา" (จบด้วยสถานะ failed เพราะ
+// ctx.Err()==DeadlineExceeded ไม่ใช่ Canceled — ดู pool.go) เร็วกว่า 5 วินาทีมาก ไม่ต้อง
+// รอจนครบ timeout กลาง 10 วินาทีของ pool เลย
+func TestPool_PerJobTimeoutOverridesDefault(t *testing.T) {
+	repo := memrepo.NewJobRepository()
+	log := memlogger.New()
+	pool := worker.NewPool(1, 10*time.Second, repo, log) // timeout กลางยาวมาก ตั้งใจให้ไม่ถึงก่อน per-job timeout
+	pool.Register(&stubBot{delay: 5 * time.Second})
+
+	j := &job.Job{
+		ID:             "per-job-timeout",
+		BotName:        "stub",
+		Status:         job.StatusPending,
+		CreatedAt:      time.Now(),
+		TimeoutSeconds: 1, // สั้นกว่า timeout กลางของ pool มาก และสั้นกว่า delay ของ bot ด้วย
+	}
+	if err := repo.Create(context.Background(), j); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := pool.Submit(j); err != nil {
+		t.Fatalf("submit job: %v", err)
+	}
+
+	// รอไม่เกิน 2 วินาที (มากกว่า per-job timeout 1 วินาทีพอสมควรกันความไม่แน่นอนของ
+	// scheduler) แต่น้อยกว่า delay ของ bot (5 วินาที) มาก — ถ้า override ไม่ทำงานจริง job
+	// จะยังเป็น running อยู่ตอน deadline นี้มาถึง เพราะกว่าจะ timeout กลาง 10 วินาทีของ pool
+	// จะถึงยังอีกไกล
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		current, err := repo.Get(context.Background(), j.ID)
+		if err != nil {
+			t.Fatalf("get job: %v", err)
+		}
+		if current.Status == job.StatusFailed {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("job did not time out using its own TimeoutSeconds within the expected window")
+}

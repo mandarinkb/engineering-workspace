@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	workflowpb "go.temporal.io/api/workflow/v1"
@@ -79,8 +80,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /jobs/{id}/logs/stream", s.handleStreamJobLogs) // ดู log แบบ real-time ผ่าน SSE (roadmap ข้อ 1.5)
 	s.mux.HandleFunc("DELETE /jobs/{id}", s.handleCancelJob)              // สั่งยกเลิก job ที่กำลังรันอยู่
 
-	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)    // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
-	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun) // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
+	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)     // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
+	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun)  // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
+	s.mux.HandleFunc("POST /workflow-runs", s.handleCreateWorkflowRun)   // รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน
 
 	s.mux.HandleFunc("POST /login", s.handleLogin)   // ตรวจ credential แล้วออก JWT ใส่ httpOnly cookie (roadmap ข้อ 1.8)
 	s.mux.HandleFunc("POST /logout", s.handleLogout) // ล้าง cookie ทิ้ง
@@ -123,6 +125,13 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 // client ทันทีด้วยสถานะ 202 Accepted พร้อมข้อมูล job (ที่ยังเป็น pending อยู่ เพราะ
 // job เพิ่งถูกส่งเข้า queue ยังไม่ได้เริ่มทำงานจริง — client ต้องไปเช็คสถานะทีหลังเองผ่าน
 // GET /jobs/{id})
+//
+// timeout_seconds เป็น query parameter (ไม่ใช่ field ใน JSON body) เพราะ body ตรงนี้คือ
+// bot.Config ล้วนๆ (flat map ที่ bot แต่ละตัวอ่านเองตาม ConfigSchema) มาตั้งแต่ต้น — การ
+// ห่อ body ใหม่เป็น {"config": {...}, "timeout_seconds": N} จะทำลาย wire format เดิมที่
+// dashboard (projects/bop-dashboard/) เรียกอยู่แล้ว ใช้ query param แทนเพื่อเพิ่มความ
+// สามารถนี้แบบ "เสริม" (additive) โดยไม่กระทบ client เดิมที่ไม่ได้ส่งค่านี้มาเลย (ปล่อยเป็น
+// 0 แล้ว worker.Pool จะ fallback ไปใช้ timeout กลางของระบบตามเดิมทุกประการ)
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	botName := r.PathValue("name") // ดึงค่าจาก {name} ใน path pattern
 
@@ -138,6 +147,15 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		Config:    cfg,
 		Status:    job.StatusPending,
 		CreatedAt: time.Now(),
+	}
+
+	if raw := r.URL.Query().Get("timeout_seconds"); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil || seconds <= 0 {
+			http.Error(w, "timeout_seconds must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		j.TimeoutSeconds = seconds
 	}
 
 	if err := s.repo.Create(r.Context(), j); err != nil {
@@ -464,6 +482,68 @@ func (s *Server) handleGetWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, workflowRunDetail{
 		workflowRunSummary: toRunSummary(desc.WorkflowExecutionInfo),
 		Steps:              steps,
+	})
+}
+
+// createWorkflowRunRequest คือ JSON body ของ POST /workflow-runs — เหมือน steps/workflow_name
+// ของ createScheduleRequest แต่ไม่มี spec/overlap เพราะ endpoint นี้ไม่ได้สร้าง schedule
+// (การรันซ้ำตามตารางเวลา) แค่รัน step ที่ระบุ "ทันทีครั้งเดียว" (ad-hoc) เท่านั้น
+type createWorkflowRunRequest struct {
+	WorkflowName string          `json:"workflow_name"`
+	Steps        []workflow.Step `json:"steps"`
+}
+
+// createWorkflowRunResponse คือ JSON response — ให้แค่ id ที่พอเอาไป poll สถานะต่อผ่าน
+// GET /workflow-runs/{id} ที่มีอยู่แล้ว (ไม่ต้องเพิ่ม endpoint หรือ repository ใหม่เลย)
+type createWorkflowRunResponse struct {
+	WorkflowID string `json:"workflow_id"`
+	RunID      string `json:"run_id"`
+}
+
+// handleCreateWorkflowRun สั่งรัน workflow (1 หรือหลาย step เรียงกัน) ทันทีแบบ ad-hoc ผ่าน
+// client.ExecuteWorkflow ตรงๆ — ต่างจาก POST /schedules ตรงที่ไม่สร้างอะไรที่ "รันซ้ำตาม
+// ตารางเวลา" เลย แค่เริ่ม 1 run แล้วจบ เหมาะกับทั้ง (1) อยากรัน step ชุดหนึ่งครั้งเดียวโดย
+// ไม่ต้องผ่านการสร้าง/ลบ schedule ให้ยุ่งยาก และ (2) "job เดี่ยว" ที่ต้อง route ไปยัง Temporal
+// Task Queue อื่น (ผ่าน Step.TaskQueue — ดู internal/workflow/workflow.go) ซึ่งเป็นสิ่งที่
+// worker.Pool เดิม (ใช้กับ POST /bots/{name}/jobs) ทำไม่ได้เลย เพราะไม่มี Temporal เกี่ยวข้อง
+// อยู่ในเส้นทางนั้น
+//
+// เหมือนกับ handleCreateJob เดิม endpoint นี้เป็น fire-and-forget (ExecuteWorkflow แค่เริ่ม
+// workflow แล้ว return ทันที ไม่รอผลลัพธ์) — client ต้อง poll สถานะทีหลังเองผ่าน
+// GET /workflow-runs/{workflow_id} ที่มีอยู่แล้ว (ไม่ต้องเพิ่ม repository/endpoint ใหม่)
+func (s *Server) handleCreateWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	var req createWorkflowRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if req.WorkflowName == "" {
+		http.Error(w, "workflow_name is required", http.StatusBadRequest)
+		return
+	}
+	if len(req.Steps) == 0 {
+		http.Error(w, "steps must not be empty", http.StatusBadRequest)
+		return
+	}
+
+	// ผูก workflow ID กับ workflow_name + newID() (helper เดิมท้ายไฟล์นี้) เพื่อกัน ID ชน
+	// กันเวลาเรียก endpoint นี้ซ้ำหลายครั้งด้วย workflow_name เดียวกัน — ต่างจาก
+	// ensureExampleSchedule/handleCreateSchedule ที่ใช้ ID ตายตัวจาก client เพราะที่นั่น
+	// ID ต้อง stable ข้าม request (เอาไว้ pause/trigger/delete schedule เดิมซ้ำได้) แต่ที่นี่
+	// แต่ละ request คือ run ใหม่ที่ไม่เกี่ยวข้องกับ run ก่อนหน้าเลย
+	wf := workflow.Workflow{Name: req.WorkflowName, Steps: req.Steps}
+	run, err := s.temporal.ExecuteWorkflow(r.Context(), client.StartWorkflowOptions{
+		ID:        fmt.Sprintf("%s-%s", req.WorkflowName, newID()),
+		TaskQueue: workflow.TaskQueueName, // task queue ของตัว "workflow" เอง (cmd/bop-worker) — คนละเรื่องกับ Step.TaskQueue ของแต่ละ activity ภายใน
+	}, workflow.Execute, wf)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, createWorkflowRunResponse{
+		WorkflowID: run.GetID(),
+		RunID:      run.GetRunID(),
 	})
 }
 

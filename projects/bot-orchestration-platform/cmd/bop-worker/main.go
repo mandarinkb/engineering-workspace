@@ -24,6 +24,7 @@ import (
 	"go.temporal.io/sdk/worker"
 
 	"bop/internal/bot"
+	"bop/internal/bots/externaljob"
 	"bop/internal/bots/httpstatus"
 	memlogger "bop/internal/logger/memory"
 	"bop/internal/workflow"
@@ -51,6 +52,7 @@ func main() {
 	appLogger := memlogger.New()
 	activities := workflow.NewActivities(appLogger)
 	activities.Register(httpstatus.New())
+	activities.Register(externaljob.New())
 
 	// ขั้นตอนที่ 3: สร้างและเริ่ม Temporal Worker — ตัวนี้คือ process ที่ poll งานจาก
 	// Task Queue จริงๆ (RegisterWorkflow ผูก "ชื่อ workflow type" เข้ากับ workflow.Execute,

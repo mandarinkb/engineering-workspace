@@ -33,6 +33,13 @@ type Job struct {
 	ID        string            `json:"id"`                   // รหัสเฉพาะของ job นี้ (สุ่มสร้างตอนสร้าง job ใหม่)
 	BotName   string            `json:"bot_name"`             // ชื่อ bot ที่ใช้รัน job นี้ (ตรงกับ Bot.Name())
 	Config    map[string]string `json:"config"`               // ค่า config ที่ user กรอกมาตอนสร้าง job
+	// TimeoutSeconds คือ timeout เฉพาะของ job นี้ (หน่วยวินาที) — ถ้าเป็น 0 (ไม่ได้ระบุมา)
+	// worker.Pool จะใช้ timeout กลางของทั้งระบบแทน (ค่าที่ตั้งไว้ตอนสร้าง worker.NewPool)
+	// เพิ่ม field นี้เพราะ bot บางตัว (เช่น externaljob ที่ shell out ไปเรียก binary
+	// ภายนอกที่ใช้เวลาทำงานไม่แน่นอน) ต้องการเวลามากกว่า/น้อยกว่า timeout กลาง 30 วินาที
+	// ที่ bot อื่นอย่าง http-status-checker ใช้พอดีอยู่แล้ว — ให้ผู้เรียก API ระบุต่อ job
+	// แต่ละครั้งได้แทนที่จะบังคับใช้ค่าเดียวกันทุก bot ในระบบ (ดู EXTERNAL-JOB-BOT-TODO.md)
+	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
 	Status    Status            `json:"status"`               // สถานะปัจจุบันของ job (ดู const ด้านบน)
 	Summary   string            `json:"summary,omitempty"`    // ข้อความสรุปผลลัพธ์ (มีค่าก็ต่อเมื่อ Status = succeeded)
 	Error     string            `json:"error,omitempty"`      // ข้อความ error (มีค่าก็ต่อเมื่อ Status = failed หรือ cancelled)

@@ -23,6 +23,7 @@ import (
 	"go.temporal.io/sdk/client"
 
 	apihttp "bop/internal/api/http" // ตั้งชื่อ alias เพราะ package นี้ก็ชื่อ "http" เหมือน net/http
+	"bop/internal/bots/externaljob"
 	"bop/internal/bots/httpstatus"
 	"bop/internal/job"
 	"bop/internal/logger"
@@ -49,6 +50,7 @@ func main() {
 	// ขั้นตอนที่ 3: register bot ทุกชนิดที่ระบบรู้จักไว้ที่นี่ที่เดียว — การเพิ่ม bot
 	// ชนิดใหม่ในอนาคตแค่เพิ่มบรรทัด pool.Register(...) ตรงนี้ ไม่ต้องแก้โค้ดที่อื่นเลย
 	pool.Register(httpstatus.New())
+	pool.Register(externaljob.New())
 
 	// ขั้นตอนที่ 4: ต่อ Temporal client — ใช้แค่ "อ่าน" สถานะ workflow run ผ่าน
 	// GET /workflow-runs (ดู internal/api/http/handler.go) เท่านั้น ไม่ได้ใช้สั่งรัน
