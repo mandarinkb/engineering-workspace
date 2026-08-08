@@ -3,7 +3,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { ToastProvider } from "@/components/ui/toast-provider";
+import { WatchedJobsProvider } from "@/features/jobs/components/watched-jobs-provider";
 import { createQueryClient } from "@/lib/query-client";
+
+import { ThemeProvider } from "./theme-provider";
 
 // Providers ต้องเป็น Client Component ("use client" บรรทัดบนสุด) เพราะ
 // QueryClientProvider ใช้ React Context ซึ่งทำงานได้เฉพาะฝั่ง client เท่านั้น — ถ้าเอา
@@ -18,7 +22,19 @@ import { createQueryClient } from "@/lib/query-client";
 // รั่วไปโผล่ในของอีกคน — useState ทำให้แต่ละ component tree (แต่ละ request/แต่ละ client)
 // ได้ QueryClient ของตัวเองเสมอ ฟังก์ชันใน useState เรียกแค่ครั้งเดียวตอน mount ครั้งแรก
 // (lazy initialization) ไม่ใช่ทุกครั้งที่ re-render
+// ลำดับการซ้อน provider มีผล: WatchedJobsProvider เรียก useToast() ข้างใน (ดู
+// watched-jobs-provider.tsx) จึงต้องอยู่ "ใต้" ToastProvider เสมอ (ห่อทับด้วย
+// ToastProvider ก่อน) มิฉะนั้น useToast() จะหา context ไม่เจอแล้ว throw ตอน mount —
+// ส่วน ThemeProvider/QueryClientProvider ไม่ผูกกับตัวไหนเลย ลำดับจึงไม่มีผลกับสองตัวนี้
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => createQueryClient());
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <WatchedJobsProvider>{children}</WatchedJobsProvider>
+        </ToastProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
+  );
 }

@@ -9,10 +9,36 @@ export type OverlapPolicy = "skip" | "buffer_one" | "buffer_all" | "cancel_other
 // ScheduleStep คือ 1 ขั้นตอนของ workflow ที่ schedule นี้สั่งรัน — mirror จาก
 // internal/workflow/workflow.go (Step struct) เก็บแยกจาก StepResult ของ
 // features/workflow-runs/types (นั่นคือ "ผลลัพธ์หลังรันไปแล้ว" ส่วนนี้คือ "นิยามว่าจะรันอะไร")
+//
+// task_queue/k8s_job คือ field ที่เพิ่มมาทีหลัง (mirror จาก workflow.Step.TaskQueue /
+// workflow.Step.K8sJob) — ทั้งคู่ optional และ mutually exclusive กันโดยธรรมชาติ (ตั้งได้
+// แค่อย่างใดอย่างหนึ่ง หรือไม่ตั้งเลยก็ได้ = รันผ่าน local bot.Bot ตามปกติ) ดู
+// EXTERNAL-JOB-BOT-TODO.md/REMOTE-JOB-WORKER-TODO.md/K8S-JOB-HYBRID-EXECUTION-TODO.md
+// ฝั่ง backend สำหรับความหมายเต็มๆ ของแต่ละทางเลือก
 export interface ScheduleStep {
   bot_name: string;
   config: Record<string, string>;
+  task_queue?: string;
+  k8s_job?: K8sJobSpec;
 }
+
+// K8sJobSpec มี field ชื่อตรงกับ JSON tag ของ workflow.K8sJobSpec ฝั่ง Go เป๊ะ — image
+// เป็น field เดียวที่ required (backend คืน bot.ConfigError ถ้าไม่ระบุมา ดู
+// internal/workflow/k8sjob.go: RunKubernetesJob)
+export interface K8sJobSpec {
+  image: string;
+  command?: string[];
+  args?: string[];
+  env?: Record<string, string>;
+  namespace?: string;
+}
+
+// DispatchMode คือ concept ฝั่ง frontend ล้วนๆ (ไม่มีคู่กันฝั่ง backend ตรงๆ) ใช้ควบคุมว่า
+// UI ของ step editor (schedule-form.tsx) ควรโชว์ฟอร์มย่อยแบบไหน — derive จาก field ที่
+// ScheduleStep มีอยู่จริง (ดู dispatchModeOf ใน schedule-form.tsx) ไม่ได้เก็บเป็น field
+// แยกใน ScheduleStep เอง เพราะ backend ไม่รู้จัก concept นี้เลย รู้แค่ว่า step มี
+// task_queue/k8s_job หรือไม่เท่านั้น
+export type DispatchMode = "local" | "remote_task_queue" | "k8s_job";
 
 // ScheduleSpec คือ JSON shape ของ "เมื่อไหร่ควรรัน" ที่ POST/PUT ส่งไป — mutually
 // exclusive กันเสมอ (ระบุได้แค่อย่างใดอย่างหนึ่ง ไม่ใช่ทั้งคู่ ไม่ใช่ไม่มีเลย)

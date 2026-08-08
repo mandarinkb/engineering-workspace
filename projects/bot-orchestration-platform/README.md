@@ -2,6 +2,8 @@
 
 Go core of the flagship project described in [FULLSTACK-INFRA-ROADMAP.md](../../FULLSTACK-INFRA-ROADMAP.md). This is the "core/control plane" that owns bot execution, job state, and log output — the Next.js dashboard ([projects/bop-dashboard/](../bop-dashboard/README.md), Phase 1) is a client of the HTTP API defined here, nothing more.
 
+> **อยากรู้ภาพรวม feature ทั้งหมดตอนนี้แบบเร็วๆ**: ดู [FEATURES.md](FEATURES.md) (สรุป feature ปัจจุบัน + คำแนะนำสิ่งที่ควรทำต่อ) — README ไฟล์นี้เน้น "รันยังไง/สถาปัตยกรรม/API reference" ส่วน FEATURES.md เน้น "มีอะไรแล้วบ้าง/ควรทำอะไรต่อ" ไม่ซ้ำเนื้อหากันตั้งใจ
+
 ## สถานะปัจจุบัน
 
 Phase 0 (`Golang: สร้าง Bot Execution Engine`) ทำแล้ว: `Bot` interface, worker pool ที่รันพร้อมกันได้หลาย job แบบมี timeout/cancel, in-memory repository + logger (persist + live-subscribe design พร้อมสลับเป็น PostgreSQL/OpenSearch ทีหลังโดยไม่แก้ caller), bot ตัวอย่างที่ implement interface จริง, และ HTTP API ที่ dashboard ใน Phase 1 จะเรียกใช้ได้ทันที — ทั้งหมด build/vet/test -race ผ่าน และลองยิงจริงทั้ง CLI กับ HTTP server แล้ว
@@ -52,9 +54,14 @@ cmd/bop-worker/main.go   Temporal Worker process แยกต่างหาก 
                                       โดยตรง ไม่มี repository ของตัวเองสำหรับ workflow run)
 ```
 
+**3 ทางเลือกในการรัน job ที่ไม่ใช่ local Go bot** (ดู [FEATURES.md](FEATURES.md) สำหรับตารางเทียบสั้นๆ):
+- `internal/bots/externaljob` — shell out ในเครื่อง/container เดียวกับ BOP ([EXTERNAL-JOB-BOT-TODO.md](EXTERNAL-JOB-BOT-TODO.md))
+- `workflow.Step.TaskQueue` — route ไป Temporal worker คนละ repo/process ([REMOTE-JOB-WORKER-TODO.md](REMOTE-JOB-WORKER-TODO.md), reference implementation ที่ [projects/remote-job-worker/](../remote-job-worker/README.md))
+- `internal/workflow/k8sjob.go` (`workflow.Step.K8sJob`) — สั่งสร้าง Kubernetes Job ต่อการรันหนึ่งครั้ง ([K8S-JOB-HYBRID-EXECUTION-TODO.md](K8S-JOB-HYBRID-EXECUTION-TODO.md))
+
 ทุก dependency ชี้เข้าหา interface ที่ `internal/bot`, `internal/job`, `internal/logger` ไม่ใช่ implementation ตรงๆ — สลับ `internal/repository/memory` เป็น `internal/repository/postgres` ทีหลัง (roadmap Phase 0.4) แก้แค่บรรทัดเดียวใน `cmd/bop/main.go` โค้ดส่วนอื่นไม่ต้องแตะเลย ส่วนการรัน workflow ทั้งหมด (durable execution, retry, scheduling) เป็นหน้าที่ของ Temporal server เอง ไม่ใช่โค้ด BOP อีกต่อไป — BOP เหลือแค่ "ประกอบ" (register bot, ประกาศ workflow function) กับ Temporal เท่านั้น
 
-**หมายเหตุเรื่อง zero external dependency**: ตั้งแต่ Phase 2.5 เป็นต้นไป `go.mod` มี `go.temporal.io/sdk` เป็น dependency ภายนอกตัวแรกของโปรเจกต์นี้ — เป็นข้อยกเว้นที่ตั้งใจ (ดูเหตุผลใน TEMPORAL-MIGRATION-TODO.md ข้อ 2) เพราะ durable workflow execution คือสิ่งที่ reinvent เองไม่คุ้มอีกต่อไป ไม่ใช่ความผิดพลาดของ design เดิม
+**หมายเหตุเรื่อง zero external dependency**: ตั้งแต่ Phase 2.5 เป็นต้นไป `go.mod` มี `go.temporal.io/sdk` เป็น dependency ภายนอกตัวแรกของโปรเจกต์นี้ — เป็นข้อยกเว้นที่ตั้งใจ (ดูเหตุผลใน TEMPORAL-MIGRATION-TODO.md ข้อ 2) เพราะ durable workflow execution คือสิ่งที่ reinvent เองไม่คุ้มอีกต่อไป ไม่ใช่ความผิดพลาดของ design เดิม — ต่อมาเพิ่ม `k8s.io/client-go` (+ `k8s.io/api`, `k8s.io/apimachinery` transitively) เข้ามาอีกตัวสำหรับ K8s Job hybrid execution (`internal/workflow/k8sjob.go`) ด้วยเหตุผลเดียวกัน: เขียน Kubernetes API client เองไม่คุ้มเทียบกับ SDK ที่เป็นมาตรฐานอยู่แล้ว
 
 ## รันยังไง
 
@@ -221,8 +228,13 @@ wf := workflow.Workflow{
 
 ## Next Steps
 
-ตามลำดับใน [roadmap](../../FULLSTACK-INFRA-ROADMAP.md):
-1. เก็บ Phase 0 ที่เหลือให้ครบ (chromedp bot, error types, PostgreSQL repository, table-driven test)
-2. **Phase 2.5 (Temporal migration) ทำเสร็จแล้ว** — `internal/workflow` ย้ายไปใช้ Temporal จริงจังทั้งหมด (`internal/scheduler` ถูกลบทิ้ง) ดู decision log เต็มๆ ที่ [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) — สิ่งที่เหลือค้างจากงานนี้: (1) ยังไม่เคยรัน end-to-end จริงกับ Temporal server (build/vet/test -race ผ่านหมด แต่ยังไม่ได้ยิง `docker compose up -d` แล้วดู schedule trigger จริงในเครื่องนี้ เพราะติด Docker permission ตอนที่เขียนโค้ดนี้) (2) compensation logic ยังไม่มี รอ bot ที่มี side effect จริงจังก่อน (3) log ของ step ใน workflow ยังดึงผ่าน HTTP ไม่ได้จนกว่าจะมี logger backend ที่แชร์ข้าม process ได้ (PostgreSQL/OpenSearch, Phase 2.2)
-3. **Phase 1 (Next.js dashboard) ทำแล้วเช่นกัน** — ทั้ง backend prerequisite (endpoint ใหม่ครบตามที่ระบุด้านบน) และตัว dashboard เองที่ [projects/bop-dashboard/](../bop-dashboard/README.md) (implement ครบ 1.1-1.9 ตาม [PHASE1-DASHBOARD-TODO.md](../bop-dashboard/PHASE1-DASHBOARD-TODO.md)) — `go test -race ./...` ผ่านหมดรวม `internal/api/http` (smoke test เต็มผ่าน `httptest` ครอบคลุม bots/jobs/auth/CORS โดยไม่ต้องพึ่ง Docker/Temporal เลย) ฝั่ง dashboard เองก็ typecheck/lint/test/build ผ่านหมดเช่นกัน — **ที่ยังไม่ verify คือ end-to-end จริงกับ Temporal server** (เหตุผลเดียวกับข้อ 2: ติด Docker permission ในเครื่องที่เขียนโค้ดนี้)
-4. **Schedule CRUD + manual trigger (ช่องว่างระหว่าง Phase 2.5 กับ Phase 3) ทำแล้ว** — ห่อ `client.ScheduleClient` ของ Temporal เป็น HTTP API เต็มชุด (create/list/get/update/delete/pause/unpause/**trigger**/backfill) เทียบเท่าการจัดการ job ของ Control-M ดูรายละเอียดที่หัวข้อ "จัดการ Schedule" ด้านบน — เป็นพื้นฐานที่ฟีเจอร์ Phase 3 (resource pool, flow control, approval gate ฯลฯ) ต้องพึ่งพา ยังไม่ verify end-to-end เหตุผลเดียวกับข้อ 2-3
+สิ่งที่ทำเสร็จแล้วสรุปสั้นๆ (รายละเอียดเต็มดู [FEATURES.md](FEATURES.md)): Phase 0 core engine, Phase 2.5 Temporal migration, Phase 1 backend prerequisite + dashboard, Schedule CRUD เต็มชุด, 3 ทางเลือกรัน external job (`externaljob`/remote task queue/K8s Job hybrid), `POST /workflow-runs` (ad-hoc run), per-job/per-step timeout — ดูหัวข้อต่างๆ ด้านบนของไฟล์นี้สำหรับรายละเอียดแต่ละอัน
+
+**ช่องว่างที่สำคัญที่สุดตอนนี้ (เรียงตาม priority ใน [FEATURES.md](FEATURES.md))**:
+1. **PostgreSQL persistence** — `job.Repository`/`schedule.Repository` ยังเป็น in-memory ทั้งคู่ (Phase 0.4) เป็น prerequisite ของแทบทุกอย่างถัดจากนี้ รวมถึง Phase 3 enterprise feature ด้านล่าง
+2. **Job Dependency (DAG)** และ **Observability พื้นฐาน** (Phase 2.2) — ยังไม่มีเลยทั้งคู่
+3. **ยังไม่เคย verify end-to-end จริงกับ Temporal server/K8s cluster เลยสักครั้ง** — ทุก feature ผ่านแค่ unit test ระดับ `TestActivityEnvironment`/`TestWorkflowEnvironment`/fake K8s clientset (ติด Docker permission ตอน implement ทุกรอบ) ต้องทดสอบจริงก่อนเรียกว่า production-ready
+
+**Design doc ที่เขียนไว้ล่วงหน้า รอ implement**:
+- [PHASE3-ENTERPRISE-FEATURES-TODO.md](PHASE3-ENTERPRISE-FEATURES-TODO.md) — Condition-Based Triggering, Resource Pools, Flow Control, Approval Gate, Gantt View, Alert Triage, Job Versioning (ฝั่ง backend เต็มรูปแบบ พร้อมลำดับที่แนะนำให้ทำ — **ควรรอ PostgreSQL persistence เสร็จก่อน**)
+- [projects/bop-dashboard/PHASE3-DASHBOARD-TODO.md](../bop-dashboard/PHASE3-DASHBOARD-TODO.md) — เอกสารคู่กันฝั่ง frontend

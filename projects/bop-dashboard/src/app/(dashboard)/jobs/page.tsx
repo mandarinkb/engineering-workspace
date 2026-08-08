@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 
 import { JobFilter } from "@/features/jobs/components/job-filter";
+import { JobStats } from "@/features/jobs/components/job-stats";
 import { JobTable } from "@/features/jobs/components/job-table";
 
 // ต้องห่อ <Suspense> รอบ component ที่เรียก useSearchParams() เสมอ (JobFilter/JobTable
@@ -13,6 +14,7 @@ export default function JobsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">Job History</h1>
+      <JobStats />
       <Suspense fallback={<p className="text-gray-500">กำลังโหลด...</p>}>
         <JobFilter />
         <JobTable />

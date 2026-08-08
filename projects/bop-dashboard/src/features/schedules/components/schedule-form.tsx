@@ -18,7 +18,23 @@ import type { ConfigField } from "@/features/bots/types";
 
 import { useCreateSchedule } from "../api/use-create-schedule";
 import { useUpdateSchedule } from "../api/use-update-schedule";
-import type { OverlapPolicy, ScheduleDetail, ScheduleStep } from "../types";
+import type { DispatchMode, OverlapPolicy, ScheduleDetail, ScheduleStep } from "../types";
+
+// dispatchModeOf derive DispatchMode จาก field ที่มีอยู่จริงใน step (ดู workflow.Step
+// ฝั่ง Go: TaskQueue/K8sJob เป็น optional field ที่ mutually exclusive กันโดยธรรมชาติ —
+// ไม่ได้เก็บเป็น field แยกตรงๆ ใน ScheduleStep เพราะ backend ไม่รู้จัก concept
+// "dispatch mode" เลย รู้แค่ว่า step มี task_queue/k8s_job หรือไม่เท่านั้น)
+function dispatchModeOf(step: ScheduleStep): DispatchMode {
+  if (step.k8s_job) return "k8s_job";
+  if (step.task_queue) return "remote_task_queue";
+  return "local";
+}
+
+const DISPATCH_MODE_LABELS: Record<DispatchMode, string> = {
+  local: "Local Bot",
+  remote_task_queue: "Remote Task Queue",
+  k8s_job: "Kubernetes Job",
+};
 
 // shellSchema คุม field ที่เป็น string ธรรมดาทั้งหมด (id, workflow_name, overlap) ผ่าน
 // react-hook-form + zod ตามปกติ — ส่วน "ตารางเวลา" (interval/cron toggle) กับ "steps"
@@ -100,6 +116,34 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
     setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, config: { ...s.config, [key]: value } } : s)));
   }
 
+  // setStepDispatchMode สลับโหมดของ step — ต้องเคลียร์ field ของโหมดเดิมทิ้งเสมอ (ไม่ใช่
+  // แค่เพิ่ม field ของโหมดใหม่เข้าไปเฉยๆ) เพราะ task_queue/k8s_job เป็น mutually
+  // exclusive กันฝั่ง backend (ดู workflow.go: "ห้ามตั้งทั้ง TaskQueue และ K8sJob พร้อมกัน")
+  // ตั้ง k8s_job เริ่มต้นเป็น {image: ""} ทันทีที่สลับมาโหมดนี้ (ไม่ใช่ undefined) เพื่อให้
+  // ฟอร์มด้านล่าง render input ของ image ได้เลยโดยไม่ต้องเช็ค step.k8s_job ทุกจุด
+  function setStepDispatchMode(index: number, mode: DispatchMode) {
+    setSteps((prev) =>
+      prev.map((s, i) => {
+        if (i !== index) return s;
+        // สร้าง base object จาก field ที่รู้จักตรงๆ (ไม่ destructure แล้วทิ้ง
+        // task_queue/k8s_job เดิม) เพื่อเคลียร์ทั้งสอง field นี้ให้แน่ใจว่าไม่มีค่าเก่า
+        // ของโหมดก่อนหน้าค้างอยู่ ไม่ว่าจะสลับมาโหมดไหนก็ตาม
+        const base: ScheduleStep = { bot_name: s.bot_name, config: s.config };
+        if (mode === "remote_task_queue") return { ...base, task_queue: "" };
+        if (mode === "k8s_job") return { ...base, k8s_job: { image: "" } };
+        return base;
+      }),
+    );
+  }
+  function setStepTaskQueue(index: number, value: string) {
+    setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, task_queue: value } : s)));
+  }
+  function setStepK8sJob(index: number, patch: Partial<NonNullable<ScheduleStep["k8s_job"]>>) {
+    setSteps((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, k8s_job: { ...s.k8s_job, ...patch, image: patch.image ?? s.k8s_job?.image ?? "" } } : s)),
+    );
+  }
+
   function configSchemaFor(botName: string): ConfigField[] {
     return bots?.find((b) => b.name === botName)?.config_schema ?? [];
   }
@@ -121,6 +165,13 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
           setFormError(`step ที่ใช้ bot "${step.bot_name}" ต้องกรอก "${field.label}"`);
           return;
         }
+      }
+      // K8s Job hybrid execution ต้องมี image เสมอ (ตรงกับ validation ฝั่ง backend ใน
+      // internal/workflow/k8sjob.go: RunKubernetesJob คืน bot.ConfigError ถ้าไม่มี) —
+      // เช็คตรงนี้ก่อน submit เพื่อให้ user เห็น error เร็วกว่ารอ backend ตอบกลับมา
+      if (step.k8s_job && !step.k8s_job.image.trim()) {
+        setFormError(`step ที่ใช้ bot "${step.bot_name}" (Kubernetes Job) ต้องกรอก "image"`);
+        return;
       }
     }
 
@@ -272,6 +323,85 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
                 />
               </div>
             ))}
+
+            {/* Dispatch mode: local bot (default) / remote Temporal task queue /
+                Kubernetes Job hybrid — ดู EXTERNAL-JOB-BOT-TODO.md,
+                REMOTE-JOB-WORKER-TODO.md, K8S-JOB-HYBRID-EXECUTION-TODO.md ฝั่ง backend
+                สำหรับความหมายเต็มๆ ของแต่ละทางเลือก bot_name ด้านบนยังจำเป็นต้องเลือก
+                เสมอไม่ว่าโหมดไหน (ใช้เป็นแค่ label ใน StepResult ถ้าไม่ใช่ local — ไม่ได้
+                ใช้ lookup อะไรฝั่ง backend เลยตอนนั้น) */}
+            <div className="rounded border border-gray-100 bg-gray-50 p-3">
+              <p className="mb-2 text-xs font-medium text-gray-500">รันที่ไหน</p>
+              <div className="mb-3 flex flex-wrap gap-4 text-sm">
+                {(Object.keys(DISPATCH_MODE_LABELS) as DispatchMode[]).map((mode) => (
+                  <label key={mode} className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={dispatchModeOf(step) === mode}
+                      onChange={() => setStepDispatchMode(index, mode)}
+                    />
+                    {DISPATCH_MODE_LABELS[mode]}
+                  </label>
+                ))}
+              </div>
+
+              {dispatchModeOf(step) === "remote_task_queue" && (
+                <div>
+                  <label className="block text-sm">Task Queue</label>
+                  <input
+                    type="text"
+                    placeholder="external-job-queue"
+                    value={step.task_queue ?? ""}
+                    onChange={(event) => setStepTaskQueue(index, event.target.value)}
+                    className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-mono"
+                  />
+                </div>
+              )}
+
+              {dispatchModeOf(step) === "k8s_job" && (
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="block text-sm">
+                      Image<span className="text-red-600"> *</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="registry.example.com/report-job:v1"
+                      value={step.k8s_job?.image ?? ""}
+                      onChange={(event) => setStepK8sJob(index, { image: event.target.value })}
+                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm">Args (คั่นด้วยจุลภาค)</label>
+                    <input
+                      type="text"
+                      placeholder="--jobcode=SEND_REPORT,--dry-run"
+                      value={(step.k8s_job?.args ?? []).join(",")}
+                      onChange={(event) =>
+                        setStepK8sJob(index, {
+                          args: event.target.value
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm">Namespace (ไม่บังคับ)</label>
+                    <input
+                      type="text"
+                      placeholder="bop-jobs"
+                      value={step.k8s_job?.namespace ?? ""}
+                      onChange={(event) => setStepK8sJob(index, { namespace: event.target.value || undefined })}
+                      className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         ))}
         <button

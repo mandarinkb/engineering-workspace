@@ -17,6 +17,8 @@ export function JobFilter() {
 
   const bot = searchParams.get("bot") ?? "";
   const status = searchParams.get("status") ?? "";
+  const from = searchParams.get("from") ?? "";
+  const to = searchParams.get("to") ?? "";
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -48,6 +50,27 @@ export function JobFilter() {
           </option>
         ))}
       </select>
+      {/* date-range filter — ผูกกับ URL param "from"/"to" ตาม pattern เดียวกับ
+          bot/status ด้านบนเป๊ะ เทียบ job.created_at (ISO timestamp string) กับค่าที่
+          กรอกใน job-table.tsx */}
+      <label className="flex items-center gap-2 text-sm text-gray-600">
+        จาก
+        <input
+          type="date"
+          value={from}
+          onChange={(event) => updateParam("from", event.target.value)}
+          className="rounded border border-gray-300 px-2 py-2 focus:border-blue-500 focus:outline-none"
+        />
+      </label>
+      <label className="flex items-center gap-2 text-sm text-gray-600">
+        ถึง
+        <input
+          type="date"
+          value={to}
+          onChange={(event) => updateParam("to", event.target.value)}
+          className="rounded border border-gray-300 px-2 py-2 focus:border-blue-500 focus:outline-none"
+        />
+      </label>
     </div>
   );
 }

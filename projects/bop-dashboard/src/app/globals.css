@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* @custom-variant ประกาศให้ "dark:" utility class (เช่น dark:bg-gray-900) ทำงานตาม
+   class "dark" บน <html> เท่านั้น (ควบคุมโดย src/app/theme-provider.tsx) ไม่ใช่ผูกกับ
+   prefers-color-scheme ของ OS ตรงๆ อีกต่อไป — Tailwind v4 ค่า default ถ้าไม่ประกาศ
+   variant นี้เอง จะผูก dark: กับ prefers-color-scheme ตายตัว ทำให้ toggle มือไม่ได้เลย */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -12,8 +18,17 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* .dark class ถูก toggle โดย theme-provider.tsx (+ inline script กัน flash ใน layout.tsx) */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+}
+
+/* fallback สำหรับกรณี JS ยังไม่ทำงาน (ปิด JS/ก่อน hydrate) — ใช้ prefers-color-scheme
+   ตรงๆ เฉพาะตอนยังไม่มี class "dark"/"light" ระบุไว้บน <html> เลยเท่านั้น ไม่งั้นจะ
+   ขัดกับค่าที่ user เลือกเองผ่าน toggle (ถูก override ด้วย .dark ด้านบนอยู่แล้วถ้ามี) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light):not(.dark) {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
