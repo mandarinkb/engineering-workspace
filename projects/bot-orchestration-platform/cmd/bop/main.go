@@ -57,9 +57,11 @@ func main() {
 	// workflow เอง (การสั่งรันอัตโนมัติตามตารางเวลาย้ายไปอยู่ที่ cmd/bop-worker ทั้งหมด
 	// แล้ว ผ่าน Temporal Schedule — ดูเหตุผลการแยก process ที่หัวไฟล์ cmd/bop-worker/main.go)
 	// ต้องรัน `docker compose up -d` (ดู docker-compose.yml) ให้ Temporal server พร้อมก่อน
-	// ไม่งั้น Dial จะ error ทันที
+	// ไม่งั้น Dial จะ error ทันที — อ่านจาก env var TEMPORAL_HOST_PORT ก่อนเสมอ (ตอน deploy
+	// จริงบน K8s ค่านี้จะชี้ไปที่ Service ของ Temporal แทน localhost) fallback เป็นค่าเดิม
+	// ถ้าไม่ได้ตั้ง env var ไว้ (เช่นตอน local dev)
 	temporalClient, err := client.Dial(client.Options{
-		HostPort:  "localhost:7233",
+		HostPort:  getenv("TEMPORAL_HOST_PORT", "localhost:7233"),
 		Namespace: workflow.Namespace,
 	})
 	if err != nil {
@@ -136,14 +138,25 @@ func runCLI(repo job.Repository, pool *worker.Pool, args []string) {
 	}
 }
 
-// serve เปิด HTTP API server ที่ port 8080 — ผูก dependency ทั้งหมดเข้ากับ Server
-// ที่ประกาศไว้ใน internal/api/http แล้วปล่อยให้ http.ListenAndServe รับ request เข้ามาเรื่อยๆ
-// จนกว่าโปรแกรมจะถูกปิด (Ctrl+C หรือ signal อื่น)
+// serve เปิด HTTP API server — ผูก dependency ทั้งหมดเข้ากับ Server ที่ประกาศไว้ใน
+// internal/api/http แล้วปล่อยให้ http.ListenAndServe รับ request เข้ามาเรื่อยๆ จนกว่า
+// โปรแกรมจะถูกปิด (Ctrl+C หรือ signal อื่น) — addr อ่านจาก env var BOP_HTTP_ADDR ก่อนเสมอ
+// fallback เป็น ":8080" เดิมถ้าไม่ได้ตั้ง (local dev)
 func serve(repo job.Repository, l logger.Logger, pool *worker.Pool, temporalClient client.Client, scheduleRepo schedule.Repository) {
 	srv := apihttp.NewServer(repo, l, pool, temporalClient, scheduleRepo)
-	addr := ":8080"
+	addr := getenv("BOP_HTTP_ADDR", ":8080")
 	fmt.Printf("bop api listening on %s\n", addr)
 	if err := http.ListenAndServe(addr, srv); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// getenv คืนค่า environment variable ชื่อ key ถ้าตั้งไว้ (และไม่ใช่ค่าว่าง) ไม่งั้นคืนค่า
+// fallback แทน — ใช้รวมจุดเดียวสำหรับ pattern "อ่านจาก env ก่อน ไม่มีค่อย fallback เป็นค่า
+// hardcode เดิม" ที่ใช้ซ้ำหลายจุดในไฟล์นี้ (BOP_HTTP_ADDR, TEMPORAL_HOST_PORT)
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

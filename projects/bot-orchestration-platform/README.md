@@ -154,7 +154,7 @@ curl -X POST localhost:8080/workflow-runs -d '{
 curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผลลัพธ์ผ่าน endpoint เดิมที่มีอยู่แล้ว ไม่ต้องเพิ่มอะไรใหม่
 ```
 
-**ข้อจำกัดที่ต้องรู้**: เหมือนกับ endpoint กลุ่ม `/schedules` — `POST /workflow-runs` ยังไม่เคยทดสอบ end-to-end จริงกับ Temporal server (ติด Docker permission ตอนเขียนโค้ดนี้เหมือนเดิม) มีแค่ unit test ของ validation logic ที่ error ก่อนแตะ Temporal client (`internal/api/http/handler_test.go`) และ regression test ว่า `Step.TaskQueue` ไม่ทำให้ `Execute` panic/error (`internal/workflow/temporal_test.go`) — การพิสูจน์ว่า activity ถูก route ข้าม task queue จริงต้องมี Temporal server จริงและ worker อย่างน้อย 2 ตัว (`TestWorkflowEnvironment` ของ SDK รัน activity ทุกตัว in-process เสมอ ไม่ simulate หลาย queue จริง)
+**สถานะ**: `POST /workflow-runs` ทดสอบ end-to-end จริงแล้วกับ Temporal server จริง (แก้ปัญหา Docker permission ได้แล้ว — เพิ่ม user เข้า `docker` group) — สร้าง ad-hoc run, เห็น step รันจริงและคืนผลลัพธ์ถูกต้อง (`GET /workflow-runs/{id}` เห็น `steps[]` ครบ) แถมยังเจอ transient network error จริงระหว่างทดสอบ (`i/o timeout` ตอนต่อ `example.com`) แล้ว Temporal retry อัตโนมัติจนสำเร็จ — พิสูจน์ RetryPolicy ทำงานถูกต้องกับ failure จริง ไม่ใช่แค่ทฤษฎี — **ส่วนที่ยังไม่ได้ verify**: การ route activity ข้าม task queue ไปยัง worker อีกตัว (`Step.TaskQueue`) ต้องมี worker ตัวที่สอง poll queue คนละชื่อกันจริง (เช่นรัน `projects/remote-job-worker/` คู่กัน) ยังไม่ได้ทดสอบชุดนี้
 
 ## รัน step ผ่าน Kubernetes Job (ephemeral container ต่อการรันหนึ่งครั้ง)
 
@@ -189,7 +189,7 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 
 **ข้อจำกัดที่ต้องรู้**: `internal/schedule` เป็น in-memory ล้วนๆ (เหมือน `job.Repository` ก่อนต่อ PostgreSQL จริงใน Phase 0.4) — restart `cmd/bop` แล้ว field `steps` ใน `GET /schedules/{id}` จะหายไป (Temporal เองยังรัน schedule ต่อปกติ ไม่กระทบการทำงานจริง แค่ BOP ลืมว่า workflow นั้น "ทำอะไร") เช่นเดียวกับ `check-example-com-schedule` ที่ `cmd/bop-worker` สร้างตรงผ่าน SDK (ไม่ผ่าน API นี้) จะไม่มี steps ให้ดูเลยตั้งแต่ต้น — ดู comment เต็มที่ `internal/schedule/schedule.go`
 
-**ยังไม่ทดสอบ end-to-end จริง** (ต้องมี Temporal server รันอยู่ — ติด Docker permission ตอนเขียนโค้ดนี้เหมือนเดิม) มีแค่ unit test ของ validation logic (`buildScheduleSpec`, `parseOverlapPolicy`) และ HTTP-level test ของ path ที่ error ก่อนแตะ Temporal client (`internal/api/http/schedule_internal_test.go`, `handler_test.go`)
+**สถานะ**: ทดสอบ end-to-end จริงแล้วครบทั้ง lifecycle (create → get → pause → **trigger** → unpause → delete) กับ Temporal server จริง — `trigger` ยืนยันแล้วว่าสั่งรันจริงได้แม้ schedule กำลัง paused อยู่ (เห็น workflow run ใหม่โผล่ใน `GET /workflow-runs` ทันที) ยังไม่ได้ทดสอบ `backfill` โดยเฉพาะ (path เดียวกับ trigger แค่ระบุช่วงเวลาย้อนหลัง คาดว่าทำงานเหมือนกัน แต่ยังไม่ได้ยืนยันจริง)
 
 ## Workflow และ Scheduler (Temporal)
 
@@ -233,7 +233,7 @@ wf := workflow.Workflow{
 **ช่องว่างที่สำคัญที่สุดตอนนี้ (เรียงตาม priority ใน [FEATURES.md](FEATURES.md))**:
 1. **PostgreSQL persistence** — `job.Repository`/`schedule.Repository` ยังเป็น in-memory ทั้งคู่ (Phase 0.4) เป็น prerequisite ของแทบทุกอย่างถัดจากนี้ รวมถึง Phase 3 enterprise feature ด้านล่าง
 2. **Job Dependency (DAG)** และ **Observability พื้นฐาน** (Phase 2.2) — ยังไม่มีเลยทั้งคู่
-3. **ยังไม่เคย verify end-to-end จริงกับ Temporal server/K8s cluster เลยสักครั้ง** — ทุก feature ผ่านแค่ unit test ระดับ `TestActivityEnvironment`/`TestWorkflowEnvironment`/fake K8s clientset (ติด Docker permission ตอน implement ทุกรอบ) ต้องทดสอบจริงก่อนเรียกว่า production-ready
+3. **Temporal server จริง verify แล้ว** (แก้ปัญหา Docker permission ได้แล้ว — เพิ่ม user เข้า `docker` group) ครอบคลุม: job เดี่ยว + SSE log stream, auth เต็ม flow, cancel job, Schedule CRUD เต็ม lifecycle, `POST /workflow-runs` (รวมเจอ+เห็น retry ของ transient network error จริง) — **ที่ยังไม่ verify**: route ข้าม task queue จริง (ต้องมี worker ตัวที่สอง), และ **K8s cluster ยังไม่มีเลย** (K8s Job hybrid execution ยังผ่านแค่ unit test ด้วย fake clientset — ดู [KUBERNETES-DEPLOYMENT-TODO.md](KUBERNETES-DEPLOYMENT-TODO.md))
 
 **Design doc ที่เขียนไว้ล่วงหน้า รอ implement**:
 - [PHASE3-ENTERPRISE-FEATURES-TODO.md](PHASE3-ENTERPRISE-FEATURES-TODO.md) — Condition-Based Triggering, Resource Pools, Flow Control, Approval Gate, Gantt View, Alert Triage, Job Versioning (ฝั่ง backend เต็มรูปแบบ พร้อมลำดับที่แนะนำให้ทำ — **ควรรอ PostgreSQL persistence เสร็จก่อน**)

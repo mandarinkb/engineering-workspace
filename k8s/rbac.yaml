@@ -1,0 +1,40 @@
+# RBAC สำหรับ K8s Job Hybrid Execution — ตอบ Open Question ข้อ 2 ของ
+# projects/bot-orchestration-platform/K8S-JOB-HYBRID-EXECUTION-TODO.md — bop-worker
+# (ที่รัน K8sJobActivities.RunKubernetesJob) ต้องมีสิทธิ์สร้าง/ดู/ลบ Job และอ่าน log ของ
+# Pod เฉพาะใน namespace bop-jobs เท่านั้น — ใช้ Role+RoleBinding (ไม่ใช่ ClusterRole
+# +ClusterRoleBinding) เพื่อ scope ให้แคบที่สุด ไม่ให้ bop-worker แตะ namespace อื่นได้เลย
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bop-worker
+  namespace: bop-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bop-job-runner
+  namespace: bop-jobs # สิทธิ์นี้ผูกกับ namespace bop-jobs เท่านั้น ไม่ข้ามไป bop-system
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bop-worker-job-runner
+  namespace: bop-jobs
+subjects:
+  - kind: ServiceAccount
+    name: bop-worker
+    namespace: bop-system # ServiceAccount อยู่ namespace bop-system แต่ได้สิทธิ์ใน bop-jobs
+roleRef:
+  kind: Role
+  name: bop-job-runner
+  apiGroup: rbac.authorization.k8s.io

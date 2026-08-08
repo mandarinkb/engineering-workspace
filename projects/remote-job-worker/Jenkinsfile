@@ -1,0 +1,60 @@
+// Jenkinsfile ของ repo remote-job-worker — ต่างจาก bot-orchestration-platform/bop-dashboard
+// ตรงที่มีแค่ CI (lint+vet+test) ไม่มี stage build image/deploy เลย เพราะโมดูลนี้เป็นแค่
+// "reference implementation" (ดู README.md) ยังไม่มี Dockerfile และไม่มี Deployment ใน
+// k8s/ ให้ deploy ไปจริง (ดู KUBERNETES-DEPLOYMENT-TODO.md — ไม่ได้รวม remote-job-worker
+// ไว้ในขอบเขต deploy ปัจจุบัน) — เพิ่ม stage build/deploy ทีหลังได้ทันทีที่มี jobcode จริง
+// และตัดสินใจ deploy จริง (ดู EXTERNAL-JOB-BOT-TODO.md Open Question ข้อ 1)
+pipeline {
+  agent {
+    kubernetes {
+      yaml """
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+            - name: go
+              image: golang:1.26
+              command: ['sleep']
+              args: ['infinity']
+            - name: gitleaks
+              image: zricethezav/gitleaks:latest
+              command: ['sleep']
+              args: ['infinity']
+      """
+    }
+  }
+
+  stages {
+    stage('Secret Scan') {
+      steps {
+        container('gitleaks') {
+          sh 'gitleaks detect --source . -v --exit-code 1'
+        }
+      }
+    }
+
+    stage('Lint + Vet') {
+      steps {
+        container('go') {
+          sh 'go vet ./...'
+          sh 'gofmt -l . | tee /tmp/fmt.out && [ ! -s /tmp/fmt.out ]'
+        }
+      }
+    }
+
+    stage('Test') {
+      steps {
+        container('go') {
+          sh 'go test -race ./...'
+        }
+      }
+    }
+  }
+
+  post {
+    always { junit allowEmptyResults: true, testResults: '**/test-report.xml' }
+    failure {
+      slackSend channel: '#bop-ci', color: 'danger', message: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})", tokenCredentialId: 'bop-slack-webhook'
+    }
+  }
+}

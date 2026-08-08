@@ -1,0 +1,40 @@
+# ServiceAccount + Role ของ Jenkins agent pod ตาม JENKINS-CICD-TODO.md หัวข้อ 1 — จำกัด
+# สิทธิ์ agent ให้สร้าง/ลบ Pod ได้แค่ใน namespace jenkins เท่านั้น (least privilege เดียวกับ
+# หลักการที่ใช้กับ bop-worker ใน KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 4 — ดู k8s/rbac.yaml)
+# ตัว Jenkins controller เองสร้าง Role/RoleBinding ผูก ServiceAccount นี้ให้อัตโนมัติผ่าน
+# Kubernetes plugin เมื่อตั้งค่า Kubernetes Cloud ให้ใช้ ServiceAccount ชื่อนี้ — ไฟล์นี้แค่
+# ประกาศ ServiceAccount+Role ล่วงหน้าให้ apply ก่อน deploy Jenkins เอง (`helm install jenkins
+# jenkins/jenkins -n jenkins --create-namespace`)
+#
+# หมายเหตุ: ต่างจาก k8s/rbac.yaml ของ BOP ตรงที่ RoleBinding ผูกใน namespace เดียวกับที่
+# ServiceAccount อยู่ (jenkins) เพราะ agent pod ที่ Jenkins สั่งสร้างต้องอยู่ namespace jenkins
+# เอง ไม่ใช่ namespace อื่นแบบ bop-worker ที่ทำงานข้าม namespace ไปยัง bop-jobs
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins-agent
+  namespace: jenkins
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jenkins-agent-runner
+  namespace: jenkins
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec", "pods/log"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-agent-runner
+  namespace: jenkins
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-agent
+    namespace: jenkins
+roleRef:
+  kind: Role
+  name: jenkins-agent-runner
+  apiGroup: rbac.authorization.k8s.io

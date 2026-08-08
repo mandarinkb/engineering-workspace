@@ -16,6 +16,8 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
+	"os"
 	"time"
 
 	"go.temporal.io/sdk/activity"
@@ -35,24 +37,43 @@ import (
 // k8sJobDefaultNamespace คือ namespace ที่ K8s Job hybrid execution (ดู
 // K8S-JOB-HYBRID-EXECUTION-TODO.md) จะสร้าง Job ถ้า workflow.Step.K8sJob.Namespace ไม่ได้
 // ระบุมา — ตั้งใจแยกจาก namespace ที่ BOP เอง/Temporal worker รันอยู่ (blast radius,
-// resource quota แยกกันชัดเจน ดู Open Question ข้อ 3 ของเอกสารนั้น) hardcode ไปก่อนตาม
-// pattern เดียวกับค่าคงที่อื่นๆ ในโปรเจกต์นี้ (เช่น ":8080" ใน cmd/bop/main.go)
-const k8sJobDefaultNamespace = "bop-jobs"
+// resource quota แยกกันชัดเจน ดู Open Question ข้อ 3 ของเอกสารนั้น) อ่านจาก env var
+// K8S_JOB_DEFAULT_NAMESPACE ก่อนเสมอ fallback เป็น "bop-jobs" เดิมถ้าไม่ได้ตั้ง
+var k8sJobDefaultNamespace = getenv("K8S_JOB_DEFAULT_NAMESPACE", "bop-jobs")
+
+// workerHealthAddr คือ port ที่เปิด HTTP server เล็กๆ ไว้ตอบ K8s liveness probe เท่านั้น
+// (ดู KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 7) — process นี้ปกติไม่เปิด HTTP server เลย
+// เพราะทำงานแค่ poll Temporal task queue แต่ K8s ต้องมีทางเช็คว่า process ยัง alive อยู่ไหม
+const workerHealthAddr = ":9090"
 
 func main() {
 	// ขั้นตอนที่ 1: ต่อ Temporal client เข้ากับ Temporal server (ดู docker-compose.yml
 	// ที่ root ของโปรเจกต์ — ต้อง `docker compose up -d` ให้ server พร้อมก่อนรัน process นี้)
-	// ที่อยู่ "localhost:7233" คือ gRPC endpoint default ของ Temporal server (แค่ hardcode
-	// ไปก่อนเหมือนที่ cmd/bop hardcode addr ":8080" ไว้ ไม่เพิ่ม flag/env var จนกว่าจะมี
-	// ความจำเป็นจริง)
+	// อ่านจาก env var TEMPORAL_HOST_PORT ก่อนเสมอ fallback เป็น "localhost:7233" (gRPC
+	// endpoint default ของ Temporal server) ถ้าไม่ได้ตั้ง — ตอน deploy จริงบน K8s ค่านี้จะ
+	// ชี้ไปที่ Service ของ Temporal แทน
 	c, err := client.Dial(client.Options{
-		HostPort:  "localhost:7233",
+		HostPort:  getenv("TEMPORAL_HOST_PORT", "localhost:7233"),
 		Namespace: workflow.Namespace,
 	})
 	if err != nil {
 		log.Fatalf("connect to temporal: %v", err)
 	}
 	defer c.Close()
+
+	// ขั้นตอนที่ 1.5: เปิด HTTP server เล็กๆ แยกต่างหากใน goroutine คู่ขนาน มีไว้ตอบ
+	// K8s liveness probe เท่านั้น (ดู workerHealthAddr ด้านบน) — รันแยกจาก w.Run() ด้านล่าง
+	// เพราะ w.Run() เป็น blocking call ที่ค้างอยู่จนกว่าโปรแกรมจะถูกปิด ถ้าเปิด HTTP server
+	// แบบ blocking (ไม่ใช้ goroutine) โค้ดจะไม่มีทางไปถึงบรรทัด w.Run() เลย
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		if err := http.ListenAndServe(workerHealthAddr, mux); err != nil {
+			log.Printf("worker health server stopped: %v", err)
+		}
+	}()
 
 	// ขั้นตอนที่ 2: เตรียม Activities — เป็น registry ของ bot ที่ workflow เรียกใช้ได้
 	// (คนละ registry กับ worker.Pool ใน cmd/bop เพราะเป็นคนละ process กัน ดูหมายเหตุยาว
@@ -147,4 +168,15 @@ func ensureExampleSchedule(ctx context.Context, c client.Client) {
 		log.Fatalf("create schedule: %v", err)
 	}
 	log.Println("created schedule check-example-com-schedule")
+}
+
+// getenv คืนค่า environment variable ชื่อ key ถ้าตั้งไว้ (และไม่ใช่ค่าว่าง) ไม่งั้นคืนค่า
+// fallback แทน — ใช้รวมจุดเดียวสำหรับ pattern "อ่านจาก env ก่อน ไม่มีค่อย fallback เป็นค่า
+// hardcode เดิม" (เหมือนกับ getenv ใน cmd/bop/main.go แต่เป็นคนละ package กันจึงต้องมีของ
+// ตัวเอง)
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

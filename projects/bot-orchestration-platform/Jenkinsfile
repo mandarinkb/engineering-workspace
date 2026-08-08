@@ -1,0 +1,175 @@
+// Jenkinsfile ของ repo bot-orchestration-platform — build 2 image จาก commit เดียวกัน
+// (bop-api จาก cmd/bop, bop-worker จาก cmd/bop-worker) เพราะทั้งคู่ต้อง version ตรงกันเสมอ
+// (ดู JENKINS-CICD-TODO.md หัวข้อ 2 "Multi-repo Pipeline Strategy")
+//
+// ยังไม่เคยรันบน Jenkins จริง — เขียนตามร่างในหัวข้อ 3 ของเอกสาร มี fix 2 จุดจากร่างเดิม:
+// (1) เติม container "trivy"/"kubectl"/"gitleaks" เข้า podTemplate ที่ร่างเดิมลืมใส่ไว้
+//     (stage เดิมเรียก container('trivy')/container('kubectl') ทั้งที่ podTemplate มีแค่
+//     go/kaniko — รันจริงจะ fail ทันทีเพราะไม่มี container ชื่อนั้นใน pod)
+// (2) เพิ่ม stage Secret Scan (gitleaks) ตามหัวข้อ 6 ข้อ 1 ที่ร่างเดิมมีแค่ comment อ้างถึง
+//     ไม่มีโค้ดจริง
+//
+// Prerequisite ที่ยังไม่ resolve ก่อนรันได้จริง (บันทึกไว้ให้ชัดแทนที่จะเดาเอา):
+// - Registry จริง (Open Question ข้อ 2) — REGISTRY/credential ยังเป็น placeholder ID
+// - staging namespace/cluster (Open Question ข้อ 3) — k8s/ ตอนนี้มีแค่ bop-system เดียว
+//   ไม่มี staging แยกเลย ต้องตัดสินใจ+สร้าง manifest staging ก่อน stage "Deploy to Staging"
+//   จะรันผ่านจริง (--context=staging ด้านล่างอ้างถึง context ที่ยังไม่มีอยู่จริง)
+pipeline {
+  agent {
+    kubernetes {
+      yaml """
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+            - name: go
+              image: golang:1.26
+              command: ['sleep']
+              args: ['infinity']
+            - name: gitleaks
+              image: zricethezav/gitleaks:latest
+              command: ['sleep']
+              args: ['infinity']
+            - name: kaniko
+              image: gcr.io/kaniko-project/executor:debug
+              command: ['sleep']
+              args: ['infinity']
+            - name: trivy
+              image: aquasec/trivy:latest
+              command: ['sleep']
+              args: ['infinity']
+            - name: kubectl
+              image: bitnami/kubectl:latest
+              command: ['sleep']
+              args: ['infinity']
+      """
+    }
+  }
+
+  environment {
+    IMAGE_TAG = "${env.GIT_COMMIT.take(8)}"
+    REGISTRY  = credentials('bop-registry-url') // ดู JENKINS-CICD-TODO.md หัวข้อ 4
+  }
+
+  stages {
+    // secret scanning อยู่สเตจแรกสุดตั้งใจ (หัวข้อ 6 ข้อ 1) — กัน credential ที่หลุดเข้า
+    // commit history ไม่ให้ไหลต่อไปสเตจอื่นๆ เลยแม้แต่ก้าวเดียว
+    stage('Secret Scan') {
+      steps {
+        container('gitleaks') {
+          sh 'gitleaks detect --source . -v --exit-code 1'
+        }
+      }
+    }
+
+    stage('Lint + Vet') {
+      steps {
+        container('go') {
+          sh 'go vet ./...'
+          sh 'gofmt -l . | tee /tmp/fmt.out && [ ! -s /tmp/fmt.out ]' // fail ถ้ามีไฟล์ format ไม่ตรง
+        }
+      }
+    }
+
+    stage('Test') {
+      steps {
+        container('go') {
+          // -race บังคับเสมอ — โปรเจกต์นี้เจอ data race จริงมาแล้วครั้งหนึ่งตอน implement
+          // worker.Pool (ดู README.md "บทเรียนที่เจอจริงระหว่างสร้าง") ไม่มีเหตุผลจะปิด
+          // flag นี้ใน CI เลย
+          sh 'go test -race ./...'
+        }
+      }
+    }
+
+    stage('Build Images') {
+      when { branch 'main' } // PR build ไม่ต้อง build image จริง (ดูหัวข้อ 5)
+      parallel {
+        stage('bop-api') {
+          steps {
+            container('kaniko') {
+              sh """
+                /kaniko/executor \
+                  --dockerfile=cmd/bop/Dockerfile \
+                  --context=. \
+                  --destination=${REGISTRY}/bop-api:${IMAGE_TAG} \
+                  --destination=${REGISTRY}/bop-api:latest
+              """
+            }
+          }
+        }
+        stage('bop-worker') {
+          steps {
+            container('kaniko') {
+              sh """
+                /kaniko/executor \
+                  --dockerfile=cmd/bop-worker/Dockerfile \
+                  --context=. \
+                  --destination=${REGISTRY}/bop-worker:${IMAGE_TAG} \
+                  --destination=${REGISTRY}/bop-worker:latest
+              """
+            }
+          }
+        }
+      }
+    }
+
+    stage('Image Scan') {
+      when { branch 'main' }
+      steps {
+        container('trivy') {
+          // exit-code 1 = build fail ถ้าเจอ CRITICAL — ดูหัวข้อ 6 ข้อ 2
+          sh "trivy image --severity CRITICAL --exit-code 1 ${REGISTRY}/bop-api:${IMAGE_TAG}"
+          sh "trivy image --severity CRITICAL --exit-code 1 ${REGISTRY}/bop-worker:${IMAGE_TAG}"
+        }
+      }
+    }
+
+    stage('Deploy to Staging') {
+      when { branch 'main' }
+      steps {
+        container('kubectl') {
+          sh """
+            kubectl set image deployment/bop-api bop-api=${REGISTRY}/bop-api:${IMAGE_TAG} -n bop-system --context=staging
+            kubectl set image deployment/bop-worker bop-worker=${REGISTRY}/bop-worker:${IMAGE_TAG} -n bop-system --context=staging
+            kubectl rollout status deployment/bop-api -n bop-system --context=staging --timeout=120s
+          """
+        }
+      }
+    }
+
+    stage('Approve Production') {
+      when { branch 'main' }
+      // input step หยุด pipeline รอ manual approval — เทียบเท่า Approval Gate ที่ออกแบบ
+      // ไว้ให้ BOP เองใน PHASE3-ENTERPRISE-FEATURES-TODO.md (3.4) พอดี ต่างกันแค่ตรงนี้
+      // เป็น Jenkins ทำให้เอง ไม่ต้องมี Temporal Signal
+      steps {
+        input message: 'Deploy to production?', submitter: 'platform-team'
+      }
+    }
+
+    stage('Deploy to Production') {
+      when { branch 'main' }
+      steps {
+        container('kubectl') {
+          sh """
+            kubectl set image deployment/bop-api bop-api=${REGISTRY}/bop-api:${IMAGE_TAG} -n bop-system --context=production
+            kubectl set image deployment/bop-worker bop-worker=${REGISTRY}/bop-worker:${IMAGE_TAG} -n bop-system --context=production
+            kubectl rollout status deployment/bop-api -n bop-system --context=production --timeout=120s
+          """
+        }
+        // audit trail แบบ manual (หัวข้อ 8) — ใครกด approve เมื่อไหร่ deploy อะไรไป
+        // เห็นใน Slack history ทันที ไม่ต้องไปขุด Jenkins build log เอง
+        slackSend channel: '#bop-ci', color: 'good', message: "DEPLOYED to production: ${env.JOB_NAME} #${env.BUILD_NUMBER} (image tag ${IMAGE_TAG})", tokenCredentialId: 'bop-slack-webhook'
+      }
+    }
+  }
+
+  post {
+    always { junit allowEmptyResults: true, testResults: '**/test-report.xml' }
+    failure {
+      // ดูหัวข้อ 8 Notifications — webhook URL เก็บเป็น Jenkins Credential เสมอ ไม่ hardcode
+      slackSend channel: '#bop-ci', color: 'danger', message: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})", tokenCredentialId: 'bop-slack-webhook'
+    }
+  }
+}

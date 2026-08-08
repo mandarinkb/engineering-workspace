@@ -1,0 +1,29 @@
+# ConfigMap (ค่าไม่ลับ) + Secret ตัวอย่าง (แค่โชว์ shape ที่โค้ดต้องอ่าน ไม่ใช่ค่าจริง)
+# ตาม KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 3.3/3.4 — ค่าทั้งหมดตรงกับ env var ที่
+# cmd/bop/main.go, cmd/bop-worker/main.go, internal/api/http/handler.go อ่านจริงหลังแก้
+# ตาม prerequisite เชิงโค้ดของเอกสารนั้น
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bop-config
+  namespace: bop-system
+data:
+  BOP_HTTP_ADDR: ":8080"
+  TEMPORAL_HOST_PORT: "temporal-frontend.bop-system.svc.cluster.local:7233"
+  K8S_JOB_DEFAULT_NAMESPACE: "bop-jobs"
+  BOP_DASHBOARD_ORIGIN: "https://app.bop.example.com"
+---
+# ห้าม commit ไฟล์ที่มี stringData จริงเข้า git เด็ดขาด — ค่าด้านล่างเป็นแค่ placeholder
+# ใน production ควรใช้ Sealed Secrets (https://github.com/bitnami-labs/sealed-secrets)
+# หรือ External Secrets Operator แทนการ apply Secret manifest ตรงๆ (ดู Open Question
+# ข้อ 5 ของ KUBERNETES-DEPLOYMENT-TODO.md)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bop-secrets
+  namespace: bop-system
+type: Opaque
+stringData:
+  BOP_JWT_SECRET: "<สุ่มใหม่ด้วย openssl rand -base64 32 — ห้ามใช้ค่า dev เดิมเด็ดขาด>"
+  BOP_ADMIN_USERNAME: "<กำหนดเอง>"
+  BOP_ADMIN_PASSWORD: "<สุ่มใหม่ ห้ามเป็น changeme>"

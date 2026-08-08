@@ -1,0 +1,31 @@
+# เลือก subdomain แยก (api./app.) แทน path-based (/api + /) ตอบ Open Question ข้อ 1 ของ
+# KUBERNETES-DEPLOYMENT-TODO.md — เหตุผล: โค้ดปัจจุบัน (internal/api/http/handler.go)
+# ยังคง CORS ผ่าน BOP_DASHBOARD_ORIGIN ไว้ (ไม่ได้แก้ dashboard ให้เรียกผ่าน path เดียวกัน
+# ซึ่งเป็นงานฝั่ง frontend แยกต่างหาก) subdomain จึงตรงกับสิ่งที่ implement จริงตอนนี้โดย
+# ไม่ต้องแก้โค้ดเพิ่ม — เปลี่ยนเป็น path-based ทีหลังได้ถ้าตัดสินใจเปลี่ยนทาง แต่ต้องแก้
+# CORS logic ฝั่ง backend กับ path prefix ฝั่ง frontend คู่กันด้วย
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bop-ingress
+  namespace: bop-system
+  annotations:
+    # cert-manager ออก TLS cert อัตโนมัติผ่าน Let's Encrypt — ดู Open Question เรื่อง TLS
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts: [api.bop.example.com, app.bop.example.com]
+      secretName: bop-tls
+  rules:
+    - host: api.bop.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: bop-api, port: { number: 80 } } }
+    - host: app.bop.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: bop-dashboard, port: { number: 80 } } }

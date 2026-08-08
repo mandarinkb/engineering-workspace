@@ -1,0 +1,136 @@
+// Jenkinsfile ของ repo bop-dashboard — โครงเดียวกับ Jenkinsfile ของ
+// bot-orchestration-platform (ดู JENKINS-CICD-TODO.md หัวข้อ 3) สลับ go test/go vet เป็น
+// npm run typecheck/lint/test และ container('go') เป็น container('node') ตามที่เอกสาร
+// ระบุไว้ — คำสั่ง npm ที่ใช้ตรงกับ scripts จริงใน package.json (typecheck/lint/test)
+//
+// ยังไม่เคยรันบน Jenkins จริง (เหตุผลเดียวกับ Jenkinsfile ของ bot-orchestration-platform —
+// ดู comment หัวไฟล์นั้น) รวมถึง prerequisite เรื่อง registry/staging namespace ที่ยัง
+// ไม่ resolve เหมือนกัน
+pipeline {
+  agent {
+    kubernetes {
+      yaml """
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+            - name: node
+              image: node:22-alpine
+              command: ['sleep']
+              args: ['infinity']
+            - name: gitleaks
+              image: zricethezav/gitleaks:latest
+              command: ['sleep']
+              args: ['infinity']
+            - name: kaniko
+              image: gcr.io/kaniko-project/executor:debug
+              command: ['sleep']
+              args: ['infinity']
+            - name: trivy
+              image: aquasec/trivy:latest
+              command: ['sleep']
+              args: ['infinity']
+            - name: kubectl
+              image: bitnami/kubectl:latest
+              command: ['sleep']
+              args: ['infinity']
+      """
+    }
+  }
+
+  environment {
+    IMAGE_TAG = "${env.GIT_COMMIT.take(8)}"
+    REGISTRY  = credentials('bop-registry-url')
+  }
+
+  stages {
+    stage('Secret Scan') {
+      steps {
+        container('gitleaks') {
+          sh 'gitleaks detect --source . -v --exit-code 1'
+        }
+      }
+    }
+
+    stage('Lint + Typecheck') {
+      steps {
+        container('node') {
+          sh 'npm ci'
+          sh 'npm run lint'
+          sh 'npm run typecheck'
+        }
+      }
+    }
+
+    stage('Test') {
+      steps {
+        container('node') {
+          sh 'npm run test'
+        }
+      }
+    }
+
+    stage('Build Image') {
+      when { branch 'main' }
+      steps {
+        container('kaniko') {
+          sh """
+            /kaniko/executor \
+              --dockerfile=Dockerfile \
+              --context=. \
+              --destination=${REGISTRY}/bop-dashboard:${IMAGE_TAG} \
+              --destination=${REGISTRY}/bop-dashboard:latest
+          """
+        }
+      }
+    }
+
+    stage('Image Scan') {
+      when { branch 'main' }
+      steps {
+        container('trivy') {
+          sh "trivy image --severity CRITICAL --exit-code 1 ${REGISTRY}/bop-dashboard:${IMAGE_TAG}"
+        }
+      }
+    }
+
+    stage('Deploy to Staging') {
+      when { branch 'main' }
+      steps {
+        container('kubectl') {
+          sh """
+            kubectl set image deployment/bop-dashboard bop-dashboard=${REGISTRY}/bop-dashboard:${IMAGE_TAG} -n bop-system --context=staging
+            kubectl rollout status deployment/bop-dashboard -n bop-system --context=staging --timeout=120s
+          """
+        }
+      }
+    }
+
+    stage('Approve Production') {
+      when { branch 'main' }
+      steps {
+        input message: 'Deploy to production?', submitter: 'platform-team'
+      }
+    }
+
+    stage('Deploy to Production') {
+      when { branch 'main' }
+      steps {
+        container('kubectl') {
+          sh """
+            kubectl set image deployment/bop-dashboard bop-dashboard=${REGISTRY}/bop-dashboard:${IMAGE_TAG} -n bop-system --context=production
+            kubectl rollout status deployment/bop-dashboard -n bop-system --context=production --timeout=120s
+          """
+        }
+        slackSend channel: '#bop-ci', color: 'good', message: "DEPLOYED to production: ${env.JOB_NAME} #${env.BUILD_NUMBER} (image tag ${IMAGE_TAG})", tokenCredentialId: 'bop-slack-webhook'
+      }
+    }
+  }
+
+  post {
+    always { junit allowEmptyResults: true, testResults: '**/test-report.xml' }
+    failure {
+      slackSend channel: '#bop-ci', color: 'danger', message: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})", tokenCredentialId: 'bop-slack-webhook'
+    }
+  }
+}

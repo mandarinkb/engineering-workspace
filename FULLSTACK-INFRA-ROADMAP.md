@@ -125,8 +125,8 @@ roadmap นี้ผูกทุกหัวข้อเข้ากับกา
 ### 2.1 Containerize + Deploy พื้นฐาน
 
 - [ ] [Docker](books/07-docker/README.md) — เขียน Dockerfile แยกให้ Go API, Go worker, และ Next.js dashboard (multi-stage build ให้ image เล็ก)
-- [ ] [Kubernetes](books/08-kubernetes/README.md) — deploy 3 ส่วนเป็น Deployment แยกกัน, ตั้ง Service เชื่อมกัน, Ingress ให้ dashboard เข้าถึงจากภายนอกได้
-- [ ] [CI/CD](books/16-cicd/README.md) — pipeline build image ทั้ง 3 ส่วน, push ขึ้น registry, deploy อัตโนมัติเมื่อ merge
+- [ ] [Kubernetes](books/08-kubernetes/README.md) — deploy 3 ส่วนเป็น Deployment แยกกัน, ตั้ง Service เชื่อมกัน, Ingress ให้ dashboard เข้าถึงจากภายนอกได้ — design doc เต็มเขียนไว้ล่วงหน้าแล้วที่ [KUBERNETES-DEPLOYMENT-TODO.md](KUBERNETES-DEPLOYMENT-TODO.md) (Dockerfile ต่อ component, manifest, RBAC/namespace สำหรับ K8s Job hybrid execution ที่ implement โค้ดไปแล้ว, health check ที่ต้องเพิ่ม) ยังไม่ implement
+- [ ] [CI/CD](books/16-cicd/README.md) — pipeline build image ทั้ง 3 ส่วน, push ขึ้น registry, deploy อัตโนมัติเมื่อ merge — design doc เต็ม (เลือกใช้ Jenkins) เขียนไว้ล่วงหน้าแล้วที่ [JENKINS-CICD-TODO.md](JENKINS-CICD-TODO.md) ยังไม่ implement
 
 **เช็คพอยต์**: push โค้ดแล้ว BOP ทั้งระบบ (API + worker + dashboard) deploy ขึ้น K8s เองอัตโนมัติ ไม่ deploy มือ
 

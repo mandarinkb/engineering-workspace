@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -46,9 +47,21 @@ func NewServer(repo job.Repository, log logger.Logger, pool *worker.Pool, tempor
 // dashboardOrigin คือ origin ของ Next.js dev server (projects/bop-dashboard/) — ต้องเปิด
 // CORS ให้ origin นี้เรียก API ได้ เพราะ dashboard แยก repo/deploy ออกจาก backend ไปเลย
 // (ไม่ใช่ same-origin) ดู decision log ที่ projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md
-// — hardcode ไปก่อนเหมือนค่าคงที่อื่นๆ ในไฟล์นี้ (เช่น addr ":8080" ใน cmd/bop/main.go)
-// พอ deploy จริงค่อยเปลี่ยนเป็นอ่านจาก environment variable
-const dashboardOrigin = "http://localhost:3000"
+// — อ่านจาก env var BOP_DASHBOARD_ORIGIN ก่อนเสมอ (ตอน deploy จริงค่านี้จะเป็น origin
+// จริงของ dashboard เช่น https://bop.example.com) fallback เป็น localhost:3000 เดิมถ้า
+// ไม่ได้ตั้ง (local dev)
+var dashboardOrigin = getenv("BOP_DASHBOARD_ORIGIN", "http://localhost:3000")
+
+// getenv คืนค่า environment variable ชื่อ key ถ้าตั้งไว้ (และไม่ใช่ค่าว่าง) ไม่งั้นคืนค่า
+// fallback แทน — ใช้รวมจุดเดียวสำหรับ pattern "อ่านจาก env ก่อน ไม่มีค่อย fallback เป็นค่า
+// hardcode เดิม" ที่ใช้ซ้ำหลายจุดในไฟล์นี้ (dashboardOrigin, authSecret, adminUsername,
+// adminPassword)
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 // ServeHTTP ทำให้ Server เป็น http.Handler ได้ — ก่อนส่งต่อให้ mux ภายในจัดการ จะใส่
 // CORS header ให้ทุก response ก่อนเสมอ (Access-Control-Allow-Credentials ต้องเป็น "true"
@@ -72,6 +85,25 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // routes ลงทะเบียน endpoint ทั้งหมดของ API — ใช้ syntax "METHOD /path" ของ Go 1.22+
 // ที่รองรับ wildcard แบบ {name} ในตัว ServeMux เองโดยไม่ต้องพึ่ง library ภายนอก
 func (s *Server) routes() {
+	// GET /healthz — liveness: process ยังตอบสนองอยู่ไหม (ไม่เช็ค dependency ภายนอกเลย
+	// ตั้งใจ — liveness fail = K8s restart Pod ทันที ไม่ควร restart แค่เพราะ Temporal
+	// server ช้าชั่วคราว นั่นเป็นหน้าที่ของ readiness ไม่ใช่ liveness)
+	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// GET /readyz — readiness: process พร้อมรับ traffic จริงไหม (เช็คว่าต่อ Temporal ได้อยู่)
+	// K8s หยุดส่ง traffic มาที่ Pod นี้ชั่วคราว (ไม่ restart) ถ้า readiness fail — ต่างจาก
+	// liveness ตรงนี้แหละ: Temporal ล่มชั่วคราวไม่ควรทำให้ Pod ถูก restart วนไปเรื่อยๆ
+	// (CrashLoopBackOff) แค่หยุดรับ traffic จนกว่า Temporal จะกลับมา
+	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := s.temporal.CheckHealth(r.Context(), &client.CheckHealthRequest{}); err != nil {
+			http.Error(w, "temporal unreachable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
 	s.mux.HandleFunc("GET /bots", s.handleListBots)                       // ดูรายชื่อ bot ที่ register ไว้ทั้งหมด + config schema ของแต่ละตัว
 	s.mux.HandleFunc("POST /bots/{name}/jobs", s.handleCreateJob)         // สร้าง job ใหม่และสั่งรันทันที
 	s.mux.HandleFunc("GET /jobs", s.handleListJobs)                       // ดูรายการ job ทั้งหมด
@@ -286,19 +318,20 @@ func writeSSELine(w http.ResponseWriter, line logger.Line) {
 // ตอนอ่าน (handleMe), และตอนล้าง (handleLogout)
 const cookieName = "bop_session"
 
-// authSecret คือ key ที่ใช้เซ็น/ตรวจ JWT (ดู internal/auth) — hardcode ไปก่อนสำหรับ
-// local dev เหมือนค่าคงที่อื่นๆ ในไฟล์นี้ **ห้ามใช้ค่านี้ใน production เด็ดขาด** ต้อง
-// เปลี่ยนไปอ่านจาก environment variable ก่อน deploy จริง (บันทึกไว้เป็น Open Question
-// ใน projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md แล้ว)
-var authSecret = []byte("bop-dev-secret-change-me-before-deploying")
+// authSecret คือ key ที่ใช้เซ็น/ตรวจ JWT (ดู internal/auth) — อ่านจาก env var
+// BOP_JWT_SECRET ก่อนเสมอ **ห้ามใช้ค่า fallback นี้ใน production เด็ดขาด** ต้องสุ่มค่าใหม่
+// ด้วย `openssl rand -base64 32` แล้วตั้งผ่าน K8s Secret ก่อน deploy จริง (ดู
+// KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 3.4) fallback นี้มีไว้ให้ local dev ใช้งานได้โดยไม่
+// ต้องตั้ง env var เท่านั้น
+var authSecret = []byte(getenv("BOP_JWT_SECRET", "bop-dev-secret-change-me-before-deploying"))
 
-// adminUsername/adminPassword คือ credential เดียวที่ระบบรู้จักตอนนี้ — hardcode ไปก่อน
-// เพราะยังไม่มี user database เลย (BOP เป็น single-operator tool ควบคุม bot ของตัวเอง
-// ไม่ใช่ multi-tenant SaaS ที่ต้องมี user table จริงจังตั้งแต่ต้น) เปลี่ยนเป็นอ่านจาก
-// environment variable ก่อน deploy จริงเหมือน authSecret ด้านบน
-const (
-	adminUsername = "admin"
-	adminPassword = "changeme"
+// adminUsername/adminPassword คือ credential เดียวที่ระบบรู้จักตอนนี้ — เพราะยังไม่มี user
+// database เลย (BOP เป็น single-operator tool ควบคุม bot ของตัวเอง ไม่ใช่ multi-tenant
+// SaaS ที่ต้องมี user table จริงจังตั้งแต่ต้น) อ่านจาก env var BOP_ADMIN_USERNAME/
+// BOP_ADMIN_PASSWORD ก่อนเสมอ **ห้ามใช้ค่า fallback นี้ใน production เด็ดขาด**
+var (
+	adminUsername = getenv("BOP_ADMIN_USERNAME", "admin")
+	adminPassword = getenv("BOP_ADMIN_PASSWORD", "changeme")
 )
 
 // loginRequest คือ JSON body ที่ POST /login ต้องรับ

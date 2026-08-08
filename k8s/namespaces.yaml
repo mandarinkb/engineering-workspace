@@ -1,0 +1,13 @@
+# Namespace design ตาม KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 1 — แยก 2 namespace เพื่อจำกัด
+# blast radius: bop-system รัน Deployment/Service ของระบบเอง (bop-api, bop-worker,
+# dashboard) ส่วน bop-jobs มีไว้ให้ K8sJobActivities (RunKubernetesJob) สร้าง Job ของ
+# ผู้ใช้เท่านั้น (image ที่ผู้ใช้ระบุเอง ไม่ควรมีสิทธิ์แตะทรัพยากรของระบบเลย)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bop-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bop-jobs

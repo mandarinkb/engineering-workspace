@@ -1,0 +1,112 @@
+# Deployment ทั้ง 3 component ตาม KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 3.2 — image tag
+# ต้องเปลี่ยนจาก "dev" เป็น git SHA จริงตอนใช้กับ CI/CD (ดู JENKINS-CICD-TODO.md)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bop-api
+  namespace: bop-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: bop-api }
+  template:
+    metadata:
+      labels: { app: bop-api }
+    spec:
+      containers:
+        - name: bop-api
+          image: bop-api:dev # tag = git SHA ตอน deploy จริง — ดู JENKINS-CICD-TODO.md
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef: { name: bop-config }
+            - secretRef: { name: bop-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      # securityContext ระดับ Pod: ไม่ต้องรัน root, ปิด privilege escalation — ตรงกับที่
+      # distroless "nonroot" image (cmd/bop/Dockerfile) รันเป็น non-root อยู่แล้ว
+      # ยืนยันซ้ำอีกชั้น
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+---
+# bop-worker ใช้โครงเดียวกับ bop-api — ต่าง image, ไม่มี Service ผูก (ไม่รับ HTTP traffic
+# จากภายนอกเลย) แต่ยังต้องมี livenessProbe ผ่าน health server เล็กๆ บน :9090 (ดู
+# cmd/bop-worker/main.go) และต้องผูก serviceAccountName: bop-worker (k8s/rbac.yaml) เพื่อให้
+# rest.InClusterConfig() ใน main.go สำเร็จอัตโนมัติตอนรันจริงบน K8s
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bop-worker
+  namespace: bop-system
+spec:
+  replicas: 2 # ปรับตามปริมาณ Activity/Workflow ที่ต้องรันพร้อมกัน — Temporal กระจายงาน
+  # ข้าม replica ให้อัตโนมัติผ่าน task queue ไม่ต้องเขียน load balancing เอง
+  selector:
+    matchLabels: { app: bop-worker }
+  template:
+    metadata:
+      labels: { app: bop-worker }
+    spec:
+      serviceAccountName: bop-worker
+      containers:
+        - name: bop-worker
+          image: bop-worker:dev
+          envFrom:
+            - configMapRef: { name: bop-config }
+            - secretRef: { name: bop-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 9090 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+---
+# bop-dashboard — ยังไม่มี dedicated health endpoint ในโค้ด Next.js (ไม่ได้อยู่ใน scope
+# ของ prerequisite เชิงโค้ดหัวข้อ 7 ซึ่งพูดถึงแค่ cmd/bop กับ cmd/bop-worker) จึงใช้ "/"
+# เป็น probe path แทน — Next.js server ตอบหน้าแรกได้ก็แปลว่า process พร้อมรับ traffic แล้ว
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bop-dashboard
+  namespace: bop-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: bop-dashboard }
+  template:
+    metadata:
+      labels: { app: bop-dashboard }
+    spec:
+      containers:
+        - name: bop-dashboard
+          image: bop-dashboard:dev
+          ports:
+            - containerPort: 3000
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          livenessProbe:
+            httpGet: { path: /, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }

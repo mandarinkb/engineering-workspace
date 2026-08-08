@@ -78,7 +78,7 @@ type K8sJobSpec struct {
 ## TODO Checklist
 
 ### 1. ก่อนเริ่มโค้ด
-- [x] ~~Phase 2.1 (containerize BOP เข้า K8s) ต้องเสร็จก่อน~~ — โค้ดเขียนได้โดยไม่ต้องรอ (unit test ผ่าน `k8s.io/client-go/kubernetes/fake` แทน) แต่ **ยังต้องรอ Phase 2.1 ก่อนใช้งานจริง** (`cmd/bop-worker` ยัง `rest.InClusterConfig()` ไม่ผ่านเพราะยังไม่ได้รันอยู่ในเครื่อง/container ใน K8s เลย — ดู best-effort registration ใน `cmd/bop-worker/main.go`)
+- [x] ~~Phase 2.1 (containerize BOP เข้า K8s) ต้องเสร็จก่อน~~ — โค้ดเขียนได้โดยไม่ต้องรอ (unit test ผ่าน `k8s.io/client-go/kubernetes/fake` แทน) แต่ **ยังต้องรอ Phase 2.1 ก่อนใช้งานจริง** (`cmd/bop-worker` ยัง `rest.InClusterConfig()` ไม่ผ่านเพราะยังไม่ได้รันอยู่ในเครื่อง/container ใน K8s เลย — ดู best-effort registration ใน `cmd/bop-worker/main.go`) — design doc เต็มของ Phase 2.1 (Dockerfile, manifest, RBAC ที่ตอบ Open Question ข้อ 2/3/5 ด้านบนโดยตรง) เขียนไว้ล่วงหน้าแล้วที่ [KUBERNETES-DEPLOYMENT-TODO.md](../../KUBERNETES-DEPLOYMENT-TODO.md) ยังไม่ implement
 - [x] ~~ถามเจ้าของ repo ให้ครบ Open Questions ทั้ง 6 ข้อ~~ — ถามแค่บางส่วน ดูหมายเหตุที่หัวข้อ Open Questions ด้านบนว่าข้อไหนตัดสินใจแทนแล้ว
 
 ### 2. Implement

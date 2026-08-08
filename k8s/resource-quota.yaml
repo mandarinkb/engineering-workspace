@@ -1,0 +1,27 @@
+# ตอบ Open Question ข้อ 5 ของ K8S-JOB-HYBRID-EXECUTION-TODO.md ("K8sJobSpec ไม่ได้ตั้ง
+# resources.requests/limits ให้ container เลย") — แก้ที่ระดับ namespace แทนที่จะบังคับผ่าน
+# field ใหม่ใน K8sJobSpec (ไม่ต้องแก้โค้ด Go เลยสักบรรทัด — K8s เติม default resource ให้
+# container ที่ไม่ได้ระบุเองโดยอัตโนมัติผ่าน LimitRange)
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: bop-jobs-default-limits
+  namespace: bop-jobs
+spec:
+  limits:
+    - type: Container
+      default: { cpu: "500m", memory: "512Mi" } # ใช้ถ้า container ไม่ได้ระบุ limit เอง
+      defaultRequest: { cpu: "100m", memory: "128Mi" } # ใช้ถ้า container ไม่ได้ระบุ request เอง
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: bop-jobs-quota
+  namespace: bop-jobs
+spec:
+  hard:
+    pods: "20" # กัน job รันพร้อมกันเยอะเกินจนกิน node ทั้งลูก
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
