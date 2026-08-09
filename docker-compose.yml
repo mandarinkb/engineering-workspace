@@ -1,0 +1,131 @@
+# docker-compose.yml (root) — รันทั้ง stack ของ BOP เป็น container ธรรมดา (ไม่ผ่าน K8s เลย)
+# สำหรับตอนอยากทดสอบว่า image ที่ build ไว้ทำงานร่วมกันได้จริงก่อนจะไปยุ่งกับ kind/K8s
+# (ดู KUBERNETES-DEPLOYMENT-TODO.md ถ้าพร้อมขยับไป K8s ทีหลัง)
+#
+# ต่างจาก projects/bot-orchestration-platform/docker-compose.yml (ไฟล์เดิม) ตรงที่ไฟล์นั้น
+# รันแค่ Temporal เฉยๆ สำหรับตอน `go run ./cmd/bop` ตรงๆ บนเครื่อง — ไฟล์นี้ (root) รัน
+# bop-api/bop-worker/bop-dashboard เป็น container ด้วย (build จาก Dockerfile ที่มีอยู่แล้ว)
+# เต็ม stack ในคำสั่งเดียว — ใช้ไฟล์ไหนขึ้นอยู่กับว่ากำลังพัฒนาโค้ด Go ตรงๆ (ใช้ไฟล์เดิม
+# เร็วกว่า ไม่ต้อง rebuild image ทุกครั้งที่แก้โค้ด) หรืออยากทดสอบ container จริง (ใช้ไฟล์นี้)
+#
+# รัน: docker compose up --build -d   (--build บังคับ rebuild image ทุกครั้งที่โค้ดเปลี่ยน)
+# หรือใช้ `make compose-up` ที่ห่อคำสั่งเดียวกันนี้ไว้ให้แล้ว (ดู Makefile)
+services:
+  postgresql:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes:
+      - temporal-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: postgresql
+    ports:
+      - "7233:7233"
+    # image นี้ทำ schema setup (migration ผ่าน postgres) ก่อน แล้วค่อย start temporal-server
+    # จริง — รอบแรกที่สร้าง schema ใหม่อาจกินเวลาหลายสิบวินาที ถ้าไม่มี healthcheck ตัวนี้
+    # `depends_on: [temporal]` เฉยๆ ของ bop-api/bop-worker ด้านล่างจะรอแค่ "container เริ่ม
+    # ทำงานแล้ว" ไม่ใช่ "พร้อมรับ connection แล้ว" ทำให้ bop-api ยิง client.Dial ไปชน
+    # connection refused แล้ว log.Fatalf ปิดตัวเองทันที (อาการที่เจอจริง)
+    #
+    # เวอร์ชันแรกเช็ค `temporal operator cluster health | grep -q SERVING` ตามที่
+    # auto-setup.sh ของ image ใช้ตรวจสอบตัวเอง — เปลี่ยนมาเป็น TCP check ตรงๆ เพราะกลัวว่า
+    # tag "latest" อาจไม่มี binary `temporal` — เช็ค log จริงแล้วพบว่าทฤษฎีนั้นผิด (เห็น
+    # "Search attributes have been added" ใน log ซึ่งพิมพ์ได้ก็ต่อเมื่อ `temporal` CLI เรียก
+    # สำเร็จจริงเท่านั้น) ตัวปัญหาจริงคือ TCP check เวอร์ชันแรกเช็คที่ 127.0.0.1 ผิดที่ —
+    # entrypoint.sh ของ image คำนวณ BIND_ON_IP จาก `getent hosts $(hostname)` (คือ IP ของ
+    # container บน docker network เอง ไม่ใช่ loopback) แล้ว temporal-server bind ที่ IP นั้น
+    # โดยเฉพาะ ไม่ได้ฟังที่ 127.0.0.1 เลย — เช็คผ่านชื่อ service "temporal" แทน (ที่อยู่เดียว
+    # กับที่ bop-api/bop-worker ใช้เชื่อมต่อจริงผ่าน TEMPORAL_HOST_PORT ด้านล่าง ยืนยันแล้วว่า
+    # ใช้อยู่แน่ๆ) Docker DNS resolve ชื่อ service ของตัวเองกลับมาเป็น IP เดียวกับที่ bind ไว้
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/temporal/7233'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40 # เผื่อรอบแรกที่ยังไม่มี schema เลย อาจกินเวลานานกว่ารอบถัดๆ ไปมาก
+      start_period: 15s
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8233:8080" # เปิดดูที่ http://localhost:8233
+
+  bop-api:
+    build:
+      context: ./projects/bot-orchestration-platform
+      dockerfile: cmd/bop/Dockerfile
+    depends_on:
+      temporal:
+        condition: service_healthy
+    # ต่างจาก K8s ที่ restart Pod ที่ crash ให้อัตโนมัติเสมอ (CrashLoopBackOff) — Compose
+    # container ที่ exit จะ "ตายค้าง" เฉยๆ ถ้าไม่ตั้ง restart policy ไว้ ถึงจะมี
+    # depends_on...service_healthy กัน race แรกสุดแล้ว ก็ยังใส่ไว้เป็นชั้นป้องกันซ้ำ (เช่น
+    # เผื่อ Temporal container restart กลางทางหลัง bop-api ต่อไปแล้วครั้งหนึ่ง)
+    restart: on-failure
+    environment:
+      # "temporal" คือชื่อ service ข้างบน — compose ตั้ง DNS ให้ resolve เป็น container นั้น
+      # เองในเครือข่ายภายในของ compose (ต่างจากตอน `go run` บนเครื่องที่ใช้ localhost:7233)
+      TEMPORAL_HOST_PORT: temporal:7233
+      BOP_HTTP_ADDR: ":8080"
+      # ค่า dev fallback เดียวกับที่ internal/api/http/handler.go มี hardcode ไว้อยู่แล้ว —
+      # เขียนไว้ตรงนี้ให้เห็นชัดเจนแทนที่จะพึ่ง fallback เงียบๆ **ห้ามใช้ค่านี้ใน production**
+      BOP_JWT_SECRET: "bop-dev-secret-change-me-before-deploying"
+      BOP_ADMIN_USERNAME: "admin"
+      BOP_ADMIN_PASSWORD: "changeme"
+      # dashboard container รันที่ localhost:3000 ฝั่ง browser (port mapping ด้านล่าง) —
+      # CORS ต้องอนุญาต origin นี้เป๊ะ
+      BOP_DASHBOARD_ORIGIN: "http://localhost:3000"
+    ports:
+      - "8080:8080"
+
+  bop-worker:
+    build:
+      context: ./projects/bot-orchestration-platform
+      dockerfile: cmd/bop-worker/Dockerfile
+    depends_on:
+      temporal:
+        condition: service_healthy
+    restart: on-failure
+    environment:
+      TEMPORAL_HOST_PORT: temporal:7233
+      # K8s Job hybrid execution จะ skip ตัวเองอัตโนมัติ (best-effort — ดู comment ใน
+      # cmd/bop-worker/main.go) เพราะ container ธรรมดาไม่มี K8s ServiceAccount token ให้อ่าน
+      # ไม่ใช่ error ที่ต้องแก้ แค่ฟีเจอร์นั้นใช้ไม่ได้ตอนรันนอก K8s เท่านั้น
+      K8S_JOB_DEFAULT_NAMESPACE: "bop-jobs"
+    ports:
+      - "9090:9090" # health server (GET /healthz) — เปิดไว้เผื่ออยาก curl เช็คสถานะเอง
+
+  bop-dashboard:
+    build:
+      context: ./projects/bop-dashboard
+      # NEXT_PUBLIC_API_URL ต้องส่งเป็น build arg เท่านั้น (Next.js inline เข้า JS bundle
+      # ตอน build ไม่ใช่ตอน container start — ดู comment ใน Dockerfile ของ dashboard)
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8080
+    depends_on:
+      - bop-api
+    ports:
+      - "3000:3000"
+
+volumes:
+  temporal-postgres:

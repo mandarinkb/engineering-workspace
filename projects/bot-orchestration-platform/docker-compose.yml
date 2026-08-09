@@ -1,9 +1,11 @@
 # docker-compose.yml สำหรับรัน Temporal server + UI ใน local dev เท่านั้น
 #
 # ขอบเขตตั้งใจไว้แคบมาก: มีแค่สิ่งที่ Temporal เองต้องการ (server + UI + PostgreSQL
-# ของ Temporal เอง) ไม่ได้ containerize ตัว BOP app (cmd/bop, cmd/bop-worker) — นั่นคือ
-# scope ของ FULLSTACK-INFRA-ROADMAP.md Phase 2.1 (Containerize) ที่ยังไม่เริ่ม ยังรัน
-# `go run ./cmd/bop` และ `go run ./cmd/bop-worker` ตรงๆ บนเครื่องต่อไปตามปกติ
+# ของ Temporal เอง) ไม่ได้ containerize ตัว BOP app (cmd/bop, cmd/bop-worker) เอง — ไฟล์นี้
+# มีไว้ให้รัน `go run ./cmd/bop` และ `go run ./cmd/bop-worker` ตรงๆ บนเครื่อง (เร็วกว่า
+# rebuild image ทุกครั้งที่แก้โค้ดตอนกำลัง develop) ถ้าอยากรันทั้ง BOP เป็น container จริง
+# (bop-api/bop-worker/bop-dashboard ด้วย ไม่ใช่แค่ Temporal) ดู docker-compose.yml ที่ root
+# ของ workspace แทน — มี Dockerfile ของทั้ง 3 component แล้วตั้งแต่ KUBERNETES-DEPLOYMENT-TODO.md
 #
 # PostgreSQL ตัวนี้เป็น instance แยกต่างหาก ใช้เก็บ event history ภายในของ Temporal
 # เองเท่านั้น (ไม่เกี่ยวกับ PostgreSQL ที่ BOP จะใช้เก็บ job history เองใน Phase 0.4)

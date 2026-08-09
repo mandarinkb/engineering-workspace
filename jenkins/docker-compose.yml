@@ -1,0 +1,27 @@
+# jenkins/docker-compose.yml — รัน Jenkins controller เดี่ยวผ่าน Docker ธรรมดา (ไม่ผ่าน K8s)
+#
+# นี่คือทางเลือก "เริ่มง่าย" ที่ JENKINS-CICD-TODO.md หัวข้อ 1 พูดถึงไว้ ("Jenkins controller
+# เดี่ยวบน VM/container ตัวเดียว ... เหมาะเป็นจุดเริ่มถ้าอยากเห็นผลไวก่อนค่อย migrate ไป
+# K8s-based agent ทีหลัง") — ต่างจาก jenkins/rbac.yaml ที่เตรียมไว้สำหรับทางเลือกที่ 2
+# (Kubernetes plugin + dynamic agent pod บน cluster) ยังไม่ได้ใช้ตอนนี้ ใช้ไฟล์นี้ก่อนเพื่อ
+# เข้าหน้า UI จริง, หัดสร้าง credential/job/Multibranch Pipeline ให้คุ้นก่อน ค่อยย้ายไป
+# K8s-based agent ทีหลังเมื่อพร้อม (ไม่ต้องเขียน pipeline logic ใหม่ — Jenkinsfile เดิมใช้ได้
+# ต่อ แค่เปลี่ยนที่มาของ agent)
+#
+# image, port, volume ตามคำแนะนำทางการของ Jenkins เอง (https://github.com/jenkinsci/docker)
+# — ใช้ named volume เก็บ JENKINS_HOME แทน bind mount ตามที่เอกสารนั้นเตือนไว้ (bind mount
+# อาจเจอปัญหา permission เพราะ user ข้างใน container เป็น uid 1000 คนละ uid กับเครื่อง host)
+#
+# รัน: make jenkins-up   แล้วเปิด http://localhost:8090
+services:
+  jenkins:
+    image: jenkins/jenkins:lts-jdk21
+    restart: on-failure
+    ports:
+      - "8090:8080" # UI — ใช้ 8090 ที่ host เพราะ 8080 ถูก bop-api (docker-compose.yml ที่ root) จองไว้แล้ว
+      - "50000:50000" # port สำหรับ agent ต่อกลับมาแบบ inbound TCP (เผื่ออนาคต ยังไม่ได้ใช้ตอนนี้)
+    volumes:
+      - jenkins_home:/var/jenkins_home
+
+volumes:
+  jenkins_home:
