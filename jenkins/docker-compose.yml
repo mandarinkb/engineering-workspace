@@ -13,6 +13,11 @@
 # อาจเจอปัญหา permission เพราะ user ข้างใน container เป็น uid 1000 คนละ uid กับเครื่อง host)
 #
 # รัน: make jenkins-up   แล้วเปิด http://localhost:8090
+#
+# ต่อกับ gitlab/docker-compose.yml ผ่าน network เดียวกัน (bop-dev-net) เพื่อให้ GitLab (ถ้า
+# รันอยู่) ยิง webhook เข้ามาหาที่ `http://jenkins:8080/...` ได้ตรงๆ ผ่านชื่อ container โดย
+# ไม่ต้องพึ่ง ngrok — ใช้ port ภายใน 8080 (ไม่ใช่ 8090 ที่ map ไว้ให้ host) เพราะ container คุย
+# กันเองผ่าน network ภายใน ไม่ผ่าน host port mapping เลย
 services:
   jenkins:
     image: jenkins/jenkins:lts-jdk21
@@ -22,6 +27,12 @@ services:
       - "50000:50000" # port สำหรับ agent ต่อกลับมาแบบ inbound TCP (เผื่ออนาคต ยังไม่ได้ใช้ตอนนี้)
     volumes:
       - jenkins_home:/var/jenkins_home
+    networks:
+      - bop-dev-net
 
 volumes:
   jenkins_home:
+
+networks:
+  bop-dev-net:
+    external: true # สร้างล่วงหน้าด้วย `make net-create` — ใช้ network เดียวกับ gitlab/docker-compose.yml

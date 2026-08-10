@@ -135,4 +135,5 @@ Trivy scan ที่ทำไว้ใน Jenkinsfile เป็นแค่ **CI
 - [KUBERNETES-DEPLOYMENT-TODO.md](KUBERNETES-DEPLOYMENT-TODO.md) — deploy target ปัจจุบันที่เอกสารนี้ต่อยอด
 - [JENKINS-CICD-TODO.md](JENKINS-CICD-TODO.md) — pipeline ปัจจุบันที่เอกสารนี้ต่อยอด
 - [FULLSTACK-INFRA-ROADMAP.md](FULLSTACK-INFRA-ROADMAP.md) — หัวข้อ enterprise อื่นที่ไม่ซ้ำในนี้ (ดูหัวข้อ 8)
-- [books/08-kubernetes/](books/08-kubernetes/README.md), [books/16-cicd/](books/16-cicd/README.md) — เนื้อหาทฤษฎีพื้นฐาน (ยังไม่มีบทเรื่อง GitOps/OPA/Velero/Service Mesh โดยตรง อาจต้องเสริมถ้าอยากอ่านลึกก่อน implement)
+- [books/08-kubernetes/](books/08-kubernetes/README.md) — เนื้อหาทฤษฎีพื้นฐาน (ยังไม่มีบทเรื่อง `batch/v1 Job`/`LimitRange`/`ResourceQuota`/OPA/Kyverno/Velero/Service Mesh เต็มรูปแบบโดยตรง อาจต้องเสริมถ้าอยากอ่านลึกก่อน implement)
+- [books/16-cicd/03-gitops.md](books/16-cicd/03-gitops.md) — เนื้อหา GitOps มีอยู่แล้วจริง (เช็คแล้ว ไม่ใช่ช่องว่างเหมือนที่เคยเข้าใจผิดไว้)

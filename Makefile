@@ -35,7 +35,9 @@ image = $(if $(REGISTRY),$(REGISTRY)/$(1):$(IMAGE_TAG),$(1):$(IMAGE_TAG))
         logs-api logs-worker logs-dashboard \
         push clean \
         compose-up compose-down compose-logs compose-ps \
-        jenkins-up jenkins-down jenkins-logs jenkins-password
+        net-create \
+        jenkins-up jenkins-down jenkins-logs jenkins-password \
+        gitlab-up gitlab-down gitlab-logs gitlab-password
 
 .DEFAULT_GOAL := help
 
@@ -69,9 +71,14 @@ compose-logs: ## tail log ของทุก container ในทีเดีย�
 compose-ps: ## ดูสถานะ container ทั้งหมดของ stack นี้
 	docker compose ps
 
+## ---- Shared network (Jenkins ↔ GitLab คุยกันเองผ่าน container name ไม่ต้องพึ่ง ngrok) ----
+
+net-create: ## สร้าง Docker network กลาง "bop-dev-net" ถ้ายังไม่มี (jenkins-up/gitlab-up เรียกให้อัตโนมัติอยู่แล้ว ไม่ต้องรันเองปกติ)
+	docker network inspect bop-dev-net >/dev/null 2>&1 || docker network create bop-dev-net
+
 ## ---- Jenkins (controller เดี่ยวผ่าน Docker — ดู jenkins/docker-compose.yml) ----
 
-jenkins-up: ## รัน Jenkins controller เบื้องหลัง เข้าดูที่ http://localhost:8090 (รอ ~30s ให้บูตเสร็จก่อนเปิด)
+jenkins-up: net-create ## รัน Jenkins controller เบื้องหลัง เข้าดูที่ http://localhost:8090 (รอ ~30s ให้บูตเสร็จก่อนเปิด)
 	docker compose -f jenkins/docker-compose.yml up -d
 
 jenkins-down: ## หยุด Jenkins (ไม่ลบ volume jenkins_home — config/job/plugin ที่ตั้งไว้ยังอยู่ครบ)
@@ -82,6 +89,20 @@ jenkins-logs: ## tail log ของ Jenkins (เช็คว่าบูตเ�
 
 jenkins-password: ## แสดง initial admin password สำหรับหน้า setup wizard ครั้งแรก (ใช้ได้แค่ตอนยังไม่ตั้ง admin user เองเท่านั้น)
 	docker compose -f jenkins/docker-compose.yml exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+
+## ---- GitLab (self-hosted CE ผ่าน Docker — ดู gitlab/docker-compose.yml) ----
+
+gitlab-up: net-create ## รัน GitLab CE เบื้องหลัง เข้าดูที่ http://localhost:8929 (รอ 2-5 นาทีให้บูตเสร็จก่อนเปิด — หนักกว่า Jenkins มาก)
+	docker compose -f gitlab/docker-compose.yml up -d
+
+gitlab-down: ## หยุด GitLab (ไม่ลบ volume — project/user/config ที่ตั้งไว้ยังอยู่ครบ)
+	docker compose -f gitlab/docker-compose.yml down
+
+gitlab-logs: ## tail log ของ GitLab (เช็คว่าบูตเสร็จหรือยัง — ปกติจะเห็น log เยอะมากตอนบูตครั้งแรก)
+	docker compose -f gitlab/docker-compose.yml logs -f
+
+gitlab-password: ## แสดง initial root password (username เสมอคือ "root") — ใช้ได้แค่ 24 ชม.แรกหลัง reconfigure ครั้งแรกเท่านั้น
+	docker compose -f gitlab/docker-compose.yml exec gitlab grep 'Password:' /etc/gitlab/initial_root_password
 
 ## ---- kind (local K8s cluster) ----
 

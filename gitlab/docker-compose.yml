@@ -1,0 +1,47 @@
+# gitlab/docker-compose.yml — GitLab CE (self-hosted) ผ่าน Docker สำหรับฝึกส่วนตัว
+#
+# เหตุผลที่เลือก gitlab-ce (Community Edition) ไม่ใช่ gitlab-ee: ฟรีเต็มรูปแบบ ไม่ต้อง
+# license เลย (ต่างจาก gitlab-ee ที่รันได้ฟรีเหมือนกันแต่ bundle โค้ด Enterprise ที่ล็อกไว้
+# ด้วย license มาด้วยเฉยๆ ไม่มีประโยชน์ถ้าไม่ได้ใช้) — ตรงกับจุดประสงค์ "ฝึกส่วนตัว" ล้วนๆ
+#
+# **คำเตือนเรื่อง resource**: GitLab หนักกว่า Jenkins มาก (เอกสารทางการระบุ baseline 8
+# vCPU / 16GB RAM สำหรับ production ตัวเล็กสุดที่รันได้จริงคือ ~8GB RAM) ปิด stack อื่นที่
+# ไม่ได้ใช้ก่อนรัน (เช่น `make compose-down`, `make kind-delete`) และคาดว่าบูตครั้งแรกช้า
+# (2-5 นาที ไม่ใช่ bug — ข้างในมีทั้ง PostgreSQL, Redis, Puma, Sidekiq, Gitaly รวมอยู่ใน
+# container เดียว) image มี HEALTHCHECK ในตัวอยู่แล้ว (`gitlab-healthcheck`) ไม่ต้องเขียนเอง
+#
+# ต่อกับ Jenkins ผ่าน network เดียวกัน (bop-dev-net) เพื่อให้ยิง webhook หากันได้ตรงๆ ผ่าน
+# ชื่อ container (`gitlab`/`jenkins`) โดยไม่ต้องพึ่ง ngrok/tunnel เหมือนตอนใช้ GitHub จริงบน
+# internet (ดู JENKINS-AUTO-BUILD-DEPLOY-PLAN.md Phase 3) —ต้องรัน `make net-create` ก่อน
+# ครั้งแรก (หรือใช้ `make gitlab-up`/`make jenkins-up` ที่เรียกให้อัตโนมัติอยู่แล้ว)
+#
+# รัน: make gitlab-up   แล้วเปิด http://localhost:8929 (รอ 2-5 นาทีให้บูตเสร็จก่อน)
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    container_name: gitlab
+    restart: always
+    hostname: 'localhost'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8929'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2424
+    ports:
+      - "8929:8929" # UI/HTTP — ต้องตรงกับ port ใน external_url ด้านบนเป๊ะ
+      - "2424:22"   # SSH สำหรับ git clone/push (host 2424 → container 22 เพราะ 22 บนเครื่อง host มักถูก sshd ของเครื่องเองจองไว้แล้ว)
+    shm_size: '256m' # จำเป็นสำหรับ PostgreSQL ข้างใน ไม่งั้น crash — ค่าตามคำแนะนำทางการ
+    volumes:
+      - gitlab-config:/etc/gitlab
+      - gitlab-logs:/var/log/gitlab
+      - gitlab-data:/var/opt/gitlab
+    networks:
+      - bop-dev-net
+
+volumes:
+  gitlab-config:
+  gitlab-logs:
+  gitlab-data:
+
+networks:
+  bop-dev-net:
+    external: true # สร้างล่วงหน้าด้วย `make net-create` — ใช้ network เดียวกับ jenkins/docker-compose.yml
