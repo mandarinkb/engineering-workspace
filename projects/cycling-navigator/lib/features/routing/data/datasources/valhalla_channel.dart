@@ -6,8 +6,9 @@ import '../../domain/entities/geo_point.dart';
 /// `Valhalla.route()`'s Kotlin API is typed, not raw JSON (the raw-JSON
 /// `ValhallaActor` is `internal` to that library), so Kotlin builds the
 /// typed request itself and hands back a small custom JSON object with
-/// just status/summary/shape. Android only for now (Phase 6a didn't
-/// verify iOS — no Xcode on this dev machine).
+/// status plus a `routes` array (one entry per alternate — Phase 7).
+/// Android only for now (Phase 6a didn't verify iOS — no Xcode on this
+/// dev machine).
 class ValhallaChannel {
   const ValhallaChannel();
 

@@ -9,8 +9,15 @@ import '../../../routing/domain/entities/cycling_route.dart';
 import '../../../routing/domain/entities/geo_point.dart';
 import '../../../routing/domain/errors/routing_exceptions.dart';
 import '../../../routing/presentation/controllers/routing_controller.dart';
+import '../../../routing/presentation/widgets/route_options_panel.dart';
 import '../../domain/entities/map_region.dart';
 import '../controllers/map_regions_controller.dart';
+
+/// Line style for the currently-selected route vs. its alternates (Phase
+/// 7) — selected is bolder/opaque so it reads as "this is the one you'd
+/// actually ride", alternates stay visible but visually secondary.
+const _selectedRouteColor = '#1565C0';
+const _alternateRouteColor = '#90A4AE';
 
 /// Phase 4: renders the downloaded offline Bangkok style if available
 /// (`activeMapStyleProvider`), falling back to the online demo style
@@ -32,7 +39,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   MapLibreMapController? _mapController;
   Circle? _currentLocationCircle;
   Circle? _destinationCircle;
-  Line? _routeLine;
+  // One Line per alternate Valhalla returned (Phase 7) — index-aligned
+  // with routeToDestinationProvider's list, so e.g. _routeLines[0] is
+  // always the same route as routes[0], even though its on-screen style
+  // (color/width) changes depending on whether it's the selected one.
+  List<Line> _routeLines = [];
   bool _hasCenteredOnFirstFix = false;
 
   @override
@@ -42,11 +53,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (point != null) _onLocationUpdate(point);
     });
 
-    ref.listen<AsyncValue<CyclingRoute?>>(routeToDestinationProvider, (previous, next) {
+    ref.listen<AsyncValue<List<CyclingRoute>>>(routeToDestinationProvider, (previous, next) {
       next.when(
-        data: (route) {
-          if (route == null) return;
-          _drawRoute(route);
+        data: (routes) {
+          if (routes.isEmpty) return;
+          _redrawRoutes(routes, ref.read(selectedRouteIndexProvider));
           // Phase 6 proof stage: confirm success explicitly, since a
           // silently-successful call that just doesn't render looks
           // identical to a silent failure otherwise.
@@ -54,8 +65,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  'Route OK: ${(route.distanceMeters / 1000).toStringAsFixed(2)}km, '
-                  '${route.points.length} points',
+                  routes.length == 1
+                      ? 'Route OK: ${(routes.first.distanceMeters / 1000).toStringAsFixed(2)}km'
+                      : 'Found ${routes.length} routes',
                 ),
               ),
             );
@@ -69,6 +81,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           }
         },
       );
+    });
+
+    // Re-style (not re-fetch) when the user taps a different route card in
+    // RouteOptionsPanel — the alternates themselves haven't changed, only
+    // which one is drawn as "selected".
+    ref.listen<int>(selectedRouteIndexProvider, (previous, next) {
+      final routes = ref.read(routeToDestinationProvider).value ?? const [];
+      if (routes.isNotEmpty) _redrawRoutes(routes, next);
     });
 
     final styleAsync = ref.watch(activeMapStyleProvider);
@@ -96,12 +116,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           // downloaded bbox just shows blank space instead, which is an
           // honest reflection of a deliberately tiny test extract and
           // keeps gestures native-smooth everywhere else.
-          return MapLibreMap(
-            key: ValueKey(result.styleString),
-            styleString: result.styleString,
-            initialCameraPosition: _initialCamera,
-            onMapCreated: _onMapCreated,
-            onMapClick: (_, coordinates) => _onMapTapped(coordinates),
+          return Stack(
+            children: [
+              MapLibreMap(
+                key: ValueKey(result.styleString),
+                styleString: result.styleString,
+                initialCameraPosition: _initialCamera,
+                onMapCreated: _onMapCreated,
+                onMapClick: (_, coordinates) => _onMapTapped(coordinates),
+              ),
+              // Sits above the FAB's usual bottom-right spot (default ~72
+              // tall including margin) so a route's alternates never cover
+              // "recenter" — pending real-device check like every other
+              // layout choice on this screen (Phase 4's bounds removal
+              // above was itself one of those on-device-only findings).
+              const Positioned(left: 0, right: 0, bottom: 84, child: RouteOptionsPanel()),
+            ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -121,7 +151,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // handles from the previous one are no longer valid.
     _currentLocationCircle = null;
     _destinationCircle = null;
-    _routeLine = null;
+    _routeLines = [];
     _hasCenteredOnFirstFix = false;
   }
 
@@ -186,37 +216,53 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         );
   }
 
-  Future<void> _drawRoute(CyclingRoute route) async {
+  /// Draws every alternate in [routes], styling [selectedIndex] as the
+  /// bold/selected line and the rest as dimmed alternates. Always removes
+  /// and re-adds every `Line` (rather than diffing against the previous
+  /// draw) — simplest correct option for at most 3 short-lived lines, and
+  /// it guarantees the selected route's `Line` is added *last* so
+  /// MapLibre layers it on top of the others instead of possibly under
+  /// one, which `updateLine` alone can't do (it can't reorder layers).
+  Future<void> _redrawRoutes(List<CyclingRoute> routes, int selectedIndex) async {
     final controller = _mapController;
-    debugPrint('[route] _drawRoute called, controller=${controller != null}, points=${route.points.length}');
     if (controller == null) return;
 
-    // Valhalla snaps both ends to the nearest road, which rarely matches
-    // the exact requested points (GPS drift, a destination pinned
-    // mid-block) — stitch the raw points onto both ends so the line
-    // visually reaches the current-location dot and the destination pin
-    // exactly, instead of stopping short at the snapped road point.
-    final geometry = [
-      LatLng(route.start.lat, route.start.lon),
-      for (final point in route.points) LatLng(point.lat, point.lon),
-      LatLng(route.destination.lat, route.destination.lon),
-    ];
-    debugPrint('[route] geometry=$geometry existing=$_routeLine');
-
-    try {
-      final existing = _routeLine;
-      if (existing == null) {
-        _routeLine = await controller.addLine(
-          LineOptions(geometry: geometry, lineColor: '#1565C0', lineWidth: 4),
-        );
-        debugPrint('[route] addLine succeeded, id=${_routeLine?.id}');
-      } else {
-        await controller.updateLine(existing, LineOptions(geometry: geometry));
-        debugPrint('[route] updateLine succeeded');
-      }
-    } catch (e, st) {
-      debugPrint('[route] addLine/updateLine THREW: $e\n$st');
+    for (final line in _routeLines) {
+      await controller.removeLine(line);
     }
+    _routeLines = [];
+
+    final drawOrder = [
+      for (var i = 0; i < routes.length; i++)
+        if (i != selectedIndex) i,
+      if (selectedIndex >= 0 && selectedIndex < routes.length) selectedIndex,
+    ];
+
+    final newLines = <int, Line>{};
+    for (final i in drawOrder) {
+      final route = routes[i];
+      // Valhalla snaps both ends to the nearest road, which rarely matches
+      // the exact requested points (GPS drift, a destination pinned
+      // mid-block) — stitch the raw points onto both ends so the line
+      // visually reaches the current-location dot and the destination pin
+      // exactly, instead of stopping short at the snapped road point.
+      final geometry = [
+        LatLng(route.start.lat, route.start.lon),
+        for (final point in route.points) LatLng(point.lat, point.lon),
+        LatLng(route.destination.lat, route.destination.lon),
+      ];
+      final isSelected = i == selectedIndex;
+      newLines[i] = await controller.addLine(
+        LineOptions(
+          geometry: geometry,
+          lineColor: isSelected ? _selectedRouteColor : _alternateRouteColor,
+          lineWidth: isSelected ? 5 : 3,
+        ),
+      );
+    }
+    // Restore index alignment with `routes` (draw order was reordered
+    // above only to control on-screen stacking).
+    _routeLines = [for (var i = 0; i < routes.length; i++) newLines[i]!];
   }
 
   Future<void> _recenter() async {

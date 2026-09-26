@@ -43,6 +43,7 @@ dependencies:
   maplibre_gl: ^0.27.1
   drift: ^2.35.0
   drift_flutter: ^0.3.1
+  archive: ^4.3.0
 
 dev_dependencies:
   flutter_test:
@@ -73,14 +74,13 @@ flutter:
     - assets/offline_regions/thailand.pmtiles
     - assets/offline_regions/bangkok-metro.pmtiles
     - assets/offline_regions/basemap-style-template.json
-    # Phase 6 — same tiny bbox as the Phase 6a spike (not yet unified with
-    # the Phase 4 map region system, see CYCLING-NAVIGATOR-TODO.md Phase 6a).
-    - assets/routing_regions/bangkok-tiny/0/002/320.gph
-    - assets/routing_regions/bangkok-tiny/1/037/360.gph
-    - assets/routing_regions/bangkok-tiny/2/000/597/281.gph
-    - assets/routing_regions/bangkok-tiny/2/000/597/282.gph
-    - assets/routing_regions/bangkok-tiny/2/000/598/721.gph
-    - assets/routing_regions/bangkok-tiny/2/000/598/722.gph
+    # Bangkok + adjacent provinces (Nonthaburi, Pathum Thani, Samut Prakan,
+    # Samut Sakhon, Nakhon Pathom) routing graph — bundled as one zip
+    # (BundledValhallaTilesProvisioner extracts it on first use) instead of
+    # listing every .gph file individually: this region alone has 42 tile
+    # files nested up to 4 levels deep, which doesn't scale to list by hand
+    # the way Phase 6a's original 6-file/6.5km bbox did.
+    - assets/routing_regions/bangkok-metro.zip
 
   # To add assets to your application, add an assets section, like this:
   # assets:
