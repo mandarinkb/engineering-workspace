@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"bop/internal/bot"
-	"bop/internal/job"
-	"bop/internal/logger"
+	"bop/internal/domain/bot"
+	"bop/internal/domain/job"
+	"bop/internal/domain/logger"
 )
 
 // Pool รัน job หลายตัวพร้อมกันได้ แต่จำกัดจำนวนสูงสุดที่รันพร้อมกันได้จริง (concurrency)
@@ -48,7 +48,7 @@ func (p *Pool) Register(b bot.Bot) {
 }
 
 // List คืน bot ทั้งหมดที่ register ไว้ เรียงตามชื่อ (a-z) — ใช้ให้ HTTP handler ตอบ
-// GET /bots (ดู internal/api/http/handler.go) โดย handler ไม่ต้องรู้จัก concrete
+// GET /bots (ดู internal/adapter/http/handler.go) โดย handler ไม่ต้องรู้จัก concrete
 // bot.Bot ใดๆ เลย แค่เอา Name()/ConfigSchema() ของแต่ละตัวไปแปลงเป็น JSON ต่อ
 //
 // หมายเหตุเรื่อง concurrency: อ่าน p.bots ตรงๆ โดยไม่ล็อค เพราะ p.bots ถูกเขียนแค่ตอน
@@ -86,7 +86,7 @@ func (p *Pool) Submit(j *job.Job) error {
 
 // SubmitAndWait เหมือน Submit ทุกประการ แต่จะ "รอ" จนกว่า job จะทำงานจบจริงๆ ก่อนจะ
 // return (ไม่ว่าจะจบด้วยผลสำเร็จ ล้มเหลว หรือถูกยกเลิก) แล้วคืนสถานะสุดท้ายของ job นั้น
-// กลับมาให้เลย — จำเป็นมากสำหรับ workflow ที่มีหลาย step เรียงกัน (ดู internal/workflow)
+// กลับมาให้เลย — จำเป็นมากสำหรับ workflow ที่มีหลาย step เรียงกัน (ดู internal/external/temporal)
 // เพราะ step ที่ 2 ต้องรอผลของ step ที่ 1 ก่อนถึงจะรู้ว่าควรเริ่มหรือไม่ (ถ้า step ที่ 1
 // ล้มเหลว step ที่ 2 ก็ไม่ควรเริ่มเลย)
 //

@@ -1,4 +1,4 @@
-package workflow_test
+package temporal_test
 
 import (
 	"context"
@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"go.temporal.io/sdk/activity"
-	"go.temporal.io/sdk/temporal"
+	sdktemporal "go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	"bop/internal/bot"
-	memlogger "bop/internal/logger/memory"
-	"bop/internal/workflow"
+	"bop/internal/domain/bot"
+	"bop/internal/domain/workflow"
+	"bop/internal/external/temporal"
+	memlogger "bop/internal/pkg/logger"
 )
 
 // stubBot คือ bot ปลอมสำหรับทดสอบ Activities.RunStep โดยเฉพาะ (ต่างจาก
@@ -32,12 +33,12 @@ func (b *stubBot) Run(_ context.Context, log bot.LogFunc, _ bot.Config) (bot.Res
 }
 
 // newActivityTestEnv สร้าง TestActivityEnvironment พร้อม register RunStep ของ activities
-// ที่ส่งเข้ามาไว้แล้ว ภายใต้ชื่อ workflow.ActivityName เดียวกับที่ cmd/bop-worker ใช้จริง
-func newActivityTestEnv(t *testing.T, activities *workflow.Activities) *testsuite.TestActivityEnvironment {
+// ที่ส่งเข้ามาไว้แล้ว ภายใต้ชื่อ temporal.ActivityName เดียวกับที่ cmd/bop-worker ใช้จริง
+func newActivityTestEnv(t *testing.T, activities *temporal.Activities) *testsuite.TestActivityEnvironment {
 	t.Helper()
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestActivityEnvironment()
-	env.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: workflow.ActivityName})
+	env.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: temporal.ActivityName})
 	return env
 }
 
@@ -45,7 +46,7 @@ func newActivityTestEnv(t *testing.T, activities *workflow.Activities) *testsuit
 // bot.Result นั้นตรงๆ (พิสูจน์ว่า Activities เป็นแค่ adapter บางๆ ไม่ได้แก้ไขผลลัพธ์ของ
 // bot เลย ตามที่ตั้งใจไว้)
 func TestRunStep_Success(t *testing.T) {
-	activities := workflow.NewActivities(memlogger.New())
+	activities := temporal.NewActivities(memlogger.New())
 	activities.Register(&stubBot{name: "ok-bot", result: bot.Result{Summary: "done"}})
 	env := newActivityTestEnv(t, activities)
 
@@ -64,11 +65,11 @@ func TestRunStep_Success(t *testing.T) {
 
 // TestRunStep_ConfigErrorIsNonRetryable คือ test สำคัญที่สุดของไฟล์นี้ — พิสูจน์ว่าเมื่อ
 // bot คืน bot.ConfigError กลับมา RunStep ต้องห่อมันเป็น temporal.ApplicationError ที่
-// Type() == "ConfigError" จริง (ตรงกับ nonRetryableErrorTypes ใน temporal.go เป๊ะ) ถ้า
+// Type() == "ConfigError" จริง (ตรงกับ nonRetryableErrorTypes ใน workflow.go เป๊ะ) ถ้า
 // test นี้ไม่ผ่าน แปลว่า Temporal จะ retry error ที่ retry ไปเท่าไหร่ก็ไม่มีทางสำเร็จ
 // ซ้ำไปเรื่อยๆ โดยไม่ตั้งใจ — ดูคำอธิบายเหตุผลเต็มๆ ที่ activity.go
 func TestRunStep_ConfigErrorIsNonRetryable(t *testing.T) {
-	activities := workflow.NewActivities(memlogger.New())
+	activities := temporal.NewActivities(memlogger.New())
 	activities.Register(&stubBot{name: "bad-config-bot", err: bot.NewConfigError(errors.New("missing url"))})
 	env := newActivityTestEnv(t, activities)
 
@@ -77,7 +78,7 @@ func TestRunStep_ConfigErrorIsNonRetryable(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	var appErr *temporal.ApplicationError
+	var appErr *sdktemporal.ApplicationError
 	if !errors.As(err, &appErr) {
 		t.Fatalf("expected error chain to contain *temporal.ApplicationError, got %T: %v", err, err)
 	}
@@ -92,7 +93,7 @@ func TestRunStep_ConfigErrorIsNonRetryable(t *testing.T) {
 // error ธรรมดาทำให้ Temporal retry ไม่มีที่สิ้นสุดถ้า step.BotName ว่างเปล่า/ผิด (เช่น
 // decode payload เก่าที่ serialize ไว้ก่อนเพิ่ม json tag ให้ Step) ดูรายละเอียดที่ activity.go
 func TestRunStep_UnknownBot(t *testing.T) {
-	activities := workflow.NewActivities(memlogger.New())
+	activities := temporal.NewActivities(memlogger.New())
 	env := newActivityTestEnv(t, activities)
 
 	_, err := env.ExecuteActivity(activities.RunStep, workflow.Step{BotName: "does-not-exist"})
@@ -100,7 +101,7 @@ func TestRunStep_UnknownBot(t *testing.T) {
 		t.Fatal("expected error for unknown bot")
 	}
 
-	var appErr *temporal.ApplicationError
+	var appErr *sdktemporal.ApplicationError
 	if !errors.As(err, &appErr) {
 		t.Fatalf("expected error chain to contain *temporal.ApplicationError, got %T: %v", err, err)
 	}

@@ -1,14 +1,14 @@
-// Package memory คือ implementation ของ logger.Logger แบบเก็บ log ไว้ใน memory ล้วนๆ
+// Package logger คือ implementation ของ logger.Logger (internal/domain/logger) แบบเก็บ log ไว้ใน memory ล้วนๆ
 // เหมาะกับช่วง dev เท่านั้น (log จะหายหมดถ้า restart โปรแกรม) — แต่ก็ implement ครบ
 // ทั้งสองหน้าที่ตามที่ logger.Logger กำหนดไว้แล้วคือ (1) เก็บถาวร (2) กระจายแบบ real-time
-package memory
+package logger
 
 import (
 	"context"
 	"sync"
 	"time"
 
-	"bop/internal/logger"
+	"bop/internal/domain/logger"
 )
 
 // Logger เก็บ log แยกเป็น 2 ส่วน:

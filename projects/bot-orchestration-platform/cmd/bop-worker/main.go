@@ -6,7 +6,7 @@
 // ความซับซ้อนที่ต้องรัน 2 process ตอน local dev แทนที่จะเป็น 1 (ดู README.md "รันยังไง")
 //
 // process นี้ทำ 2 อย่าง: (1) เปิด Temporal Worker ที่ poll งานจาก Task Queue เดียวกับที่
-// cmd/bop-worker ประกาศ workflow.Execute + workflow.Activities.RunStep ไว้ (2) สร้าง
+// cmd/bop-worker ประกาศ temporal.Execute + workflow.Activities.RunStep ไว้ (2) สร้าง
 // Temporal Schedule ให้ workflow ตัวอย่าง "check-example-com" รันทุก 1 นาที (แทนที่
 // internal/scheduler เดิมที่ถูกลบไปแล้วทั้งหมด — Temporal Schedules ทำหน้าที่นี้แทนได้
 // ครบตาม Open Question ข้อ 2 เพราะยังไม่มีกฎปฏิทินซับซ้อนอะไรที่ Temporal Schedules ไม่รองรับ)
@@ -27,11 +27,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"bop/internal/bot"
-	"bop/internal/bots/externaljob"
-	"bop/internal/bots/httpstatus"
-	memlogger "bop/internal/logger/memory"
-	"bop/internal/workflow"
+	"bop/internal/domain/bot"
+	"bop/internal/domain/workflow"
+	"bop/internal/external/bots/externaljob"
+	"bop/internal/external/bots/httpstatus"
+	"bop/internal/external/k8s"
+	"bop/internal/external/temporal"
+	memlogger "bop/internal/pkg/logger"
 )
 
 // k8sJobDefaultNamespace คือ namespace ที่ K8s Job hybrid execution (ดู
@@ -54,7 +56,7 @@ func main() {
 	// ชี้ไปที่ Service ของ Temporal แทน
 	c, err := client.Dial(client.Options{
 		HostPort:  getenv("TEMPORAL_HOST_PORT", "localhost:7233"),
-		Namespace: workflow.Namespace,
+		Namespace: temporal.Namespace,
 	})
 	if err != nil {
 		log.Fatalf("connect to temporal: %v", err)
@@ -77,22 +79,22 @@ func main() {
 
 	// ขั้นตอนที่ 2: เตรียม Activities — เป็น registry ของ bot ที่ workflow เรียกใช้ได้
 	// (คนละ registry กับ worker.Pool ใน cmd/bop เพราะเป็นคนละ process กัน ดูหมายเหตุยาว
-	// ที่ internal/workflow/activity.go เรื่อง logger แยก process) เพิ่ม bot ชนิดใหม่ต้อง
+	// ที่ internal/external/temporal/activity.go เรื่อง logger แยก process) เพิ่ม bot ชนิดใหม่ต้อง
 	// register ที่นี่ด้วยเสมอ ไม่งั้น workflow ที่อ้างถึง bot นั้นจะ fail ด้วย "unknown bot"
 	appLogger := memlogger.New()
-	activities := workflow.NewActivities(appLogger)
+	activities := temporal.NewActivities(appLogger)
 	activities.Register(httpstatus.New())
 	activities.Register(externaljob.New())
 
 	// ขั้นตอนที่ 3: สร้างและเริ่ม Temporal Worker — ตัวนี้คือ process ที่ poll งานจาก
-	// Task Queue จริงๆ (RegisterWorkflow ผูก "ชื่อ workflow type" เข้ากับ workflow.Execute,
-	// RegisterActivity ผูก "RunStep" ตามชื่อคงที่ที่ internal/workflow/temporal.go กำหนดไว้
+	// Task Queue จริงๆ (RegisterWorkflow ผูก "ชื่อ workflow type" เข้ากับ temporal.Execute,
+	// RegisterActivity ผูก "RunStep" ตามชื่อคงที่ที่ internal/external/temporal/workflow.go กำหนดไว้
 	// เข้ากับ method จริงของ activities — ต้องตั้งชื่อผ่าน activity.RegisterOptions ให้ตรง
 	// กับ string "RunStep" เป๊ะ เพราะ workflow.ExecuteActivity เรียกด้วยชื่อ ไม่ใช่ reference
-	// ฟังก์ชันตรงๆ ดูเหตุผลที่ temporal.go)
-	w := worker.New(c, workflow.TaskQueueName, worker.Options{})
-	w.RegisterWorkflow(workflow.Execute)
-	w.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: workflow.ActivityName})
+	// ฟังก์ชันตรงๆ ดูเหตุผลที่ internal/external/temporal/workflow.go)
+	w := worker.New(c, temporal.TaskQueueName, worker.Options{})
+	w.RegisterWorkflow(temporal.Execute)
+	w.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: temporal.ActivityName})
 
 	// ขั้นตอนที่ 3.5: register K8s Job hybrid execution (workflow.Step.K8sJob) แบบ
 	// "best-effort" — ต่างจาก activities.Register ด้านบนที่ fail แล้ว log.Fatalf ได้เลย
@@ -109,8 +111,8 @@ func main() {
 	} else if clientset, err := kubernetes.NewForConfig(cfg); err != nil {
 		log.Printf("k8s clientset init failed, skipping K8s Job hybrid execution: %v", err)
 	} else {
-		k8sActivities := workflow.NewK8sJobActivities(clientset, k8sJobDefaultNamespace, appLogger)
-		w.RegisterActivityWithOptions(k8sActivities.RunKubernetesJob, activity.RegisterOptions{Name: workflow.K8sJobActivityName})
+		k8sActivities := k8s.NewK8sJobActivities(clientset, k8sJobDefaultNamespace, appLogger)
+		w.RegisterActivityWithOptions(k8sActivities.RunKubernetesJob, activity.RegisterOptions{Name: temporal.K8sJobActivityName})
 		log.Printf("k8s job hybrid execution enabled (default namespace %q)", k8sJobDefaultNamespace)
 	}
 
@@ -128,15 +130,15 @@ func main() {
 }
 
 // ensureExampleSchedule สร้าง Temporal Schedule ชื่อ "check-example-com" ที่สั่ง
-// workflow.Execute รันด้วย workflow.Workflow ตัวอย่าง (เช็คสถานะ example.com) ทุก 1 นาที
+// temporal.Execute รันด้วย workflow.Workflow ตัวอย่าง (เช็คสถานะ example.com) ทุก 1 นาที
 // — ตัวอย่างเดียวกับที่ cmd/bop/main.go เวอร์ชันก่อน Temporal เคย sched.Register ไว้ตรงๆ
 // ในโค้ด ตอนนี้ย้ายมาไว้ที่นี่เพราะ cmd/bop-worker คือ process ที่ "เป็นเจ้าของ" workflow
 // ที่รันอัตโนมัติตามตาราง ส่วน cmd/bop มีหน้าที่แค่ตอบ HTTP request เท่านั้น
 //
-// หมายเหตุ (หลังเพิ่ม schedule CRUD API ใน internal/api/http/schedule_handler.go):
+// หมายเหตุ (หลังเพิ่ม schedule CRUD API ใน internal/adapter/http/schedule_handler.go):
 // schedule ตัวนี้สร้างตรงผ่าน Temporal SDK ในนี้ ไม่ได้ผ่าน POST /schedules เลย จึงไม่มี
 // entry คู่กันใน schedule.Repository ของ cmd/bop (คนละ process กัน ดู
-// internal/schedule/schedule.go) — GET /schedules/check-example-com-schedule จะเห็น
+// internal/domain/schedule/schedule.go) — GET /schedules/check-example-com-schedule จะเห็น
 // spec/สถานะถูกต้องปกติ (มาจาก Temporal ตรงๆ) แต่ field "steps" จะว่างเปล่า เพราะ BOP
 // ไม่มี bookkeeping ของ workflow definition ตัวนี้เก็บไว้เลย — ไม่ใช่ bug เป็นผลตามมาที่
 // รู้อยู่แล้วจากการมี 2 ช่องทางสร้าง schedule (โค้ดตรงนี้ + HTTP API)
@@ -155,9 +157,9 @@ func ensureExampleSchedule(ctx context.Context, c client.Client) {
 		},
 		Action: &client.ScheduleWorkflowAction{
 			ID:        "check-example-com",
-			Workflow:  workflow.Execute,
+			Workflow:  temporal.Execute,
 			Args:      []interface{}{wf},
-			TaskQueue: workflow.TaskQueueName,
+			TaskQueue: temporal.TaskQueueName,
 		},
 	})
 	if err != nil {

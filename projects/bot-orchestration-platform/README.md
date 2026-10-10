@@ -10,7 +10,7 @@ Phase 0 (`Golang: สร้าง Bot Execution Engine`) ทำแล้ว: `Bo
 
 **Phase 2.5 (Temporal migration) ทำเสร็จแล้วก่อนกำหนด**: `internal/workflow` เดิมเป็น engine เขียนเองแบบเบา (ไม่มี durable execution, ไม่มี retry policy ต่อ step, scheduler เขียนเอง) — ตอนนี้ย้ายไปใช้ **Temporal** จริงจังทั้งหมดแล้ว: `internal/workflow` มี `Execute` (Temporal workflow function) + `Activities.RunStep` (Temporal Activity adapter ที่เรียก `bot.Bot.Run`) แทนที่ `Runner`/`RunRepository` เดิม, `internal/scheduler` ถูกลบทิ้งทั้ง package เพราะใช้ **Temporal Schedules** แทน ดูรายละเอียดที่หัวข้อ "Workflow และ Scheduler" ด้านล่าง และ [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) สำหรับ decision log ของ Open Question ที่ตัดสินใจไว้ระหว่างย้าย
 
-**Backend prerequisite ของ Phase 1 (Next.js dashboard) ทำเสร็จแล้วเช่นกัน**: [projects/bop-dashboard/](../bop-dashboard/README.md) (แยก repo/deploy จาก backend ตั้งใจ) ต้องการ endpoint/กลไกเพิ่มที่ backend ยังไม่มี — เพิ่มครบแล้วทั้งหมด: `GET /bots` (list bot + config schema ผ่าน `bot.Bot.ConfigSchema()` ที่เพิ่มเข้า interface ใหม่), CORS middleware (ดู `dashboardOrigin` ใน `internal/api/http/handler.go`), `GET /jobs/{id}/logs/stream` (SSE — real-time log สำหรับ job เดี่ยวๆ ที่ไม่ผ่าน workflow), `POST /login`/`POST /logout`/`GET /me` (JWT แบบเขียนเอง ดู `internal/auth/jwt.go`), และ normalize JSON ทั้ง API ให้เป็น snake_case สม่ำเสมอกัน (`job.Job`/`logger.Line` เดิมเป็น PascalCase default ของ Go) ดู decision log เต็มๆ ที่ [projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md](../bop-dashboard/PHASE1-DASHBOARD-TODO.md)
+**Backend prerequisite ของ Phase 1 (Next.js dashboard) ทำเสร็จแล้วเช่นกัน**: [projects/bop-dashboard/](../bop-dashboard/README.md) (แยก repo/deploy จาก backend ตั้งใจ) ต้องการ endpoint/กลไกเพิ่มที่ backend ยังไม่มี — เพิ่มครบแล้วทั้งหมด: `GET /bots` (list bot + config schema ผ่าน `bot.Bot.ConfigSchema()` ที่เพิ่มเข้า interface ใหม่), CORS middleware (ดู `dashboardOrigin` ใน `internal/adapter/http/handler.go`), `GET /jobs/{id}/logs/stream` (SSE — real-time log สำหรับ job เดี่ยวๆ ที่ไม่ผ่าน workflow), `POST /login`/`POST /logout`/`GET /me` (JWT แบบเขียนเอง ดู `internal/pkg/jwt/jwt.go`), และ normalize JSON ทั้ง API ให้เป็น snake_case สม่ำเสมอกัน (`job.Job`/`logger.Line` เดิมเป็น PascalCase default ของ Go) ดู decision log เต็มๆ ที่ [projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md](../bop-dashboard/PHASE1-DASHBOARD-TODO.md)
 
 ยังไม่ทำ (ของ Phase 0 ที่เหลือ) — ดู checklist เต็มที่ [roadmap Phase 0](../../FULLSTACK-INFRA-ROADMAP.md#phase-0--golang-สร้าง-bot-execution-engine):
 
@@ -21,47 +21,56 @@ Phase 0 (`Golang: สร้าง Bot Execution Engine`) ทำแล้ว: `Bo
 
 ## สถาปัตยกรรม
 
+รายละเอียดเต็มของแต่ละชั้น กฎการ import และที่วางโค้ดใหม่ ดู [ARCHITECTURE.md](ARCHITECTURE.md)
+
+โค้ดจัดเป็น **clean architecture** 3 ชั้น dependency ชี้เข้าด้านในเสมอ (adapter/external/repository -> usecase -> domain) — `domain` import แค่ stdlib, `usecase` import แค่ `domain` กับ `pkg` ไม่รู้จัก Temporal SDK/HTTP/K8s เลย implementation จริงทั้งหมดถูกเลือกที่ composition root (`cmd/*`) ที่เดียว
+
 ```
-cmd/bop/main.go          HTTP API server — ประกอบส่วนที่เกี่ยวกับ job เดี่ยวๆ + Temporal client (อ่านอย่างเดียว)
-cmd/bop-worker/main.go   Temporal Worker process แยกต่างหาก — ประกอบ Activities + Temporal Schedule
+cmd/bop/main.go          composition root ของ HTTP API server — ประกอบ adapter -> usecase -> http.Server
+cmd/bop-worker/main.go   composition root ของ Temporal Worker process — ประกอบ Activities + Temporal Schedule
    │
-   ├── internal/bot        Bot interface (Name/ConfigSchema/Run) — ทุก bot implement อันนี้
-   │                       ไม่รู้จัก HTTP/DB/logger เลย ConfigSchema() ประกาศ config field
-   │                       ให้ dashboard สร้าง dynamic form ได้ (roadmap Phase 1.3)
-   ├── internal/job        Job entity + Repository interface (json tag snake_case)
-   ├── internal/logger     Logger interface (persist + live-subscribe ในตัวเดียว, json tag
-   │                       snake_case) — GET /jobs/{id}/logs/stream (SSE) ใช้ Subscribe()
-   ├── internal/auth       JWT (HS256) เขียนเอง — ใช้กับ POST /login (roadmap Phase 1.8)
-   ├── internal/worker     Pool — concurrency core สำหรับ job เดี่ยวๆ (POST /bots/{name}/jobs)
-   │                       รัน bot ผ่าน semaphore-bounded goroutine (Submit = fire-and-forget,
-   │                       SubmitAndWait = รอผลก่อนไปต่อ) — ไม่เกี่ยวกับ workflow อีกต่อไป
+   ├── internal/domain                entity + port (interface) — ไม่มี dependency นอก stdlib
+   │   ├── bot          Bot interface (Name/ConfigSchema/Run) — ทุก bot implement อันนี้
+   │   ├── job          Job entity + Repository + Executor port (json tag snake_case)
+   │   ├── logger       Logger interface (persist + live-subscribe ในตัวเดียว)
+   │   ├── workflow     Workflow/Step/StepResult (input schema ของ Temporal workflow) + Engine port
+   │   ├── schedule     Definition + Repository + Spec/Overlap (กฎ validate) + Scheduler port
+   │   └── apperr       ประเภท error กลาง (Invalid/NotFound/Conflict) ที่ HTTP แปลงเป็น status code
    │
-   ├── internal/workflow   Workflow/Step (input schema) + Execute (Temporal workflow function)
-   │                       + Activities.RunStep (Temporal Activity ที่เรียก bot.Bot.Run) —
-   │                       แทนที่ Runner/RunRepository/internal-scheduler เดิมทั้งหมด ดู
-   │                       TEMPORAL-MIGRATION-TODO.md สำหรับเหตุผลการย้าย
-   ├── internal/schedule   Definition + Repository — เก็บ "workflow นี้ทำอะไร" (ชื่อ+steps)
-   │                       ของแต่ละ Temporal Schedule ไว้เอง (Temporal เก็บแค่ "เมื่อไหร่/
-   │                       สถานะ" ให้แล้ว) ใช้กับ schedule CRUD API ด้านล่าง
+   ├── internal/usecase               application logic — รู้จักแค่ port ใน domain
+   │   ├── job          สร้าง/ดู/ยกเลิก job เดี่ยว + log (POST /bots/{name}/jobs, /jobs/...)
+   │   ├── workflowrun  สั่งรัน workflow แบบ ad-hoc + ดูสถานะ run (/workflow-runs, /readyz)
+   │   ├── schedule     validate + ลำดับ "scheduler ก่อน repository" + compensation (/schedules/...)
+   │   └── auth         ตรวจ credential + ออก/ตรวจ token (/login, /me)
    │
-   ├── internal/bots/httpstatus     Bot ตัวอย่าง (zero external dependency)
-   ├── internal/bots/externaljob    Bot ที่ shell out ไปเรียก Go binary ภายนอก (jobcode) ผ่าน os/exec
-   ├── internal/repository/memory   Repository implementation (in-memory) — เก็บ Job เดี่ยวๆ
-   │                                 + Schedule definition เดี่ยวๆ
-   ├── internal/logger/memory       Logger implementation (in-memory)
-   └── internal/api/http             HTTP handler — สิ่งเดียวที่ dashboard จะคุยด้วย (query
-                                      workflow run + จัดการ Schedule ผ่าน Temporal client
-                                      โดยตรง ไม่มี repository ของตัวเองสำหรับ workflow run)
+   ├── internal/adapter/http          ขาเข้า: HTTP handler — แปลง JSON <-> usecase เท่านั้น ไม่มี business logic
+   │
+   ├── internal/external              ขาออก: implementation ของ port ที่คุยกับระบบภายนอก
+   │   ├── temporal     Engine/Scheduler (implement port ด้วย Temporal client) + Execute (workflow
+   │   │                function) + Activities.RunStep (Temporal Activity ที่เรียก bot.Bot.Run)
+   │   ├── k8s          K8sJobActivities.RunKubernetesJob — K8s Job hybrid execution
+   │   └── bots         httpstatus (zero dependency), externaljob (shell out ผ่าน os/exec)
+   │
+   ├── internal/repository            ขาออก: implementation ของ Repository port (storage)
+   │   └── memory       Job/Schedule repository แบบ in-memory (PostgreSQL จะมาอยู่ข้างกันใน Phase 0.4)
+   │
+   └── internal/pkg                   library ที่ใช้ร่วมกัน
+       ├── jwt          JWT (HS256) เขียนเอง
+       ├── idgen        สุ่ม ID (crypto/rand)
+       ├── logger       Logger แบบ in-memory (implement domain/logger.Logger)
+       └── worker       Pool — implement job.Executor (semaphore-bounded goroutine)
 ```
 
 **3 ทางเลือกในการรัน job ที่ไม่ใช่ local Go bot** (ดู [FEATURES.md](FEATURES.md) สำหรับตารางเทียบสั้นๆ):
-- `internal/bots/externaljob` — shell out ในเครื่อง/container เดียวกับ BOP ([EXTERNAL-JOB-BOT-TODO.md](EXTERNAL-JOB-BOT-TODO.md))
+- `internal/external/bots/externaljob` — shell out ในเครื่อง/container เดียวกับ BOP ([EXTERNAL-JOB-BOT-TODO.md](EXTERNAL-JOB-BOT-TODO.md))
 - `workflow.Step.TaskQueue` — route ไป Temporal worker คนละ repo/process ([REMOTE-JOB-WORKER-TODO.md](REMOTE-JOB-WORKER-TODO.md), reference implementation ที่ [projects/remote-job-worker/](../remote-job-worker/README.md))
-- `internal/workflow/k8sjob.go` (`workflow.Step.K8sJob`) — สั่งสร้าง Kubernetes Job ต่อการรันหนึ่งครั้ง ([K8S-JOB-HYBRID-EXECUTION-TODO.md](K8S-JOB-HYBRID-EXECUTION-TODO.md))
+- `internal/external/k8s/k8sjob.go` (`workflow.Step.K8sJob`) — สั่งสร้าง Kubernetes Job ต่อการรันหนึ่งครั้ง ([K8S-JOB-HYBRID-EXECUTION-TODO.md](K8S-JOB-HYBRID-EXECUTION-TODO.md))
 
-ทุก dependency ชี้เข้าหา interface ที่ `internal/bot`, `internal/job`, `internal/logger` ไม่ใช่ implementation ตรงๆ — สลับ `internal/repository/memory` เป็น `internal/repository/postgres` ทีหลัง (roadmap Phase 0.4) แก้แค่บรรทัดเดียวใน `cmd/bop/main.go` โค้ดส่วนอื่นไม่ต้องแตะเลย ส่วนการรัน workflow ทั้งหมด (durable execution, retry, scheduling) เป็นหน้าที่ของ Temporal server เอง ไม่ใช่โค้ด BOP อีกต่อไป — BOP เหลือแค่ "ประกอบ" (register bot, ประกาศ workflow function) กับ Temporal เท่านั้น
+ทุก dependency ชี้เข้าหา port ใน `internal/domain` ไม่ใช่ implementation ตรงๆ — สลับ `internal/repository/memory` เป็น `internal/repository/postgres` ทีหลัง (roadmap Phase 0.4) แก้แค่การประกอบใน `cmd/bop/main.go` usecase และ HTTP handler ไม่ต้องแตะเลย ส่วนการรัน workflow ทั้งหมด (durable execution, retry, scheduling) เป็นหน้าที่ของ Temporal server เอง ไม่ใช่โค้ด BOP — BOP เหลือแค่ "ประกอบ" (register bot, ประกาศ workflow function) กับ Temporal เท่านั้น
 
-**หมายเหตุเรื่อง zero external dependency**: ตั้งแต่ Phase 2.5 เป็นต้นไป `go.mod` มี `go.temporal.io/sdk` เป็น dependency ภายนอกตัวแรกของโปรเจกต์นี้ — เป็นข้อยกเว้นที่ตั้งใจ (ดูเหตุผลใน TEMPORAL-MIGRATION-TODO.md ข้อ 2) เพราะ durable workflow execution คือสิ่งที่ reinvent เองไม่คุ้มอีกต่อไป ไม่ใช่ความผิดพลาดของ design เดิม — ต่อมาเพิ่ม `k8s.io/client-go` (+ `k8s.io/api`, `k8s.io/apimachinery` transitively) เข้ามาอีกตัวสำหรับ K8s Job hybrid execution (`internal/workflow/k8sjob.go`) ด้วยเหตุผลเดียวกัน: เขียน Kubernetes API client เองไม่คุ้มเทียบกับ SDK ที่เป็นมาตรฐานอยู่แล้ว
+> **หมายเหตุ**: เอกสาร `*-TODO.md` เป็น decision log ตามเวลาที่เขียน path ในนั้นเป็นโครงสร้างก่อน refactor เป็น clean architecture (เช่น `internal/external/temporal/workflow.go` ตอนนี้คือ `internal/external/temporal/workflow.go`)
+
+**หมายเหตุเรื่อง zero external dependency**: ตั้งแต่ Phase 2.5 เป็นต้นไป `go.mod` มี `go.temporal.io/sdk` เป็น dependency ภายนอกตัวแรกของโปรเจกต์นี้ — เป็นข้อยกเว้นที่ตั้งใจ (ดูเหตุผลใน TEMPORAL-MIGRATION-TODO.md ข้อ 2) เพราะ durable workflow execution คือสิ่งที่ reinvent เองไม่คุ้มอีกต่อไป ไม่ใช่ความผิดพลาดของ design เดิม — ต่อมาเพิ่ม `k8s.io/client-go` (+ `k8s.io/api`, `k8s.io/apimachinery` transitively) เข้ามาอีกตัวสำหรับ K8s Job hybrid execution (`internal/external/k8s/k8sjob.go`) ด้วยเหตุผลเดียวกัน: เขียน Kubernetes API client เองไม่คุ้มเทียบกับ SDK ที่เป็นมาตรฐานอยู่แล้ว
 
 ## รันยังไง
 
@@ -122,17 +131,17 @@ curl -X DELETE localhost:8080/schedules/check-example-com-v2
 
 ## Bot: external-job (shell out ไปเรียก binary ภายนอก)
 
-`internal/bots/externaljob` คือ bot ที่ห่อ Go binary แยกต่างหาก (compile ไว้แล้ว ไม่ใช่ source code ส่วนหนึ่งของ repo นี้) ที่มี "jobcode" หลายตัวรวมอยู่ในไฟล์เดียว (`./your-binary --jobcode=SEND_REPORT`) ให้สั่งรัน/schedule ผ่าน BOP ได้เหมือน bot อื่นๆ **โดยไม่แก้โค้ดของ binary เดิมเลยแม้แต่บรรทัดเดียว** — ดู decision log เต็มๆ ที่ [EXTERNAL-JOB-BOT-TODO.md](EXTERNAL-JOB-BOT-TODO.md)
+`internal/external/bots/externaljob` คือ bot ที่ห่อ Go binary แยกต่างหาก (compile ไว้แล้ว ไม่ใช่ source code ส่วนหนึ่งของ repo นี้) ที่มี "jobcode" หลายตัวรวมอยู่ในไฟล์เดียว (`./your-binary --jobcode=SEND_REPORT`) ให้สั่งรัน/schedule ผ่าน BOP ได้เหมือน bot อื่นๆ **โดยไม่แก้โค้ดของ binary เดิมเลยแม้แต่บรรทัดเดียว** — ดู decision log เต็มๆ ที่ [EXTERNAL-JOB-BOT-TODO.md](EXTERNAL-JOB-BOT-TODO.md)
 
 - **Generic bot เดียว ไม่ใช่ 1 bot ต่อ 1 jobcode** — `ConfigSchema()` มี `jobcode` (required, free text) และ `extra_args` (optional, free text คั่นด้วยช่องว่าง ต่อท้าย `--jobcode=<code>` เป็น argument เพิ่ม) เพิ่ม jobcode ใหม่ในไฟล์ binary เดิมทีหลังไม่ต้อง build/deploy BOP ใหม่เลย
-- **Path ของ binary** — hardcode เป็น `defaultBinaryPath` ใน `internal/bots/externaljob/externaljob.go` (ปัจจุบันเป็น placeholder เพราะยังไม่มี binary จริงให้ทดสอบ) — ต้องแก้ค่านี้ตรงๆ ให้ตรง path จริงบนเครื่อง/container ที่รัน `cmd/bop` และ `cmd/bop-worker` ก่อนใช้งานจริง และต้อง copy binary เข้า Dockerfile ของทั้งสอง process ตอน containerize (roadmap Phase 2.1 — ยังไม่ทำ)
+- **Path ของ binary** — hardcode เป็น `defaultBinaryPath` ใน `internal/external/bots/externaljob/externaljob.go` (ปัจจุบันเป็น placeholder เพราะยังไม่มี binary จริงให้ทดสอบ) — ต้องแก้ค่านี้ตรงๆ ให้ตรง path จริงบนเครื่อง/container ที่รัน `cmd/bop` และ `cmd/bop-worker` ก่อนใช้งานจริง และต้อง copy binary เข้า Dockerfile ของทั้งสอง process ตอน containerize (roadmap Phase 2.1 — ยังไม่ทำ)
 - **Exit code semantics** — exit code `0` = สำเร็จ, อื่นๆ = ล้มเหลวด้วย error ธรรมดา (retryable — Temporal/worker pool จะ retry ได้ตาม RetryPolicy ปกติ เพราะถือว่า exit code ที่ไม่ใช่ 0 อาจเกิดจากปัญหาชั่วคราวของ binary เอง) ต่างจาก jobcode ที่ไม่ได้ระบุมาเลยซึ่งเป็น `bot.ConfigError` (non-retryable)
 - **Log streaming** — stdout/stderr ของ process ลูกถูกอ่านคนละ goroutine พร้อมกัน (กัน deadlock ตอน pipe เต็ม) แล้วส่งเข้า `log()` แบบ real-time ทันที บรรทัดจาก stderr มี prefix `[stderr] ` กำกับ
 - **Cancellation ฆ่าทั้ง process group** — ตั้ง `Setpgid: true` แล้ว kill ทั้งกลุ่ม (`syscall.Kill(-pid, ...)`) ไม่ใช่แค่ process ลูกโดยตรง เพราะถ้า binary เปิด subprocess ของตัวเองต่ออีกที (เช่น shell script ที่เรียก `sleep`/`curl`) การ kill แค่ตัวแรกจะทิ้ง grandchild เป็น orphan ที่ยังถือ stdout/stderr pipe ค้างไว้ ทำให้ log streaming ค้างรอ EOF ไม่มีวันมาถึง (พิสูจน์จริงด้วย test `TestRun_ContextCancelKillsProcess`)
 
 ### Timeout ต่อ job/step (per-job/per-step timeout)
 
-เดิมทั้งระบบใช้ timeout เดียวตายตัว 30 วินาที (`worker.NewPool` ใน `cmd/bop/main.go`, `ActivityOptions.StartToCloseTimeout` ใน `internal/workflow/temporal.go`) ทุก bot เหมือนกันหมด — ไม่พอสำหรับ `external-job` ที่ jobcode บางตัวอาจใช้เวลานานกว่านั้นมาก จึงเพิ่มความสามารถกำหนด timeout ได้ต่อ job/step แต่ละครั้งแทน (ยังคง 30 วินาทีเป็นค่า default ถ้าไม่ได้ระบุมา — bot เดิมอย่าง `http-status-checker` ไม่กระทบเลย):
+เดิมทั้งระบบใช้ timeout เดียวตายตัว 30 วินาที (`worker.NewPool` ใน `cmd/bop/main.go`, `ActivityOptions.StartToCloseTimeout` ใน `internal/external/temporal/workflow.go`) ทุก bot เหมือนกันหมด — ไม่พอสำหรับ `external-job` ที่ jobcode บางตัวอาจใช้เวลานานกว่านั้นมาก จึงเพิ่มความสามารถกำหนด timeout ได้ต่อ job/step แต่ละครั้งแทน (ยังคง 30 วินาทีเป็นค่า default ถ้าไม่ได้ระบุมา — bot เดิมอย่าง `http-status-checker` ไม่กระทบเลย):
 
 - **Job เดี่ยว** (`POST /bots/{name}/jobs`) — ระบุผ่าน query parameter `timeout_seconds` (จำนวนเต็มบวก หน่วยวินาที) เช่น `POST /bots/external-job/jobs?timeout_seconds=120` — เลือกใช้ query param แทนที่จะห่อ JSON body ใหม่ เพราะ body เดิมคือ `bot.Config` ล้วนๆ (flat map) อยู่แล้ว การเปลี่ยนรูปแบบ body จะทำลาย wire format ที่ dashboard เรียกอยู่
 - **Workflow step / schedule** — `workflow.Step` มี field `timeout_seconds` (optional) เพิ่มมาแล้ว ใช้ได้ทันทีใน `POST /schedules` เช่น `{"bot_name": "external-job", "config": {...}, "timeout_seconds": 300}`
@@ -140,7 +149,7 @@ curl -X DELETE localhost:8080/schedules/check-example-com-v2
 
 ## รัน step ผ่าน remote Temporal worker (task queue แยกกัน คนละ repo)
 
-ทางเลือกที่สอง (คู่กับ `internal/bots/externaljob` ด้านบน) สำหรับ job/binary ที่อยู่ **คนละ repository และ deploy คนละจังหวะกับ BOP จริงๆ** — แทนที่จะ shell out ในเครื่อง/container เดียวกัน ให้ repo นั้นรัน Temporal Worker ของตัวเอง (embed `go.temporal.io/sdk` เอง — repo นั้นแก้โค้ดได้ ต่างจาก `externaljob` ที่ตั้งใจไม่แตะ binary เดิม) แล้ว BOP route ไปหา task queue นั้นแทนที่จะรันผ่าน local `bot.Bot` registry เลย รายละเอียด contract เต็มๆ ที่ repo ภายนอกต้อง implement อยู่ที่ [REMOTE-JOB-WORKER-TODO.md](REMOTE-JOB-WORKER-TODO.md)
+ทางเลือกที่สอง (คู่กับ `internal/external/bots/externaljob` ด้านบน) สำหรับ job/binary ที่อยู่ **คนละ repository และ deploy คนละจังหวะกับ BOP จริงๆ** — แทนที่จะ shell out ในเครื่อง/container เดียวกัน ให้ repo นั้นรัน Temporal Worker ของตัวเอง (embed `go.temporal.io/sdk` เอง — repo นั้นแก้โค้ดได้ ต่างจาก `externaljob` ที่ตั้งใจไม่แตะ binary เดิม) แล้ว BOP route ไปหา task queue นั้นแทนที่จะรันผ่าน local `bot.Bot` registry เลย รายละเอียด contract เต็มๆ ที่ repo ภายนอกต้อง implement อยู่ที่ [REMOTE-JOB-WORKER-TODO.md](REMOTE-JOB-WORKER-TODO.md)
 
 - **`workflow.Step.TaskQueue`** (optional) — ค่าว่าง (default) ใช้ local `Activities.RunStep` ตามเดิมทุกประการ (lookup `bot.Bot` จาก registry ของ `cmd/bop-worker`) ถ้าระบุ Temporal จะส่ง Activity call ไปยัง worker process ที่ poll task queue ชื่อนั้นแทน (คนละ repo/binary/แม้แต่คนละภาษาก็ได้) — กลไกนี้เป็นของ Temporal เองล้วนๆ (`workflow.ActivityOptions.TaskQueue`) ไม่ได้เขียน routing logic เพิ่มเองเลยสักบรรทัด
 - **`POST /workflow-runs`** — endpoint ใหม่ รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน ใช้ได้ทั้งกับ step local และ step ที่มี `task_queue` (เพราะ routing ตัดสินใจต่อ step อยู่แล้ว) — คือช่องทางที่ทำให้ "job เดี่ยว" route ไป remote task queue ได้ (ต่างจาก `POST /bots/{name}/jobs` ที่ผ่าน `worker.Pool` ล้วนๆ ไม่มี Temporal เกี่ยวข้องเลย จึง route ข้าม task queue ไม่ได้)
@@ -161,7 +170,7 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 ทางเลือกที่สาม (คู่กับ `externaljob` และ remote Temporal worker ด้านบน) — ดู design doc เต็มๆ พร้อมตารางเทียบทั้ง 3 ทางเลือกที่ [K8S-JOB-HYBRID-EXECUTION-TODO.md](K8S-JOB-HYBRID-EXECUTION-TODO.md) แทนที่จะมี worker รันค้างไว้ตลอด (poll task queue) ให้ **Temporal Activity ของ `cmd/bop-worker` เองสั่งสร้าง Kubernetes `Job` (ephemeral container) ต่อการรันหนึ่งครั้ง** แล้วรอดูผล — container image เป็นอะไรก็ได้ ไม่ต้อง embed Temporal SDK เข้าไปในโค้ดของ job เองเลยด้วยซ้ำ (ต่างจาก remote worker) แลกกับ cold-start latency ที่สูงกว่า
 
 - **`workflow.Step.K8sJob *K8sJobSpec`** (optional) — nil = รันผ่าน `bot.Bot` registry/remote task queue ตามเดิมทุกประการ ถ้าไม่ nil จะข้ามทั้งสองทางนั้นไปเลย แล้วเรียก activity คนละตัว/คนละ registry (`K8sJobActivityName = "RunKubernetesJob"`) แทน — `K8sJobSpec` มี `image` (required), `command`/`args`/`env` (optional), `namespace` (optional, default `bop-jobs`)
-- **`internal/workflow/k8sjob.go`** (`K8sJobActivities.RunKubernetesJob`) — สร้าง `batchv1.Job` ด้วย **`BackoffLimit: 0` เสมอ** (สำคัญมาก — ให้ Temporal `RetryPolicy` เป็นเจ้าของ retry decision แต่ผู้เดียว ไม่ให้ K8s retry ซ้อนอีกชั้น) poll สถานะเป็นระยะพร้อม `activity.RecordHeartbeat`, stream log ของ Pod เข้า BOP logger ทันทีที่ Job จบ (ก่อน TTL controller ลบ Job ทิ้ง), และลบ Job ทิ้งทันทีถ้า activity ถูกยกเลิก/timeout (กัน orphan Job ทำงานต่อในเบื้องหลัง)
+- **`internal/external/k8s/k8sjob.go`** (`K8sJobActivities.RunKubernetesJob`) — สร้าง `batchv1.Job` ด้วย **`BackoffLimit: 0` เสมอ** (สำคัญมาก — ให้ Temporal `RetryPolicy` เป็นเจ้าของ retry decision แต่ผู้เดียว ไม่ให้ K8s retry ซ้อนอีกชั้น) poll สถานะเป็นระยะพร้อม `activity.RecordHeartbeat`, stream log ของ Pod เข้า BOP logger ทันทีที่ Job จบ (ก่อน TTL controller ลบ Job ทิ้ง), และลบ Job ทิ้งทันทีถ้า activity ถูกยกเลิก/timeout (กัน orphan Job ทำงานต่อในเบื้องหลัง)
 - **Register แบบ best-effort ใน `cmd/bop-worker/main.go`** — ลอง `rest.InClusterConfig()` ก่อน ถ้าล้มเหลว (เช่น รันบนเครื่อง dev ธรรมดา ไม่ได้อยู่ใน K8s Pod) แค่ log คำเตือนแล้วข้ามไป ไม่ `log.Fatalf` ปิด process ทั้งตัว — bot local/remote task queue อื่นๆ ยังใช้งานได้ปกติ
 
 ```json
@@ -169,11 +178,11 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 {"bot_name": "generate-report", "k8s_job": {"image": "registry.example.com/report-job:v1", "args": ["--jobcode=SEND_REPORT"]}}
 ```
 
-**สถานะ**: unit test ผ่านหมด (`internal/workflow/k8sjob_test.go`, mock ด้วย `k8s.io/client-go/kubernetes/fake`) แต่**ยังไม่เคยทดสอบกับ K8s cluster จริงเลย** — รอ Phase 2.1 (containerize BOP เข้า K8s) เสร็จก่อน ดู Open Questions ที่ยังไม่ได้ตัดสินใจ (image registry, RBAC manifest, resource limit, timeout ของ image pull) ที่ K8S-JOB-HYBRID-EXECUTION-TODO.md
+**สถานะ**: unit test ผ่านหมด (`internal/external/k8s/k8sjob_test.go`, mock ด้วย `k8s.io/client-go/kubernetes/fake`) แต่**ยังไม่เคยทดสอบกับ K8s cluster จริงเลย** — รอ Phase 2.1 (containerize BOP เข้า K8s) เสร็จก่อน ดู Open Questions ที่ยังไม่ได้ตัดสินใจ (image registry, RBAC manifest, resource limit, timeout ของ image pull) ที่ K8S-JOB-HYBRID-EXECUTION-TODO.md
 
 ## จัดการ Schedule (CRUD + manual trigger — เทียบเท่า Control-M job management)
 
-`internal/api/http/schedule_handler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK เป็น HTTP endpoint ทั้งชุด — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) BOP เก็บเพิ่มแค่ "workflow definition" (ชื่อ + steps) ไว้ใน `internal/schedule` (in-memory, เหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ อยู่ใน comment ของไฟล์นั้น)
+`internal/external/temporal/scheduler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK (เปิดเป็น HTTP endpoint ผ่าน `internal/usecase/schedule` และ `internal/adapter/http/schedule_handler.go`) — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) BOP เก็บเพิ่มแค่ "workflow definition" (ชื่อ + steps) ไว้ใน `schedule.Repository` (`internal/domain/schedule`, implementation in-memory ที่ `internal/repository/memory`, เหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ อยู่ใน comment ของไฟล์นั้น)
 
 | Endpoint | เทียบ Control-M | หมายเหตุ |
 |---|---|---|
@@ -187,7 +196,7 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 | `POST /schedules/{id}/trigger` | **Order Now / Run Now** | สั่งรันทันที นอกตารางเวลาปกติ (รอบถัดไปตามตารางยังมาตามเดิม) |
 | `POST /schedules/{id}/backfill` | Rerun | รันย้อนหลังตามช่วงเวลาที่ระบุ ราวกับเวลานั้นเพิ่งผ่านไปตอนนี้ |
 
-**ข้อจำกัดที่ต้องรู้**: `internal/schedule` เป็น in-memory ล้วนๆ (เหมือน `job.Repository` ก่อนต่อ PostgreSQL จริงใน Phase 0.4) — restart `cmd/bop` แล้ว field `steps` ใน `GET /schedules/{id}` จะหายไป (Temporal เองยังรัน schedule ต่อปกติ ไม่กระทบการทำงานจริง แค่ BOP ลืมว่า workflow นั้น "ทำอะไร") เช่นเดียวกับ `check-example-com-schedule` ที่ `cmd/bop-worker` สร้างตรงผ่าน SDK (ไม่ผ่าน API นี้) จะไม่มี steps ให้ดูเลยตั้งแต่ต้น — ดู comment เต็มที่ `internal/schedule/schedule.go`
+**ข้อจำกัดที่ต้องรู้**: `internal/repository/memory` (schedule repository) เป็น in-memory ล้วนๆ (เหมือน `job.Repository` ก่อนต่อ PostgreSQL จริงใน Phase 0.4) — restart `cmd/bop` แล้ว field `steps` ใน `GET /schedules/{id}` จะหายไป (Temporal เองยังรัน schedule ต่อปกติ ไม่กระทบการทำงานจริง แค่ BOP ลืมว่า workflow นั้น "ทำอะไร") เช่นเดียวกับ `check-example-com-schedule` ที่ `cmd/bop-worker` สร้างตรงผ่าน SDK (ไม่ผ่าน API นี้) จะไม่มี steps ให้ดูเลยตั้งแต่ต้น — ดู comment เต็มที่ `internal/domain/schedule/schedule.go`
 
 **สถานะ**: ทดสอบ end-to-end จริงแล้วครบทั้ง lifecycle (create → get → pause → **trigger** → unpause → delete) กับ Temporal server จริง — `trigger` ยืนยันแล้วว่าสั่งรันจริงได้แม้ schedule กำลัง paused อยู่ (เห็น workflow run ใหม่โผล่ใน `GET /workflow-runs` ทันที) ยังไม่ได้ทดสอบ `backfill` โดยเฉพาะ (path เดียวกับ trigger แค่ระบุช่วงเวลาย้อนหลัง คาดว่าทำงานเหมือนกัน แต่ยังไม่ได้ยืนยันจริง)
 
@@ -195,7 +204,7 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 
 `cmd/bop-worker/main.go` สร้าง Temporal Schedule ให้ workflow ตัวอย่าง (`check-example-com`) ที่รัน `http-status-checker` เป็น step เดียว ทุก 1 นาที ผ่าน `client.ScheduleClient().Create` — เปิด `docker compose up -d` แล้วรัน `go run ./cmd/bop-worker` ทิ้งไว้สัก 1-2 นาทีจะเห็น run ใหม่โผล่ใน `GET /workflow-runs` เอง (หรือดูตรงๆ ผ่าน Temporal UI ที่ http://localhost:8233) โดยไม่ต้องสั่งอะไรเพิ่ม
 
-เพิ่ม step ที่ 2, 3 เข้าไปได้ทันทีโดยไม่ต้องแก้ `internal/workflow/temporal.go` เลย (แก้แค่ `wf` ที่ประกาศไว้ใน `ensureExampleSchedule`):
+เพิ่ม step ที่ 2, 3 เข้าไปได้ทันทีโดยไม่ต้องแก้ `internal/external/temporal/workflow.go` เลย (แก้แค่ `wf` ที่ประกาศไว้ใน `ensureExampleSchedule`):
 
 ```go
 wf := workflow.Workflow{
@@ -207,7 +216,7 @@ wf := workflow.Workflow{
 }
 ```
 
-`workflow.Execute` (Temporal workflow function) จะรัน step ที่ 2 ก็ต่อเมื่อ step ที่ 1 สำเร็จเท่านั้น — ถ้า step ไหนล้มเหลว workflow ทั้งก้อนหยุดทันที (ดู `internal/workflow/temporal.go`)
+`workflow.Execute` (Temporal workflow function) จะรัน step ที่ 2 ก็ต่อเมื่อ step ที่ 1 สำเร็จเท่านั้น — ถ้า step ไหนล้มเหลว workflow ทั้งก้อนหยุดทันที (ดู `internal/external/temporal/workflow.go`)
 
 **สิ่งที่ Temporal แก้ให้จากเวอร์ชันเบาก่อนหน้า** (ดู [TEMPORAL-MIGRATION-TODO.md](TEMPORAL-MIGRATION-TODO.md) สำหรับรายละเอียดการย้ายและ Open Question ที่ตัดสินใจไว้):
 - **Durable execution** — worker process ตายกลางทาง Temporal replay history แล้ว resume ต่อจาก step ที่ยังไม่เสร็จได้เอง ไม่ต้องเริ่มใหม่ทั้ง workflow
@@ -216,7 +225,7 @@ wf := workflow.Workflow{
 
 **ข้อจำกัดที่ยังเหลืออยู่ (ตั้งใจไม่ทำตอนนี้)**:
 - **Compensation logic (Saga)** — ยังไม่มี เพราะ `http-status-checker` ไม่มี side effect ที่ต้อง rollback เลย รอจนมี bot ที่มี side effect จริงจังค่อยออกแบบ (ดู TEMPORAL-MIGRATION-TODO.md ข้อ 4)
-- **Log ของ step ในระหว่าง workflow ดึงผ่าน `GET /jobs/{id}/logs` ไม่ได้** — Activity log เข้า in-memory logger ของ `cmd/bop-worker` (คนละ process กับ `cmd/bop` ที่ HTTP handler อ่าน log อยู่) จนกว่าจะมี logger backend ที่ทั้งสอง process แชร์กันได้จริง (PostgreSQL/OpenSearch, roadmap Phase 2.2) — ดูหมายเหตุเต็มที่ `internal/workflow/activity.go`
+- **Log ของ step ในระหว่าง workflow ดึงผ่าน `GET /jobs/{id}/logs` ไม่ได้** — Activity log เข้า in-memory logger ของ `cmd/bop-worker` (คนละ process กับ `cmd/bop` ที่ HTTP handler อ่าน log อยู่) จนกว่าจะมี logger backend ที่ทั้งสอง process แชร์กันได้จริง (PostgreSQL/OpenSearch, roadmap Phase 2.2) — ดูหมายเหตุเต็มที่ `internal/external/temporal/activity.go`
 
 ## บทเรียนที่เจอจริงระหว่างสร้าง (คุ้มค่าเก็บไว้เล่าตอนสัมภาษณ์)
 

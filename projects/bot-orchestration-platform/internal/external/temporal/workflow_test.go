@@ -1,4 +1,4 @@
-package workflow_test
+package temporal_test
 
 import (
 	"errors"
@@ -8,8 +8,9 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
 
-	memlogger "bop/internal/logger/memory"
-	"bop/internal/workflow"
+	"bop/internal/domain/workflow"
+	"bop/internal/external/temporal"
+	memlogger "bop/internal/pkg/logger"
 )
 
 // newTestEnv สร้าง TestWorkflowEnvironment พร้อม register ActivityName ไว้แล้ว (ต้อง
@@ -24,10 +25,10 @@ func newTestEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 	t.Helper()
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestWorkflowEnvironment()
-	env.RegisterWorkflow(workflow.Execute)
+	env.RegisterWorkflow(temporal.Execute)
 
-	activities := workflow.NewActivities(memlogger.New())
-	env.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: workflow.ActivityName})
+	activities := temporal.NewActivities(memlogger.New())
+	env.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: temporal.ActivityName})
 	return env
 }
 
@@ -37,7 +38,7 @@ func newTestEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 // แทนที่พฤติกรรมของ workflow.RunRepository เดิมที่เก็บ Run.Steps ไว้ให้ query ทีหลังได้)
 func TestExecute_AllStepsSucceed(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity(workflow.ActivityName, mock.Anything, mock.Anything).Return("ok", nil)
+	env.OnActivity(temporal.ActivityName, mock.Anything, mock.Anything).Return("ok", nil)
 
 	wf := workflow.Workflow{
 		Name: "two-ok-steps",
@@ -46,7 +47,7 @@ func TestExecute_AllStepsSucceed(t *testing.T) {
 			{BotName: "ok-bot"},
 		},
 	}
-	env.ExecuteWorkflow(workflow.Execute, wf)
+	env.ExecuteWorkflow(temporal.Execute, wf)
 
 	if !env.IsWorkflowCompleted() {
 		t.Fatal("expected workflow to complete")
@@ -87,9 +88,9 @@ func TestExecute_AllStepsSucceed(t *testing.T) {
 // ให้ mock ของ ok-bot ตัวแรก แล้ว testify จะ panic ทันที ไม่ต้องเดาจากจำนวนผลลัพธ์เฉยๆ
 func TestExecute_StopsAtFirstFailedStep(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity(workflow.ActivityName, mock.Anything, workflow.Step{BotName: "ok-bot"}).
+	env.OnActivity(temporal.ActivityName, mock.Anything, workflow.Step{BotName: "ok-bot"}).
 		Return("ok", nil).Times(1)
-	env.OnActivity(workflow.ActivityName, mock.Anything, workflow.Step{BotName: "fail-bot"}).
+	env.OnActivity(temporal.ActivityName, mock.Anything, workflow.Step{BotName: "fail-bot"}).
 		Return("", errors.New("intentional failure")).Times(1)
 
 	wf := workflow.Workflow{
@@ -100,7 +101,7 @@ func TestExecute_StopsAtFirstFailedStep(t *testing.T) {
 			{BotName: "ok-bot"}, // ไม่ควรถูกเรียกเลย
 		},
 	}
-	env.ExecuteWorkflow(workflow.Execute, wf)
+	env.ExecuteWorkflow(temporal.Execute, wf)
 
 	if !env.IsWorkflowCompleted() {
 		t.Fatal("expected workflow to complete (with error)")
@@ -134,7 +135,7 @@ func TestExecute_StopsAtFirstFailedStep(t *testing.T) {
 // "รัน step ผ่าน remote Temporal worker")
 func TestExecute_StepWithTaskQueueStillExecutes(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity(workflow.ActivityName, mock.Anything, mock.Anything).Return("ok", nil)
+	env.OnActivity(temporal.ActivityName, mock.Anything, mock.Anything).Return("ok", nil)
 
 	wf := workflow.Workflow{
 		Name: "step-with-remote-task-queue",
@@ -142,7 +143,7 @@ func TestExecute_StepWithTaskQueueStillExecutes(t *testing.T) {
 			{BotName: "remote-bot", TaskQueue: "external-job-queue"},
 		},
 	}
-	env.ExecuteWorkflow(workflow.Execute, wf)
+	env.ExecuteWorkflow(temporal.Execute, wf)
 
 	if !env.IsWorkflowCompleted() {
 		t.Fatal("expected workflow to complete")

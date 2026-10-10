@@ -3,14 +3,14 @@ package bot
 // ConfigError คือ error ชนิดพิเศษที่ bot ควรคืนกลับเมื่อปัญหาเกิดจาก config ที่ user
 // กรอกมาผิด/ขาด (เช่น ลืมใส่ "url") — ต่างจาก error อื่นๆ (network timeout, 5xx จาก
 // ปลายทาง) ตรงที่ "ลองใหม่กี่ครั้งก็ได้ผลลัพธ์เดิม" เพราะ config เดิมไม่เปลี่ยน จึงต้องมี
-// type แยกต่างหากให้ชั้นที่เรียก bot (Temporal Activity ใน internal/workflow/activity.go)
+// type แยกต่างหากให้ชั้นที่เรียก bot (Temporal Activity ใน internal/external/temporal/activity.go)
 // แยกแยะได้ว่า error นี้ "ไม่ควร retry" ต่างจาก error ทั่วไปที่ยัง retry ได้ตามปกติ
 type ConfigError struct {
 	err error
 }
 
 // NewConfigError ห่อ error ธรรมดาให้กลายเป็น ConfigError — bot เรียกใช้ตอนตรวจพบว่า
-// config ที่ user ส่งมาไม่ครบ/ไม่ถูกต้อง (ดูตัวอย่างใน internal/bots/httpstatus)
+// config ที่ user ส่งมาไม่ครบ/ไม่ถูกต้อง (ดูตัวอย่างใน internal/external/bots/httpstatus)
 func NewConfigError(err error) error {
 	return &ConfigError{err: err}
 }

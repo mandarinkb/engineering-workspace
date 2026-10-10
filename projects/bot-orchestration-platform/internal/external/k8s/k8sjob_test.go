@@ -9,7 +9,7 @@
 // อัตโนมัติเหมือน K8s cluster จริง) — test ที่ต้องการให้ Job "สำเร็จ/ล้มเหลว" ต้องจำลอง
 // controller เอง (goroutine แยกที่ไปอัปเดต Status ให้ตรงๆ) ไม่ได้พิสูจน์ behavior ของ K8s
 // Job controller จริง แค่พิสูจน์ว่าโค้ดฝั่ง RunKubernetesJob ตอบสนองสถานะที่เปลี่ยนไปถูกต้อง
-package workflow
+package k8s
 
 import (
 	"context"
@@ -21,21 +21,23 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"go.temporal.io/sdk/activity"
-	"go.temporal.io/sdk/temporal"
+	sdktemporal "go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	memlogger "bop/internal/logger/memory"
+	"bop/internal/domain/workflow"
+	"bop/internal/external/temporal"
+	memlogger "bop/internal/pkg/logger"
 )
 
 // newK8sTestEnv สร้าง TestActivityEnvironment พร้อม register activity function ที่จะ
-// ทดสอบไว้แล้ว ภายใต้ชื่อ K8sJobActivityName — จำเป็นสำหรับ test ที่เรียก RunKubernetesJob
+// ทดสอบไว้แล้ว ภายใต้ชื่อ temporal.K8sJobActivityName — จำเป็นสำหรับ test ที่เรียก RunKubernetesJob
 // เต็มรูปแบบ เพราะข้างในเรียก activity.GetInfo/activity.RecordHeartbeat ซึ่งต้องการ
 // activity execution context จริง (สร้างให้โดย TestActivityEnvironment เท่านั้น)
 func newK8sTestEnv(t *testing.T, fn interface{}) *testsuite.TestActivityEnvironment {
 	t.Helper()
 	var suite testsuite.WorkflowTestSuite
 	env := suite.NewTestActivityEnvironment()
-	env.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: K8sJobActivityName})
+	env.RegisterActivityWithOptions(fn, activity.RegisterOptions{Name: temporal.K8sJobActivityName})
 	return env
 }
 
@@ -66,20 +68,20 @@ func markFirstJobAs(t *testing.T, clientset *fake.Clientset, namespace string, s
 }
 
 // TestRunKubernetesJob_MissingImage ทดสอบว่าไม่ระบุ Image มาเลย ต้องได้ error ที่ห่อเป็น
-// temporal.ApplicationError ชนิด "ConfigError" (non-retryable) — เหตุผลเดียวกับ
+// sdktemporal.ApplicationError ชนิด "ConfigError" (non-retryable) — เหตุผลเดียวกับ
 // bot.ConfigError ของ httpstatus/externaljob: config ผิด/ขาด retry กี่ครั้งก็ผลลัพธ์เดิม
 func TestRunKubernetesJob_MissingImage(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	activities := NewK8sJobActivities(clientset, "default", memlogger.New())
 	env := newK8sTestEnv(t, activities.RunKubernetesJob)
 
-	_, err := env.ExecuteActivity(activities.RunKubernetesJob, K8sJobSpec{})
+	_, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{})
 	if err == nil {
 		t.Fatal("expected error for missing image")
 	}
-	var appErr *temporal.ApplicationError
+	var appErr *sdktemporal.ApplicationError
 	if !errors.As(err, &appErr) {
-		t.Fatalf("expected error chain to contain *temporal.ApplicationError, got %T: %v", err, err)
+		t.Fatalf("expected error chain to contain *sdktemporal.ApplicationError, got %T: %v", err, err)
 	}
 	if appErr.Type() != "ConfigError" {
 		t.Errorf("expected ApplicationError Type %q, got %q", "ConfigError", appErr.Type())
@@ -97,7 +99,7 @@ func TestRunKubernetesJob_Success(t *testing.T) {
 
 	go markFirstJobAs(t, clientset, "default", true)
 
-	val, err := env.ExecuteActivity(activities.RunKubernetesJob, K8sJobSpec{Image: "example.com/report-job:v1"})
+	val, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{Image: "example.com/report-job:v1"})
 	if err != nil {
 		t.Fatalf("ExecuteActivity: %v", err)
 	}
@@ -137,17 +139,17 @@ func TestRunKubernetesJob_Failure(t *testing.T) {
 
 	go markFirstJobAs(t, clientset, "default", false)
 
-	_, err := env.ExecuteActivity(activities.RunKubernetesJob, K8sJobSpec{Image: "example.com/report-job:v1"})
+	_, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{Image: "example.com/report-job:v1"})
 	if err == nil {
 		t.Fatal("expected error for failed job")
 	}
-	var appErr *temporal.ApplicationError
+	var appErr *sdktemporal.ApplicationError
 	if errors.As(err, &appErr) && appErr.Type() == "ConfigError" {
 		t.Fatalf("expected an ordinary (retryable) error, got non-retryable ConfigError: %v", err)
 	}
 }
 
-// TestRunKubernetesJob_DefaultNamespace ทดสอบว่า K8sJobSpec.Namespace ว่างเปล่า ทำให้ Job
+// TestRunKubernetesJob_DefaultNamespace ทดสอบว่า workflow.K8sJobSpec.Namespace ว่างเปล่า ทำให้ Job
 // ถูกสร้างใน defaultNamespace ที่ตั้งไว้ตอน NewK8sJobActivities (ไม่ใช่ namespace ว่างเปล่า
 // หรือ "default" ของ K8s เอง)
 func TestRunKubernetesJob_DefaultNamespace(t *testing.T) {
@@ -158,7 +160,7 @@ func TestRunKubernetesJob_DefaultNamespace(t *testing.T) {
 
 	go markFirstJobAs(t, clientset, "bop-jobs", true)
 
-	if _, err := env.ExecuteActivity(activities.RunKubernetesJob, K8sJobSpec{Image: "example.com/report-job:v1"}); err != nil {
+	if _, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{Image: "example.com/report-job:v1"}); err != nil {
 		t.Fatalf("ExecuteActivity: %v", err)
 	}
 
@@ -200,7 +202,7 @@ func TestDeleteJob(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	activities := NewK8sJobActivities(clientset, "default", memlogger.New())
 
-	job := buildJobObject("test-job", "default", K8sJobSpec{Image: "example.com/x:1"})
+	job := buildJobObject("test-job", "default", workflow.K8sJobSpec{Image: "example.com/x:1"})
 	if _, err := clientset.BatchV1().Jobs("default").Create(context.Background(), job, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("create job: %v", err)
 	}

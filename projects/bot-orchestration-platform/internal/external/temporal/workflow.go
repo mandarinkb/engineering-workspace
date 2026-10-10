@@ -1,10 +1,12 @@
-package workflow
+package temporal
 
 import (
 	"time"
 
-	"go.temporal.io/sdk/temporal"
+	sdktemporal "go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+
+	wfdomain "bop/internal/domain/workflow"
 )
 
 // Namespace คือ Temporal namespace เดียวที่ BOP ใช้ตอนนี้ — "default" คือ namespace ที่
@@ -30,8 +32,8 @@ const TaskQueueName = "bop-workflows"
 const ActivityName = "RunStep"
 
 // K8sJobActivityName คือชื่อ Activity คนละตัวกับ ActivityName ด้านบน — ใช้เฉพาะ step ที่มี
-// Step.K8sJob ไม่เป็น nil (ดู workflow.go) ต้องตรงกับชื่อที่ K8sJobActivities.RunKubernetesJob
-// (k8sjob.go) ถูก register ไว้ใน cmd/bop-worker เป๊ะ — แยกชื่อ/registry ออกจาก ActivityName
+// Step.K8sJob ไม่เป็น nil (ดู internal/domain/workflow/workflow.go) ต้องตรงกับชื่อที่ K8sJobActivities.RunKubernetesJob
+// (internal/external/k8s/k8sjob.go) ถูก register ไว้ใน cmd/bop-worker เป๊ะ — แยกชื่อ/registry ออกจาก ActivityName
 // ตั้งใจ เพราะเป็น activity คนละความหมายกันเลย (RunStep หา bot.Bot จาก registry แล้วเรียก
 // bot.Bot.Run ตรงๆ ในกระบวนการเดียวกัน ส่วน RunKubernetesJob สั่งสร้าง K8s Job แล้วรอดูผล
 // จากภายนอกกระบวนการทั้งหมด) ไม่ควรผสมสอง concept นี้ไว้ใน activity เดียวกัน
@@ -41,7 +43,7 @@ const K8sJobActivityName = "RunKubernetesJob"
 // temporal.NewApplicationErrorWithCause ใน activity.go) ที่ Temporal จะไม่ retry ให้เลย
 // แม้แต่ครั้งเดียว — ทั้งคู่เป็น error ที่ retry กี่ครั้งก็ได้ผลลัพธ์เดิมเป๊ะเสมอ:
 //   - "ConfigError" — user กรอก config ของ bot ผิด/ขาด (ดู bot.ConfigError, ตัวอย่างที่
-//     internal/bots/httpstatus)
+//     internal/external/bots/httpstatus)
 //   - "UnknownBot" — step.BotName ไม่ตรงกับ bot ที่ register ไว้ใน Activities เลย (เพิ่ม
 //     เข้ามาหลังเจอปัญหาจริง: schedule ที่มี Args เก่าซึ่ง serialize ไว้ก่อนเพิ่ม json tag
 //     ให้ Step จะ decode BotName เป็นค่าว่างเปล่า แล้ว retry ไม่มีที่สิ้นสุดโดยไม่จำเป็น —
@@ -49,7 +51,7 @@ const K8sJobActivityName = "RunKubernetesJob"
 var nonRetryableErrorTypes = []string{"ConfigError", "UnknownBot"}
 
 // defaultActivityTimeout คือ StartToCloseTimeout ที่ใช้กับ step ที่ไม่ได้ระบุ
-// Step.TimeoutSeconds ของตัวเองมา (ดูคำอธิบายที่ workflow.go) — ค่าเดิมก่อนเพิ่ม
+// Step.TimeoutSeconds ของตัวเองมา (ดูคำอธิบายที่ internal/domain/workflow/workflow.go) — ค่าเดิมก่อนเพิ่ม
 // per-step timeout คือ 30 วินาทีตายตัวทุก step เหมือนกันหมด ค่านี้คือ fallback ที่รักษา
 // พฤติกรรมเดิมไว้ให้ step ที่ไม่ได้ตั้งค่าอะไรเพิ่ม
 const defaultActivityTimeout = 30 * time.Second
@@ -70,17 +72,17 @@ const defaultActivityTimeout = 30 * time.Second
 // ตอน resume ถ้า logic เปลี่ยนผลลัพธ์ไปตามเวลาจริงหรือ random จะ replay ไม่ตรงกับ history
 // เดิมและพัง (Temporal SDK มี workflow.Now()/workflow.SideEffect ให้ใช้แทนถ้าจำเป็นจริงๆ
 // แต่ workflow นี้ยังไม่ต้องใช้เพราะ I/O ทั้งหมดถูกย้ายไปทำใน Activity ที่ activity.go แทน)
-func Execute(ctx workflow.Context, wf Workflow) ([]StepResult, error) {
-	var results []StepResult
+func Execute(ctx workflow.Context, wf wfdomain.Workflow) ([]wfdomain.StepResult, error) {
+	var results []wfdomain.StepResult
 
-	// SetQueryHandler เปิดให้ฝั่งนอก (internal/api/http ผ่าน client.QueryWorkflow) เรียก
+	// SetQueryHandler เปิดให้ฝั่งนอก (Engine.GetRun ใน engine.go ผ่าน client.QueryWorkflow) เรียก
 	// เข้ามาถามว่า "ตอนนี้รันไปถึง step ไหนแล้ว ผลลัพธ์เป็นยังไง" ได้ ไม่ว่า workflow จะ
 	// กำลังรันอยู่หรือจบไปแล้วก็ตาม (Temporal ตอบ query ของ workflow ที่จบแล้วได้ด้วยการ
 	// replay history มาหาผลลัพธ์ ตราบใดที่ยังอยู่ในช่วง retention ของ namespace) — นี่คือ
 	// สิ่งที่แทนที่ workflow.RunRepository เดิมที่เก็บ Run.Steps ไว้ใน in-memory map ของ
 	// BOP เอง ข้อสำคัญ: closure ที่ SetQueryHandler รับต้อง "อ่านอย่างเดียว" ห้ามแก้ state
 	// ใดๆ เพราะ Temporal อาจเรียก closure นี้กี่ครั้งก็ได้โดยไม่ใช่ส่วนหนึ่งของ event history
-	err := workflow.SetQueryHandler(ctx, "steps", func() ([]StepResult, error) {
+	err := workflow.SetQueryHandler(ctx, "steps", func() ([]wfdomain.StepResult, error) {
 		return results, nil
 	})
 	if err != nil {
@@ -88,12 +90,12 @@ func Execute(ctx workflow.Context, wf Workflow) ([]StepResult, error) {
 	}
 
 	for i, step := range wf.Steps {
-		res := StepResult{StepIndex: i, BotName: step.BotName}
+		res := wfdomain.StepResult{StepIndex: i, BotName: step.BotName}
 
 		// timeout ต่อ step: ใช้ step.TimeoutSeconds ถ้าระบุมา (>0) มิฉะนั้น fallback ไปที่
 		// defaultActivityTimeout — คำนวณ ActivityOptions ใหม่ทุกรอบใน loop (ต่างจากเดิมที่
 		// ตั้งครั้งเดียวนอก loop แล้วใช้ ctx เดิมตลอด) เพราะแต่ละ step อาจต้องการ timeout
-		// ไม่เท่ากัน (ดู workflow.go เรื่อง Step.TimeoutSeconds)
+		// ไม่เท่ากัน (ดู internal/domain/workflow/workflow.go เรื่อง Step.TimeoutSeconds)
 		timeout := defaultActivityTimeout
 		if step.TimeoutSeconds > 0 {
 			timeout = time.Duration(step.TimeoutSeconds) * time.Second
@@ -101,11 +103,11 @@ func Execute(ctx workflow.Context, wf Workflow) ([]StepResult, error) {
 		// step.TaskQueue ค่าว่าง (ปกติ) ปล่อยให้ SDK fallback ไปใช้ task queue เดียวกับตัว
 		// workflow เอง ("bop-workflows") โดยอัตโนมัติ — ระบุมาเมื่อไหร่ Temporal จะส่ง
 		// Activity call ไปยัง worker process ที่ poll queue ชื่อนั้นแทน ซึ่งไม่จำเป็นต้อง
-		// เป็น cmd/bop-worker เลยด้วยซ้ำ (ดู workflow.go เรื่อง Step.TaskQueue)
+		// เป็น cmd/bop-worker เลยด้วยซ้ำ (ดู internal/domain/workflow/workflow.go เรื่อง Step.TaskQueue)
 		stepCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 			StartToCloseTimeout: timeout,
 			TaskQueue:           step.TaskQueue,
-			RetryPolicy: &temporal.RetryPolicy{
+			RetryPolicy: &sdktemporal.RetryPolicy{
 				NonRetryableErrorTypes: nonRetryableErrorTypes,
 			},
 		})
@@ -113,7 +115,7 @@ func Execute(ctx workflow.Context, wf Workflow) ([]StepResult, error) {
 		// step.K8sJob ไม่เป็น nil หมายความว่า step นี้ไม่ผ่าน bot.Bot registry เลย (ทั้ง local
 		// และ remote task queue) แต่สั่งผ่าน K8sJobActivities.RunKubernetesJob แทน — คนละ
 		// activity name/registry กับ ActivityName ("RunStep") ปกติ (ดู K8sJobActivityName
-		// ด้านบน และ workflow.go เรื่อง Step.K8sJob) ส่ง *step.K8sJob (ไม่ใช่ step ทั้งก้อน)
+		// ด้านบน และ internal/domain/workflow/workflow.go เรื่อง Step.K8sJob) ส่ง *step.K8sJob (ไม่ใช่ step ทั้งก้อน)
 		// เป็น input เพราะ activity นี้ไม่สนใจ BotName/Config/TaskQueue เลย
 		var activityErr error
 		if step.K8sJob != nil {

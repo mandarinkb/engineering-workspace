@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"bop/internal/bot"
-	"bop/internal/job"
-	memlogger "bop/internal/logger/memory"
-	memrepo "bop/internal/repository/memory"
-	"bop/internal/worker"
+	"bop/internal/domain/bot"
+	"bop/internal/domain/job"
+	memlogger "bop/internal/pkg/logger"
+	"bop/internal/pkg/worker"
+	"bop/internal/repository/memory"
 )
 
 // stubBot คือ bot ปลอมที่สร้างขึ้นมาเฉพาะไว้ทดสอบพฤติกรรมของ worker pool (concurrency
@@ -42,7 +42,7 @@ func (b *stubBot) Run(ctx context.Context, log bot.LogFunc, _ bot.Config) (bot.R
 // อาจเกิดขึ้นระหว่าง worker pool กับโค้ดที่เรียกใช้งานมันอยู่ (ดู FULLSTACK-INFRA-ROADMAP.md
 // Phase 0.2 และคำอธิบายบทเรียนที่เจอจริงใน README ของโปรเจกต์นี้)
 func TestPool_RunsJobsConcurrentlyWithoutRace(t *testing.T) {
-	repo := memrepo.NewJobRepository()
+	repo := memory.NewJobRepository()
 	log := memlogger.New()
 	pool := worker.NewPool(3, time.Second, repo, log) // จำกัดพร้อมกันได้แค่ 3 แต่จะยิง 10 job
 	pool.Register(&stubBot{delay: 20 * time.Millisecond})
@@ -88,7 +88,7 @@ func TestPool_RunsJobsConcurrentlyWithoutRace(t *testing.T) {
 // TestPool_CancelStopsAJobInFlight ทดสอบว่า Cancel() สามารถหยุด job ที่กำลังทำงาน
 // อยู่จริงๆ ได้ ไม่ใช่แค่ปล่อยให้ job ทำงานจนจบตามปกติแล้วเปลี่ยน status ทีหลังเฉยๆ
 func TestPool_CancelStopsAJobInFlight(t *testing.T) {
-	repo := memrepo.NewJobRepository()
+	repo := memory.NewJobRepository()
 	log := memlogger.New()
 	pool := worker.NewPool(1, 5*time.Second, repo, log)
 	pool.Register(&stubBot{delay: 5 * time.Second}) // ตั้งให้ทำงานนานๆ เพื่อให้มีเวลายิง Cancel ทัน
@@ -131,7 +131,7 @@ func TestPool_CancelStopsAJobInFlight(t *testing.T) {
 // ctx.Err()==DeadlineExceeded ไม่ใช่ Canceled — ดู pool.go) เร็วกว่า 5 วินาทีมาก ไม่ต้อง
 // รอจนครบ timeout กลาง 10 วินาทีของ pool เลย
 func TestPool_PerJobTimeoutOverridesDefault(t *testing.T) {
-	repo := memrepo.NewJobRepository()
+	repo := memory.NewJobRepository()
 	log := memlogger.New()
 	pool := worker.NewPool(1, 10*time.Second, repo, log) // timeout กลางยาวมาก ตั้งใจให้ไม่ถึงก่อน per-job timeout
 	pool.Register(&stubBot{delay: 5 * time.Second})

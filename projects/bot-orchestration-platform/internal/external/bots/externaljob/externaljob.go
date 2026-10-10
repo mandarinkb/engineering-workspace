@@ -21,7 +21,7 @@ import (
 	"sync"
 	"syscall"
 
-	"bop/internal/bot"
+	"bop/internal/domain/bot"
 )
 
 // defaultBinaryPath คือ path ของ binary ภายนอกบนเครื่อง/container ที่ process ของ BOP

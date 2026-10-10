@@ -10,7 +10,7 @@ import "context"
 // LogFunc คือ function type ที่ bot เรียกใช้เพื่อส่งข้อความ progress ออกมาระหว่างทำงาน
 // (เช่น "กำลังโหลดหน้าเว็บ...", "พบข้อมูล 5 รายการ") โดยที่ตัว bot เองไม่ต้องรู้เลยว่า
 // ข้อความนี้จะถูกเก็บที่ไหน (in-memory, PostgreSQL, หรือ OpenSearch) หรือถูกส่งไปแสดง
-// บนหน้า dashboard แบบ real-time ได้อย่างไร — รายละเอียดพวกนั้นอยู่ที่ package internal/logger
+// บนหน้า dashboard แบบ real-time ได้อย่างไร — รายละเอียดพวกนั้นอยู่ที่ package internal/domain/logger
 // ทั้งหมด ทำให้ bot แต่ละตัวโฟกัสแค่ "ทำงานของตัวเองและรายงานความคืบหน้า" เท่านั้น
 type LogFunc func(message string)
 
@@ -67,7 +67,7 @@ type ConfigField struct {
 // config คนละแบบกัน (เช่น http-status-checker ต้องการแค่ "url" แต่ bot ตัวอื่นอาจต้องการ
 // "selector", "webhook_url" ฯลฯ) — การใช้ map ทำให้เพิ่ม bot ชนิดใหม่ที่มี config รูปแบบ
 // ต่างไปได้เลยโดยไม่ต้องแก้ type นี้หรือโค้ดส่วนกลางใดๆ (แลกกับ type safety ที่หายไปบ้าง
-// ซึ่ง bot แต่ละตัวต้อง validate ค่าที่ตัวเองต้องการเอง เช่นดูตัวอย่างใน internal/bots/httpstatus)
+// ซึ่ง bot แต่ละตัวต้อง validate ค่าที่ตัวเองต้องการเอง เช่นดูตัวอย่างใน internal/external/bots/httpstatus)
 type Config map[string]string
 
 // Result คือผลลัพธ์ตอน bot ทำงานสำเร็จ

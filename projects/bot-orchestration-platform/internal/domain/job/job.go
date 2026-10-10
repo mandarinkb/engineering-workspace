@@ -6,6 +6,8 @@ package job
 import (
 	"context"
 	"time"
+
+	"bop/internal/domain/bot"
 )
 
 // Status คือสถานะของ job ในแต่ละช่วงเวลา เปลี่ยนแปลงตามลำดับ:
@@ -22,30 +24,30 @@ const (
 
 // Job คือ record หนึ่งรายการของการรัน bot หนึ่งครั้ง เก็บทั้งข้อมูล config ที่ใช้รัน,
 // สถานะปัจจุบัน, และผลลัพธ์ (ถ้ามี) — struct นี้ถูกแก้ไข field ต่างๆ ระหว่างที่ job
-// กำลังทำงานอยู่ (ดู internal/worker) จึงต้องระวังเรื่อง concurrent access เป็นพิเศษ
+// กำลังทำงานอยู่ (ดู internal/pkg/worker) จึงต้องระวังเรื่อง concurrent access เป็นพิเศษ
 // (ดูคำอธิบายละเอียดใน internal/repository/memory ว่าทำไมถึงต้อง copy struct นี้
 // ทุกครั้งที่ส่งเข้า-ออกจาก repository)
 // json tag ทุก field เป็น snake_case ตั้งใจให้ตรงกับ endpoint กลุ่ม /workflow-runs
-// (ดู internal/api/http/handler.go) เพื่อให้ JSON ที่ dashboard (projects/bop-dashboard/)
+// (ดู internal/adapter/http/handler.go) เพื่อให้ JSON ที่ dashboard (projects/bop-dashboard/)
 // ได้รับมี casing สม่ำเสมอกันทั้ง API ไม่ใช่ผสมกันระหว่าง PascalCase (ค่า default ของ Go
 // ตอนไม่มี tag) กับ snake_case แบบที่เคยเป็นมาก่อนหน้านี้
 type Job struct {
-	ID        string            `json:"id"`                   // รหัสเฉพาะของ job นี้ (สุ่มสร้างตอนสร้าง job ใหม่)
-	BotName   string            `json:"bot_name"`             // ชื่อ bot ที่ใช้รัน job นี้ (ตรงกับ Bot.Name())
-	Config    map[string]string `json:"config"`               // ค่า config ที่ user กรอกมาตอนสร้าง job
+	ID      string            `json:"id"`       // รหัสเฉพาะของ job นี้ (สุ่มสร้างตอนสร้าง job ใหม่)
+	BotName string            `json:"bot_name"` // ชื่อ bot ที่ใช้รัน job นี้ (ตรงกับ Bot.Name())
+	Config  map[string]string `json:"config"`   // ค่า config ที่ user กรอกมาตอนสร้าง job
 	// TimeoutSeconds คือ timeout เฉพาะของ job นี้ (หน่วยวินาที) — ถ้าเป็น 0 (ไม่ได้ระบุมา)
 	// worker.Pool จะใช้ timeout กลางของทั้งระบบแทน (ค่าที่ตั้งไว้ตอนสร้าง worker.NewPool)
 	// เพิ่ม field นี้เพราะ bot บางตัว (เช่น externaljob ที่ shell out ไปเรียก binary
 	// ภายนอกที่ใช้เวลาทำงานไม่แน่นอน) ต้องการเวลามากกว่า/น้อยกว่า timeout กลาง 30 วินาที
 	// ที่ bot อื่นอย่าง http-status-checker ใช้พอดีอยู่แล้ว — ให้ผู้เรียก API ระบุต่อ job
 	// แต่ละครั้งได้แทนที่จะบังคับใช้ค่าเดียวกันทุก bot ในระบบ (ดู EXTERNAL-JOB-BOT-TODO.md)
-	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
-	Status    Status            `json:"status"`               // สถานะปัจจุบันของ job (ดู const ด้านบน)
-	Summary   string            `json:"summary,omitempty"`    // ข้อความสรุปผลลัพธ์ (มีค่าก็ต่อเมื่อ Status = succeeded)
-	Error     string            `json:"error,omitempty"`      // ข้อความ error (มีค่าก็ต่อเมื่อ Status = failed หรือ cancelled)
-	CreatedAt time.Time         `json:"created_at"`           // เวลาที่สร้าง job นี้ (ก่อนเริ่มรันจริง)
-	StartedAt *time.Time        `json:"started_at,omitempty"` // เวลาที่ worker เริ่มรันจริง (เป็น pointer เพราะยังไม่มีค่าตอน pending)
-	EndedAt   *time.Time        `json:"ended_at,omitempty"`   // เวลาที่ job จบ ไม่ว่าจะสำเร็จ/ล้มเหลว/ถูกยกเลิก (เป็น pointer ด้วยเหตุผลเดียวกัน)
+	TimeoutSeconds int        `json:"timeout_seconds,omitempty"`
+	Status         Status     `json:"status"`               // สถานะปัจจุบันของ job (ดู const ด้านบน)
+	Summary        string     `json:"summary,omitempty"`    // ข้อความสรุปผลลัพธ์ (มีค่าก็ต่อเมื่อ Status = succeeded)
+	Error          string     `json:"error,omitempty"`      // ข้อความ error (มีค่าก็ต่อเมื่อ Status = failed หรือ cancelled)
+	CreatedAt      time.Time  `json:"created_at"`           // เวลาที่สร้าง job นี้ (ก่อนเริ่มรันจริง)
+	StartedAt      *time.Time `json:"started_at,omitempty"` // เวลาที่ worker เริ่มรันจริง (เป็น pointer เพราะยังไม่มีค่าตอน pending)
+	EndedAt        *time.Time `json:"ended_at,omitempty"`   // เวลาที่ job จบ ไม่ว่าจะสำเร็จ/ล้มเหลว/ถูกยกเลิก (เป็น pointer ด้วยเหตุผลเดียวกัน)
 }
 
 // Repository คือ interface สำหรับเก็บและค้นหา Job — ตอนนี้มี implementation เดียวคือ
@@ -63,4 +65,16 @@ type Repository interface {
 	Get(ctx context.Context, id string) (*Job, error)
 	// List คืนรายการ job ทั้งหมดในระบบ
 	List(ctx context.Context) ([]*Job, error)
+}
+
+// Executor คือ port ของ "ตัวรัน job เดี่ยว" ที่ usecase ใช้ — ตอนนี้ implement โดย
+// worker.Pool (internal/pkg/worker) ที่รัน bot ใน process เดียวกับ HTTP server
+// usecase รู้จักแค่ interface นี้ ไม่รู้ว่าข้างหลังเป็น goroutine pool หรืออย่างอื่น
+type Executor interface {
+	// Submit ส่ง job เข้าคิวรันแบบไม่รอผล — error ถ้าไม่รู้จัก bot ตาม j.BotName
+	Submit(j *Job) error
+	// Cancel สั่งยกเลิก job ที่กำลังรันอยู่ — false ถ้า job นั้นไม่ได้กำลังรัน
+	Cancel(jobID string) bool
+	// List คืน bot ทั้งหมดที่ register ไว้ เรียงตามชื่อ
+	List() []bot.Bot
 }

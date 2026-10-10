@@ -1,45 +1,41 @@
 // Package http คือ control-plane API ของทั้งระบบ — หน้า dashboard (roadmap Phase 1)
-// จะคุยกับ backend ผ่าน endpoint ที่นี่เท่านั้น ไม่มีทางอื่น package นี้พึ่งพาแค่
-// interface ของ job.Repository, logger.Logger, และ *worker.Pool เท่านั้น ไม่เคยรู้จัก
-// bot ชนิดใดชนิดหนึ่งโดยเฉพาะเลย
+// จะคุยกับ backend ผ่าน endpoint ที่นี่เท่านั้น ไม่มีทางอื่น package นี้เป็น adapter ชั้นนอก
+// สุดของ clean architecture: แปลง HTTP request เป็นการเรียก usecase (internal/usecase/...)
+// แล้วแปลงผลลัพธ์กลับเป็น JSON — ไม่มี business logic และไม่รู้จัก Temporal SDK,
+// worker pool, หรือ storage ตัวจริงเลย
 package http
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
-	workflowpb "go.temporal.io/api/workflow/v1"
-	"go.temporal.io/api/workflowservice/v1"
-	"go.temporal.io/sdk/client"
-
-	"bop/internal/auth"
-	"bop/internal/bot"
-	"bop/internal/job"
-	"bop/internal/logger"
-	"bop/internal/schedule"
-	"bop/internal/worker"
-	"bop/internal/workflow"
+	"bop/internal/domain/apperr"
+	"bop/internal/domain/bot"
+	"bop/internal/domain/logger"
+	"bop/internal/domain/workflow"
+	authuc "bop/internal/usecase/auth"
+	jobuc "bop/internal/usecase/job"
+	scheduleuc "bop/internal/usecase/schedule"
+	workflowrunuc "bop/internal/usecase/workflowrun"
 )
 
 // Server คือ HTTP API ของ BOP รวม handler ทุกตัวไว้ในที่เดียว
 type Server struct {
-	mux          *http.ServeMux // ตัว router มาตรฐานของ Go (ใช้ pattern matching แบบ method+path ของ Go 1.22+)
-	repo         job.Repository
-	log          logger.Logger
-	pool         *worker.Pool
-	temporal     client.Client       // ใช้ query ผลลัพธ์ workflow run + จัดการ Temporal Schedule
-	scheduleRepo schedule.Repository // เก็บ workflow definition ของแต่ละ schedule (ดู internal/schedule)
+	mux       *http.ServeMux // ตัว router มาตรฐานของ Go (ใช้ pattern matching แบบ method+path ของ Go 1.22+)
+	jobs      *jobuc.Service
+	runs      *workflowrunuc.Service
+	schedules *scheduleuc.Service
+	auth      *authuc.Service
 }
 
-// NewServer ผูก handler ทุกตัวเข้ากับ dependency ที่ส่งเข้ามา แล้วลงทะเบียน route ให้เรียบร้อย
-func NewServer(repo job.Repository, log logger.Logger, pool *worker.Pool, temporalClient client.Client, scheduleRepo schedule.Repository) *Server {
-	s := &Server{mux: http.NewServeMux(), repo: repo, log: log, pool: pool, temporal: temporalClient, scheduleRepo: scheduleRepo}
+// NewServer ผูก handler ทุกตัวเข้ากับ usecase ที่ส่งเข้ามา แล้วลงทะเบียน route ให้เรียบร้อย
+func NewServer(jobs *jobuc.Service, runs *workflowrunuc.Service, schedules *scheduleuc.Service, auth *authuc.Service) *Server {
+	s := &Server{mux: http.NewServeMux(), jobs: jobs, runs: runs, schedules: schedules, auth: auth}
 	s.routes()
 	return s
 }
@@ -53,9 +49,8 @@ func NewServer(repo job.Repository, log logger.Logger, pool *worker.Pool, tempor
 var dashboardOrigin = getenv("BOP_DASHBOARD_ORIGIN", "http://localhost:3000")
 
 // getenv คืนค่า environment variable ชื่อ key ถ้าตั้งไว้ (และไม่ใช่ค่าว่าง) ไม่งั้นคืนค่า
-// fallback แทน — ใช้รวมจุดเดียวสำหรับ pattern "อ่านจาก env ก่อน ไม่มีค่อย fallback เป็นค่า
-// hardcode เดิม" ที่ใช้ซ้ำหลายจุดในไฟล์นี้ (dashboardOrigin, authSecret, adminUsername,
-// adminPassword)
+// fallback แทน — ใช้กับ dashboardOrigin (ค่า config ของชั้น HTTP เอง ส่วน secret/credential
+// ของ auth ย้ายไปอ่านใน cmd/bop/main.go แล้ว)
 func getenv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -97,7 +92,7 @@ func (s *Server) routes() {
 	// liveness ตรงนี้แหละ: Temporal ล่มชั่วคราวไม่ควรทำให้ Pod ถูก restart วนไปเรื่อยๆ
 	// (CrashLoopBackOff) แค่หยุดรับ traffic จนกว่า Temporal จะกลับมา
 	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if _, err := s.temporal.CheckHealth(r.Context(), &client.CheckHealthRequest{}); err != nil {
+		if err := s.runs.Ready(r.Context()); err != nil {
 			http.Error(w, "temporal unreachable", http.StatusServiceUnavailable)
 			return
 		}
@@ -112,9 +107,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /jobs/{id}/logs/stream", s.handleStreamJobLogs) // ดู log แบบ real-time ผ่าน SSE (roadmap ข้อ 1.5)
 	s.mux.HandleFunc("DELETE /jobs/{id}", s.handleCancelJob)              // สั่งยกเลิก job ที่กำลังรันอยู่
 
-	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)     // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
-	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun)  // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
-	s.mux.HandleFunc("POST /workflow-runs", s.handleCreateWorkflowRun)   // รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน
+	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)    // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
+	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun) // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
+	s.mux.HandleFunc("POST /workflow-runs", s.handleCreateWorkflowRun)  // รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน
 
 	s.mux.HandleFunc("POST /login", s.handleLogin)   // ตรวจ credential แล้วออก JWT ใส่ httpOnly cookie (roadmap ข้อ 1.8)
 	s.mux.HandleFunc("POST /logout", s.handleLogout) // ล้าง cookie ทิ้ง
@@ -141,9 +136,9 @@ type botSummary struct {
 }
 
 // handleListBots คืนรายชื่อ bot ที่ register ไว้ทั้งหมดพร้อม config schema ของแต่ละตัว —
-// เรียงตามชื่อ (a-z) ตาม worker.Pool.List
+// เรียงตามชื่อ (a-z) ตาม job.Executor.List
 func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
-	bots := s.pool.List()
+	bots := s.jobs.ListBots()
 	out := make([]botSummary, 0, len(bots))
 	for _, b := range bots {
 		out = append(out, botSummary{Name: b.Name(), ConfigSchema: b.ConfigSchema()})
@@ -173,42 +168,33 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	j := &job.Job{
-		ID:        newID(),
-		BotName:   botName,
-		Config:    cfg,
-		Status:    job.StatusPending,
-		CreatedAt: time.Now(),
-	}
-
+	timeoutSeconds := 0
 	if raw := r.URL.Query().Get("timeout_seconds"); raw != "" {
 		seconds, err := strconv.Atoi(raw)
 		if err != nil || seconds <= 0 {
 			http.Error(w, "timeout_seconds must be a positive integer", http.StatusBadRequest)
 			return
 		}
-		j.TimeoutSeconds = seconds
+		timeoutSeconds = seconds
 	}
 
-	if err := s.repo.Create(r.Context(), j); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// usecase ห่อ error จาก executor (เช่น ไม่รู้จัก bot) เป็น apperr.ErrInvalid -> 400 ส่วน
+	// error จาก repository เป็น error ธรรมดา -> 500
+	j, err := s.jobs.Create(r.Context(), botName, cfg, timeoutSeconds)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, apperr.ErrInvalid) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
-
-	if err := s.pool.Submit(j); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// หมายเหตุ: อ่านค่า j ตรงนี้ปลอดภัย เพราะ pool.Submit ได้ copy ค่าออกไปเป็นของตัวเอง
-	// แล้วตั้งแต่ตอนเรียก (ดูคำอธิบายใน internal/worker/pool.go) จึงไม่มีทางชนกับ
-	// goroutine ที่กำลังรัน job อยู่เบื้องหลัง
 	writeJSON(w, http.StatusAccepted, j)
 }
 
 // handleListJobs คืนรายการ job ทั้งหมดในระบบ เรียงจากล่าสุดไปเก่าสุด
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
-	jobs, err := s.repo.List(r.Context())
+	jobs, err := s.jobs.List(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -219,7 +205,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 // handleGetJob คืนข้อมูล job เดียวตาม ID ที่ระบุใน path (สถานะล่าสุด ณ ตอนที่เรียก)
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	j, err := s.repo.Get(r.Context(), id)
+	j, err := s.jobs.Get(r.Context(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -231,7 +217,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 // ตอนนี้ — เป็นแค่ snapshot ของ log ณ ตอนที่เรียก endpoint นี้)
 func (s *Server) handleGetJobLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	lines, err := s.log.History(r.Context(), id)
+	lines, err := s.jobs.Logs(r.Context(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -269,10 +255,10 @@ func (s *Server) handleStreamJobLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch, unsubscribe := s.log.Subscribe(id)
+	ch, unsubscribe := s.jobs.SubscribeLogs(id)
 	defer unsubscribe()
 
-	history, err := s.log.History(r.Context(), id)
+	history, err := s.jobs.Logs(r.Context(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -318,30 +304,14 @@ func writeSSELine(w http.ResponseWriter, line logger.Line) {
 // ตอนอ่าน (handleMe), และตอนล้าง (handleLogout)
 const cookieName = "bop_session"
 
-// authSecret คือ key ที่ใช้เซ็น/ตรวจ JWT (ดู internal/auth) — อ่านจาก env var
-// BOP_JWT_SECRET ก่อนเสมอ **ห้ามใช้ค่า fallback นี้ใน production เด็ดขาด** ต้องสุ่มค่าใหม่
-// ด้วย `openssl rand -base64 32` แล้วตั้งผ่าน K8s Secret ก่อน deploy จริง (ดู
-// KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 3.4) fallback นี้มีไว้ให้ local dev ใช้งานได้โดยไม่
-// ต้องตั้ง env var เท่านั้น
-var authSecret = []byte(getenv("BOP_JWT_SECRET", "bop-dev-secret-change-me-before-deploying"))
-
-// adminUsername/adminPassword คือ credential เดียวที่ระบบรู้จักตอนนี้ — เพราะยังไม่มี user
-// database เลย (BOP เป็น single-operator tool ควบคุม bot ของตัวเอง ไม่ใช่ multi-tenant
-// SaaS ที่ต้องมี user table จริงจังตั้งแต่ต้น) อ่านจาก env var BOP_ADMIN_USERNAME/
-// BOP_ADMIN_PASSWORD ก่อนเสมอ **ห้ามใช้ค่า fallback นี้ใน production เด็ดขาด**
-var (
-	adminUsername = getenv("BOP_ADMIN_USERNAME", "admin")
-	adminPassword = getenv("BOP_ADMIN_PASSWORD", "changeme")
-)
-
 // loginRequest คือ JSON body ที่ POST /login ต้องรับ
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// handleLogin ตรวจ username/password กับค่าที่ hardcode ไว้ (ดูหมายเหตุด้านบน) ถ้าถูกต้อง
-// ออก JWT (ผ่าน internal/auth) แล้วฝังใน httpOnly cookie ส่งกลับไป
+// handleLogin ตรวจ username/password ผ่าน usecase auth ถ้าถูกต้องได้ JWT กลับมา แล้วฝังใน
+// httpOnly cookie ส่งกลับไป
 //
 // ทำไมเก็บ token ใน httpOnly cookie แทนที่จะให้ frontend เก็บเองใน localStorage:
 // httpOnly cookie เข้าถึงจาก JavaScript ฝั่ง client ไม่ได้เลย (แม้แต่โค้ดของ dashboard
@@ -363,13 +333,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username != adminUsername || req.Password != adminPassword {
+	token, err := s.auth.Login(req.Username, req.Password)
+	if errors.Is(err, authuc.ErrInvalidCredentials) {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
-
-	const ttl = 24 * time.Hour
-	token, err := auth.Issue(authSecret, req.Username, ttl)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -382,7 +350,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		Secure:   false, // TODO: true ตอน deploy จริงผ่าน HTTPS (ดูหมายเหตุด้านบน)
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(ttl.Seconds()),
+		MaxAge:   int(authuc.TokenTTL.Seconds()),
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -412,19 +380,19 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not authenticated", http.StatusUnauthorized)
 		return
 	}
-	claims, err := auth.Verify(authSecret, cookie.Value)
+	username, err := s.auth.Verify(cookie.Value)
 	if err != nil {
 		http.Error(w, "not authenticated", http.StatusUnauthorized)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"username": claims.Subject})
+	writeJSON(w, http.StatusOK, map[string]string{"username": username})
 }
 
 // handleCancelJob สั่งยกเลิก job ที่กำลังรันอยู่ คืน 409 Conflict ถ้า job นั้นไม่ได้
 // กำลังรันอยู่แล้ว (จบไปแล้ว หรือ ID ไม่มีอยู่จริง)
 func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !s.pool.Cancel(id) {
+	if !s.jobs.Cancel(id) {
 		http.Error(w, "job not running", http.StatusConflict)
 		return
 	}
@@ -432,9 +400,8 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // workflowRunSummary คือรูปแบบ JSON ที่คืนให้ dashboard ดู — แปลงมาจาก
-// *workflowpb.WorkflowExecutionInfo ของ Temporal อีกที (ตัว protobuf type เดิมมี field
-// เยอะเกินจำเป็นและใช้ *timestamppb.Timestamp ที่ไม่ใช่ JSON-friendly ตรงๆ) เก็บไว้แค่
-// เท่าที่ dashboard ต้องใช้จริง ใกล้เคียงกับ workflow.Run เดิมก่อนย้ายมาใช้ Temporal
+// workflow.RunSummary ของ domain (ซึ่ง adapter ฝั่ง Temporal แปลงมาจาก protobuf type
+// อีกทอดหนึ่ง) เก็บไว้แค่เท่าที่ dashboard ต้องใช้จริง
 type workflowRunSummary struct {
 	WorkflowID   string     `json:"workflow_id"`
 	RunID        string     `json:"run_id"`
@@ -444,42 +411,32 @@ type workflowRunSummary struct {
 	EndedAt      *time.Time `json:"ended_at,omitempty"`
 }
 
-// toRunSummary แปลง WorkflowExecutionInfo ที่ได้จาก Temporal (ทั้งจาก ListWorkflow และ
-// DescribeWorkflowExecution) ให้เป็น workflowRunSummary — StartTime ของ Temporal เป็น
-// *timestamppb.Timestamp เสมอ (ไม่มีทางเป็น nil สำหรับ execution ที่มีอยู่จริง) ส่วน
-// CloseTime เป็น nil ตราบใดที่ workflow ยังไม่จบ จึงต้องเช็คก่อนแปลง
-func toRunSummary(info *workflowpb.WorkflowExecutionInfo) workflowRunSummary {
-	summary := workflowRunSummary{
-		WorkflowID:   info.GetExecution().GetWorkflowId(),
-		RunID:        info.GetExecution().GetRunId(),
-		WorkflowName: info.GetType().GetName(),
-		Status:       info.GetStatus().String(),
-		StartedAt:    info.GetStartTime().AsTime(),
+// toRunSummary แปลง workflow.RunSummary ของ domain เป็นรูปแบบ JSON ของ API
+func toRunSummary(run workflow.RunSummary) workflowRunSummary {
+	return workflowRunSummary{
+		WorkflowID:   run.WorkflowID,
+		RunID:        run.RunID,
+		WorkflowName: run.WorkflowName,
+		Status:       run.Status,
+		StartedAt:    run.StartedAt,
+		EndedAt:      run.EndedAt,
 	}
-	if info.GetCloseTime() != nil {
-		ended := info.GetCloseTime().AsTime()
-		summary.EndedAt = &ended
-	}
-	return summary
 }
 
 // handleListWorkflowRuns คืนรายการ workflow run ทั้งหมด (ทั้งที่กำลังรันอยู่และจบไปแล้ว)
 // เรียงจากล่าสุดไปเก่าสุดตาม default ordering ของ Temporal Visibility API — ใช้ดูว่า
-// scheduled workflow ทำงานไปแล้วกี่รอบ สำเร็จ/ล้มเหลวรอบไหนบ้าง แทนที่การอ่านจาก
-// workflow.RunRepository (in-memory) เดิม ตอนนี้ query ตรงไปที่ Temporal server เอง
-// (Temporal เป็นคนเก็บ event history + visibility record ให้ทั้งหมดอยู่แล้ว)
+// scheduled workflow ทำงานไปแล้วกี่รอบ สำเร็จ/ล้มเหลวรอบไหนบ้าง (engine เป็นคนเก็บ event
+// history + visibility record ให้ทั้งหมด ดู internal/external/temporal/engine.go)
 func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) {
-	resp, err := s.temporal.ListWorkflow(r.Context(), &workflowservice.ListWorkflowExecutionsRequest{
-		Namespace: workflow.Namespace,
-	})
+	list, err := s.runs.List(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	runs := make([]workflowRunSummary, 0, len(resp.Executions))
-	for _, e := range resp.Executions {
-		runs = append(runs, toRunSummary(e))
+	runs := make([]workflowRunSummary, 0, len(list))
+	for _, run := range list {
+		runs = append(runs, toRunSummary(run))
 	}
 	writeJSON(w, http.StatusOK, runs)
 }
@@ -491,30 +448,20 @@ type workflowRunDetail struct {
 }
 
 // handleGetWorkflowRun คืนรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step ที่รันไปแล้ว
-// — id ในที่นี้คือ Temporal Workflow ID (ไม่ใช่ Run.ID แบบสุ่มของเวอร์ชันเดิมอีกต่อไป)
-// ดึงสถานะโดยรวมผ่าน DescribeWorkflowExecution และดึงผลลัพธ์ทีละ step ผ่าน
-// QueryWorkflow เรียก query handler ชื่อ "steps" ที่ประกาศไว้ใน workflow.Execute
-// (internal/workflow/temporal.go) — ใช้ได้ทั้งตอน workflow ยังรันอยู่และจบไปแล้ว
+// — id ในที่นี้คือ Temporal Workflow ID — ใช้ได้ทั้งตอน workflow ยังรันอยู่และจบไปแล้ว
+// (ดูวิธีดึงผลลัพธ์ทีละ step ที่ internal/external/temporal/engine.go)
 func (s *Server) handleGetWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	desc, err := s.temporal.DescribeWorkflowExecution(r.Context(), id, "")
+	run, err := s.runs.Get(r.Context(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	var steps []workflow.StepResult
-	// QueryWorkflow อาจ error ได้หลายกรณี (เช่น เพิ่งเริ่ม workflow ยังไม่ทัน register
-	// query handler, หรือ history ถูกลบไปตาม retention แล้ว) — ไม่ถือเป็น fatal error
-	// ของ endpoint นี้ทั้งหมด ปล่อยให้ steps เป็น slice ว่างแทนที่จะ error ทั้ง response
-	if val, qerr := s.temporal.QueryWorkflow(r.Context(), id, "", "steps"); qerr == nil {
-		_ = val.Get(&steps)
-	}
-
 	writeJSON(w, http.StatusOK, workflowRunDetail{
-		workflowRunSummary: toRunSummary(desc.WorkflowExecutionInfo),
-		Steps:              steps,
+		workflowRunSummary: toRunSummary(run.RunSummary),
+		Steps:              run.Steps,
 	})
 }
 
@@ -533,50 +480,31 @@ type createWorkflowRunResponse struct {
 	RunID      string `json:"run_id"`
 }
 
-// handleCreateWorkflowRun สั่งรัน workflow (1 หรือหลาย step เรียงกัน) ทันทีแบบ ad-hoc ผ่าน
-// client.ExecuteWorkflow ตรงๆ — ต่างจาก POST /schedules ตรงที่ไม่สร้างอะไรที่ "รันซ้ำตาม
-// ตารางเวลา" เลย แค่เริ่ม 1 run แล้วจบ เหมาะกับทั้ง (1) อยากรัน step ชุดหนึ่งครั้งเดียวโดย
-// ไม่ต้องผ่านการสร้าง/ลบ schedule ให้ยุ่งยาก และ (2) "job เดี่ยว" ที่ต้อง route ไปยัง Temporal
-// Task Queue อื่น (ผ่าน Step.TaskQueue — ดู internal/workflow/workflow.go) ซึ่งเป็นสิ่งที่
-// worker.Pool เดิม (ใช้กับ POST /bots/{name}/jobs) ทำไม่ได้เลย เพราะไม่มี Temporal เกี่ยวข้อง
-// อยู่ในเส้นทางนั้น
+// handleCreateWorkflowRun สั่งรัน workflow (1 หรือหลาย step เรียงกัน) ทันทีแบบ ad-hoc —
+// ดูเหตุผลและกฎการตั้ง workflow ID ที่ workflowrun.Service.Start
 //
-// เหมือนกับ handleCreateJob เดิม endpoint นี้เป็น fire-and-forget (ExecuteWorkflow แค่เริ่ม
-// workflow แล้ว return ทันที ไม่รอผลลัพธ์) — client ต้อง poll สถานะทีหลังเองผ่าน
-// GET /workflow-runs/{workflow_id} ที่มีอยู่แล้ว (ไม่ต้องเพิ่ม repository/endpoint ใหม่)
+// เหมือนกับ handleCreateJob endpoint นี้เป็น fire-and-forget (เริ่ม workflow แล้ว return
+// ทันที ไม่รอผลลัพธ์) — client ต้อง poll สถานะทีหลังเองผ่าน GET /workflow-runs/{workflow_id}
 func (s *Server) handleCreateWorkflowRun(w http.ResponseWriter, r *http.Request) {
 	var req createWorkflowRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	if req.WorkflowName == "" {
-		http.Error(w, "workflow_name is required", http.StatusBadRequest)
-		return
-	}
-	if len(req.Steps) == 0 {
-		http.Error(w, "steps must not be empty", http.StatusBadRequest)
-		return
-	}
 
-	// ผูก workflow ID กับ workflow_name + newID() (helper เดิมท้ายไฟล์นี้) เพื่อกัน ID ชน
-	// กันเวลาเรียก endpoint นี้ซ้ำหลายครั้งด้วย workflow_name เดียวกัน — ต่างจาก
-	// ensureExampleSchedule/handleCreateSchedule ที่ใช้ ID ตายตัวจาก client เพราะที่นั่น
-	// ID ต้อง stable ข้าม request (เอาไว้ pause/trigger/delete schedule เดิมซ้ำได้) แต่ที่นี่
-	// แต่ละ request คือ run ใหม่ที่ไม่เกี่ยวข้องกับ run ก่อนหน้าเลย
-	wf := workflow.Workflow{Name: req.WorkflowName, Steps: req.Steps}
-	run, err := s.temporal.ExecuteWorkflow(r.Context(), client.StartWorkflowOptions{
-		ID:        fmt.Sprintf("%s-%s", req.WorkflowName, newID()),
-		TaskQueue: workflow.TaskQueueName, // task queue ของตัว "workflow" เอง (cmd/bop-worker) — คนละเรื่องกับ Step.TaskQueue ของแต่ละ activity ภายใน
-	}, workflow.Execute, wf)
+	run, err := s.runs.Start(r.Context(), req.WorkflowName, req.Steps)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, apperr.ErrInvalid) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
 	writeJSON(w, http.StatusAccepted, createWorkflowRunResponse{
-		WorkflowID: run.GetID(),
-		RunID:      run.GetRunID(),
+		WorkflowID: run.WorkflowID,
+		RunID:      run.RunID,
 	})
 }
 
@@ -585,13 +513,4 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
-}
-
-// newID สุ่มสร้างรหัสเฉพาะสำหรับ job ใหม่ โดยใช้ crypto/rand (สุ่มแบบปลอดภัยทาง cryptography)
-// สร้าง byte สุ่ม 16 ตัวแล้วแปลงเป็น string hex — ไม่ใช้ library ภายนอกอย่าง uuid
-// เพื่อให้โปรเจกต์นี้ยังคง zero external dependency อยู่
-func newID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
 }

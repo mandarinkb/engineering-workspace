@@ -18,15 +18,15 @@
 
 | ทางเลือก | เอกสาร | สถานะ |
 |---|---|---|
-| Local exec (`internal/bots/externaljob`) | [EXTERNAL-JOB-BOT-TODO.md](EXTERNAL-JOB-BOT-TODO.md) | โค้ด+test เสร็จ, binary path ยัง placeholder |
+| Local exec (`internal/external/bots/externaljob`) | [EXTERNAL-JOB-BOT-TODO.md](EXTERNAL-JOB-BOT-TODO.md) | โค้ด+test เสร็จ, binary path ยัง placeholder |
 | Remote Temporal task queue (`projects/remote-job-worker/`) | [REMOTE-JOB-WORKER-TODO.md](REMOTE-JOB-WORKER-TODO.md) | โค้ด+reference worker+test เสร็จ, ยังไม่ทดสอบกับ Temporal server จริง |
-| K8s Job hybrid (`internal/workflow/k8sjob.go`) | [K8S-JOB-HYBRID-EXECUTION-TODO.md](K8S-JOB-HYBRID-EXECUTION-TODO.md) | โค้ด+test (fake clientset) เสร็จ, รอ K8s cluster จริง + RBAC manifest |
+| K8s Job hybrid (`internal/external/k8s/k8sjob.go`) | [K8S-JOB-HYBRID-EXECUTION-TODO.md](K8S-JOB-HYBRID-EXECUTION-TODO.md) | โค้ด+test (fake clientset) เสร็จ, รอ K8s cluster จริง + RBAC manifest |
 
 ทั้งสามทางเลือก **cancellation ทำงานถูกต้องจริง** (kill process group / delete K8s Job / ไม่ทิ้ง orphan) — พิสูจน์ด้วย test ทุกตัว
 
 ### 3. Workflow Orchestration (Temporal)
 
-- `internal/workflow.Execute` — Temporal workflow function, รัน step ตามลำดับ, durable execution (worker ตายกลางทาง resume ต่อได้เอง)
+- `internal/external/temporal.Execute` — Temporal workflow function, รัน step ตามลำดับ, durable execution (worker ตายกลางทาง resume ต่อได้เอง)
 - Retry policy แยก non-retryable (`ConfigError`, `UnknownBot`) ออกจาก retryable โดยอัตโนมัติ
 - **Per-step timeout** (`Step.TimeoutSeconds`) และ **per-step task queue routing** (`Step.TaskQueue`) — ไม่ใช้ timeout/queue เดียวตายตัวทั้งระบบอีกต่อไป
 - Query handler `"steps"` — ดูผลลัพธ์ทีละ step ได้ทั้งตอน workflow กำลังรันอยู่และจบไปแล้ว

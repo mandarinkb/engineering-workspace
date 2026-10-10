@@ -6,7 +6,7 @@
 // ที่ reinvent เองไม่คุ้มเพราะ durable execution ซับซ้อนมาก (ดู
 // projects/bot-orchestration-platform/TEMPORAL-MIGRATION-TODO.md ข้อ 2) และยังเป็นโอกาส
 // เรียนรู้กลไกจริงของ JWT ไปในตัว (ตรงกับเป้าหมายการเรียนรู้ของ repo นี้)
-package auth
+package jwt
 
 import (
 	"crypto/hmac"
@@ -28,7 +28,7 @@ type header struct {
 
 // Claims คือข้อมูลที่เข้ารหัสอยู่ใน JWT — เก็บแค่เท่าที่ระบบนี้ต้องใช้จริงตอนนี้ (ยังไม่มี
 // user database จริงจัง Subject จึงเป็นแค่ username ธรรมดา ไม่ใช่ user ID จาก DB — ดู
-// handleLogin ที่ internal/api/http/handler.go)
+// handleLogin ที่ internal/adapter/http/handler.go)
 type Claims struct {
 	Subject   string `json:"sub"` // ใครเป็นเจ้าของ token นี้
 	ExpiresAt int64  `json:"exp"` // เวลาหมดอายุ เป็น Unix timestamp (วินาที) ตาม JWT spec

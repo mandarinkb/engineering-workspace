@@ -1,6 +1,6 @@
 // ไฟล์นี้ implement K8sJobActivities.RunKubernetesJob — Temporal Activity ที่สั่งสร้าง
 // Kubernetes Job (ephemeral container) ต่อ step หนึ่งครั้ง แล้วรอดูผล แทนที่จะรันผ่าน
-// bot.Bot registry ในกระบวนการเดียวกัน (Activities.RunStep, activity.go) หรือ route ไปยัง
+// bot.Bot registry ในกระบวนการเดียวกัน (Activities.RunStep, internal/external/temporal/activity.go) หรือ route ไปยัง
 // remote Temporal task queue (Step.TaskQueue) — ดู design doc เต็มๆ ที่
 // K8S-JOB-HYBRID-EXECUTION-TODO.md และตารางเทียบ 3 ทางเลือกในนั้น
 //
@@ -9,7 +9,7 @@
 // k8s.io/client-go/kubernetes/fake แทน ซึ่งเป็นแค่ CRUD store เปล่าๆ ไม่มี controller
 // logic จริง (ไม่มีใคร transition Job.Status ให้อัตโนมัติเหมือนของจริง) — test จึงต้อง
 // จำลอง controller เอง (ดู k8sjob_test.go)
-package workflow
+package k8s
 
 import (
 	"bufio"
@@ -24,14 +24,15 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"go.temporal.io/sdk/activity"
-	"go.temporal.io/sdk/temporal"
+	sdktemporal "go.temporal.io/sdk/temporal"
 
-	"bop/internal/logger"
+	"bop/internal/domain/logger"
+	"bop/internal/domain/workflow"
 )
 
 // defaultPollInterval คือความถี่ที่ awaitJobCompletion เช็คสถานะ Job + ส่ง heartbeat —
 // ตั้งเป็นค่าเริ่มต้นตอน NewK8sJobActivities แต่ test เปลี่ยนได้ตรงๆ ผ่าน field ที่ไม่
-// export (white-box, เหมือน binaryPath ของ internal/bots/externaljob และ
+// export (white-box, เหมือน binaryPath ของ internal/external/bots/externaljob และ
 // total/heartbeatEvery ของ projects/remote-job-worker) เพื่อไม่ต้องรอจริงหลายวินาทีทุกครั้ง
 // ที่รัน test
 const defaultPollInterval = 2 * time.Second
@@ -42,8 +43,8 @@ const defaultPollInterval = 2 * time.Second
 // streamPodLogs) ไม่ต้องพึ่ง Job/Pod object ที่ค้างอยู่ใน cluster เพื่อดู log ย้อนหลัง
 const jobTTLSecondsAfterFinished = int32(300)
 
-// K8sJobActivities คือตัวห่อ (adapter) ที่ทำให้ Step.K8sJob (workflow.go) ถูกเรียกจาก
-// Temporal Activity ได้ — คนละ struct กับ Activities (activity.go) ตั้งใจ เพราะไม่มี
+// K8sJobActivities คือตัวห่อ (adapter) ที่ทำให้ Step.K8sJob (internal/domain/workflow/workflow.go) ถูกเรียกจาก
+// Temporal Activity ได้ — คนละ struct กับ Activities (internal/external/temporal/activity.go) ตั้งใจ เพราะไม่มี
 // bot.Bot registry เกี่ยวข้องเลย มีแค่ Kubernetes clientset + logger เท่านั้น
 type K8sJobActivities struct {
 	clientset        kubernetes.Interface
@@ -70,7 +71,7 @@ func NewK8sJobActivities(clientset kubernetes.Interface, defaultNamespace string
 // ชื่อ K8sJobActivityName ("RunKubernetesJob") — ขั้นตอนการทำงาน:
 //  1. validate ว่ามี Image (required — ไม่มี image ทั่วไปที่ใช้ default แทนได้) ถ้าไม่มี
 //     ถือเป็น config ผิดฝั่ง BOP เอง คืน bot.ConfigError-style non-retryable error (เหมือน
-//     pattern ของ activity.go/externaljob ทุกประการ — ผิด config ยังไง retry ก็ผลเดิม)
+//     pattern ของ internal/external/temporal/activity.go/externaljob ทุกประการ — ผิด config ยังไง retry ก็ผลเดิม)
 //  2. สร้าง batchv1.Job ด้วย BackoffLimit=0 เสมอ (**ห้ามเปลี่ยน** — เหตุผลอยู่ที่คอมเมนต์
 //     ของ field นี้ด้านล่าง) แล้ว Create เข้า cluster
 //  3. รอจนกว่า Job จะจบ (awaitJobCompletion) พร้อมส่ง heartbeat เป็นระยะระหว่างรอ
@@ -85,10 +86,10 @@ func NewK8sJobActivities(clientset kubernetes.Interface, defaultNamespace string
 // return — หลักการเดียวกับที่ externaljob ต้อง kill ทั้ง process group ตอน cancel ไม่ใช่
 // ปล่อย orphan ทิ้งไว้ (ที่นี่ "orphan" คือ Job/Pod ที่ยังรันต่อใน cluster ทั้งที่ Temporal
 // ถือว่า activity นี้จบไปแล้ว)
-func (a *K8sJobActivities) RunKubernetesJob(ctx context.Context, spec K8sJobSpec) (string, error) {
+func (a *K8sJobActivities) RunKubernetesJob(ctx context.Context, spec workflow.K8sJobSpec) (string, error) {
 	if spec.Image == "" {
 		err := fmt.Errorf("k8sjob: missing required field %q", "image")
-		return "", temporal.NewApplicationErrorWithCause(err.Error(), "ConfigError", err)
+		return "", sdktemporal.NewApplicationErrorWithCause(err.Error(), "ConfigError", err)
 	}
 
 	ns := spec.Namespace
@@ -121,13 +122,13 @@ func (a *K8sJobActivities) RunKubernetesJob(ctx context.Context, spec K8sJobSpec
 	return fmt.Sprintf("kubernetes job %s/%s completed", ns, name), nil
 }
 
-// buildJobObject สร้าง batchv1.Job object จาก K8sJobSpec — RestartPolicyNever คู่กับ
+// buildJobObject สร้าง batchv1.Job object จาก workflow.K8sJobSpec — RestartPolicyNever คู่กับ
 // BackoffLimit=0 (ไม่ใช่ OnFailure) เพราะไม่ต้องการให้ K8s พยายามรัน container ซ้ำเองเลย
 // แม้แต่ครั้งเดียวถ้า fail — retry decision ทั้งหมดเป็นหน้าที่ของ Temporal RetryPolicy
-// (nonRetryableErrorTypes ด้านบนไฟล์ temporal.go) แต่ผู้เดียว ถ้าปล่อยให้ K8s Job มี
+// (nonRetryableErrorTypes ด้านบนไฟล์ internal/external/temporal/workflow.go) แต่ผู้เดียว ถ้าปล่อยให้ K8s Job มี
 // BackoffLimit>0 ด้วย จะเกิด retry ซ้อนกัน 2 ชั้น (K8s retry ข้างในหนึ่ง Activity attempt,
 // Temporal retry ทั้ง Activity อีกชั้น) ซึ่ง debug ยากมากว่า "ทำไม job นี้รันไปแล้วกี่รอบ"
-func buildJobObject(name, namespace string, spec K8sJobSpec) *batchv1.Job {
+func buildJobObject(name, namespace string, spec workflow.K8sJobSpec) *batchv1.Job {
 	envVars := make([]corev1.EnvVar, 0, len(spec.Env))
 	for k, v := range spec.Env {
 		envVars = append(envVars, corev1.EnvVar{Name: k, Value: v})
@@ -191,7 +192,7 @@ func (a *K8sJobActivities) awaitJobCompletion(ctx context.Context, namespace, na
 // Pod ลูกของ Job ทุกตัวโดยอัตโนมัติ ไม่ต้องตั้งเอง) แล้วอ่าน log ทีละบรรทัดส่งเข้า log()
 // ที่ส่งเข้ามา — ความล้มเหลวระหว่างขั้นตอนนี้ (หา Pod ไม่เจอ/ดึง log ไม่ได้) ไม่ถือเป็น
 // fatal error ของ activity ทั้งหมด (Job ทำงานสำเร็จ/ล้มเหลวไปแล้วจริงๆ ไม่เกี่ยวกับดึง log
-// ได้หรือไม่ได้ — pattern เดียวกับ handleGetWorkflowRun ใน internal/api/http/handler.go
+// ได้หรือไม่ได้ — pattern เดียวกับ handleGetWorkflowRun ใน internal/adapter/http/handler.go
 // ที่ปล่อย steps เป็น slice ว่างถ้า QueryWorkflow error แทนที่จะ fail response ทั้งก้อน)
 func (a *K8sJobActivities) streamPodLogs(ctx context.Context, namespace, jobName string, log func(string)) {
 	pods, err := a.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + jobName})
@@ -215,7 +216,7 @@ func (a *K8sJobActivities) streamPodLogs(ctx context.Context, namespace, jobName
 // ctx ถูกยกเลิก/timeout ระหว่างรอ (ปกติปล่อยให้ TTL controller ของ K8s ลบเองหลังจบงาน
 // ตาม jobTTLSecondsAfterFinished) ใช้ context.Background() แทน ctx เดิม เพราะ ctx เดิม
 // น่าจะ done ไปแล้วตอนถูกเรียก (เหตุผลเดียวกับ pattern "context ใหม่สำหรับบันทึกครั้ง
-// สุดท้าย" ใน internal/worker/pool.go)
+// สุดท้าย" ใน internal/pkg/worker/pool.go)
 func (a *K8sJobActivities) deleteJob(namespace, name string) {
 	propagation := metav1.DeletePropagationForeground
 	_ = a.clientset.BatchV1().Jobs(namespace).Delete(context.Background(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})

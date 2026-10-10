@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"time"
 
-	"bop/internal/bot"
+	"bop/internal/domain/bot"
 )
 
 // Bot คือ implementation ของ bot.Bot สำหรับเช็คสถานะ URL

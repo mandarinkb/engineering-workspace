@@ -6,8 +6,8 @@ import (
 	"sort"
 	"sync"
 
-	"bop/internal/schedule"
-	"bop/internal/workflow"
+	"bop/internal/domain/schedule"
+	"bop/internal/domain/workflow"
 )
 
 // ScheduleRepository คือ in-memory implementation ของ schedule.Repository — โครงสร้าง

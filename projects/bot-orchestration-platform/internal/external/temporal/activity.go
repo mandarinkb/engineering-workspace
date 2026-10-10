@@ -1,4 +1,4 @@
-package workflow
+package temporal
 
 import (
 	"context"
@@ -6,10 +6,11 @@ import (
 	"fmt"
 
 	"go.temporal.io/sdk/activity"
-	"go.temporal.io/sdk/temporal"
+	sdktemporal "go.temporal.io/sdk/temporal"
 
-	"bop/internal/bot"
-	"bop/internal/logger"
+	"bop/internal/domain/bot"
+	"bop/internal/domain/logger"
+	wfdomain "bop/internal/domain/workflow"
 )
 
 // Activities คือตัวห่อ (adapter) บางๆ ที่ทำให้ bot.Bot ทุกตัวที่ register ไว้ถูกเรียกจาก
@@ -22,9 +23,9 @@ import (
 // (ไม่มี semaphore แบบ worker.Pool.sem) เพราะ Temporal Worker เอง (ดู cmd/bop-worker)
 // มีกลไกจำกัดจำนวน activity ที่รันพร้อมกันอยู่แล้วผ่าน worker.Options
 // (MaxConcurrentActivityExecutionSize) และ timeout ต่อ activity ก็ตั้งผ่าน
-// workflow.ActivityOptions.StartToCloseTimeout แทน (ดู temporal.go) — worker.Pool เดิม
+// workflow.ActivityOptions.StartToCloseTimeout แทน (ดู workflow.go) — worker.Pool เดิม
 // ยังถูกใช้อยู่ แต่เฉพาะกับ job เดี่ยวๆ ที่สั่งตรงผ่าน POST /bots/{name}/jobs เท่านั้น
-// (ดู internal/api/http/handler.go) ไม่เกี่ยวกับ workflow ที่รันผ่าน Temporal อีกต่อไป
+// (ดู internal/adapter/http/handler.go) ไม่เกี่ยวกับ workflow ที่รันผ่าน Temporal อีกต่อไป
 type Activities struct {
 	bots map[string]bot.Bot
 	log  logger.Logger
@@ -46,14 +47,14 @@ func (a *Activities) Register(b bot.Bot) {
 	a.bots[b.Name()] = b
 }
 
-// RunStep คือ Temporal Activity function ตัวเดียวที่ Execute (temporal.go) เรียกสำหรับ
+// RunStep คือ Temporal Activity function ตัวเดียวที่ Execute (workflow.go) เรียกสำหรับ
 // ทุก step ในทุก workflow — รับ Step (BotName + Config) เป็น input คืนข้อความสรุป
 // ผลลัพธ์ (bot.Result.Summary) เป็น output
 //
 // ขั้นตอนการทำงาน:
 //  1. หา bot ที่ตรงกับ step.BotName จาก registry — ถ้าไม่รู้จัก ห่อเป็น
 //     temporal.NewApplicationError ชนิด "UnknownBot" (non-retryable เหมือน ConfigError
-//     ด้านล่าง ดูเหตุผลที่ nonRetryableErrorTypes ใน temporal.go) **เดิม (ก่อนแก้ไขนี้)
+//     ด้านล่าง ดูเหตุผลที่ nonRetryableErrorTypes ใน workflow.go) **เดิม (ก่อนแก้ไขนี้)
 //     ปล่อยเป็น error ธรรมดาตามหลัก YAGNI เพราะตอนนั้นยังไม่มี use case จริงที่ workflow
 //     อ้างชื่อ bot ผิด — แก้เป็น non-retryable ตอนนี้เพราะเจอปัญหาจริงแล้ว: เวอร์ชันเดิม
 //     ทำให้ schedule ที่มี step.BotName ว่างเปล่า (เช่น decode payload เก่าที่ serialize
@@ -65,7 +66,7 @@ func (a *Activities) Register(b bot.Bot) {
 //  3. ถ้า error เป็น *bot.ConfigError (เช็คด้วย errors.As ซึ่งมองทะลุผ่าน wrapper ไปหา
 //     type จริงข้างในได้ ดู bot.ConfigError.Unwrap) ห่อกลับเป็น
 //     temporal.NewApplicationErrorWithCause พร้อมตั้ง Type เป็น "ConfigError" ให้ตรงกับ
-//     nonRetryableErrorTypes ใน temporal.go เป๊ะ — Temporal เช็ค Type นี้เพื่อตัดสินใจว่า
+//     nonRetryableErrorTypes ใน workflow.go เป๊ะ — Temporal เช็ค Type นี้เพื่อตัดสินใจว่า
 //     จะ retry activity นี้ต่อไหม ถ้าไม่ห่อแบบนี้ Temporal จะมองเป็น error ทั่วไปแล้ว retry
 //     ตาม RetryPolicy default (ซึ่งจะ retry ซ้ำไปเรื่อยๆ ทั้งที่ config ผิดเหมือนเดิมทุกครั้ง
 //     — เสียเวลาและ resource ไปฟรีๆ) ส่วน error ชนิดอื่นปล่อยเป็น error ธรรมดา ให้ Temporal
@@ -85,11 +86,11 @@ func (a *Activities) Register(b bot.Bot) {
 // ของ cmd/bop-worker ผ่าน log.Log) แต่ "ดึงผ่าน HTTP ของ cmd/bop ไม่ได้" จนกว่าจะสลับไปใช้
 // backend ที่ทั้งสอง process แชร์กันได้จริง (PostgreSQL/OpenSearch) — เขียน interface
 // เดียวกันไว้รอเปลี่ยนแค่ 2 บรรทัดตอนนั้นได้เลยเหมือนกับ job.Repository เดิม
-func (a *Activities) RunStep(ctx context.Context, step Step) (string, error) {
+func (a *Activities) RunStep(ctx context.Context, step wfdomain.Step) (string, error) {
 	b, ok := a.bots[step.BotName]
 	if !ok {
 		err := fmt.Errorf("workflow: unknown bot %q", step.BotName)
-		return "", temporal.NewApplicationErrorWithCause(err.Error(), "UnknownBot", err)
+		return "", sdktemporal.NewApplicationErrorWithCause(err.Error(), "UnknownBot", err)
 	}
 
 	info := activity.GetInfo(ctx)
@@ -100,7 +101,7 @@ func (a *Activities) RunStep(ctx context.Context, step Step) (string, error) {
 	if err != nil {
 		var cfgErr *bot.ConfigError
 		if errors.As(err, &cfgErr) {
-			return "", temporal.NewApplicationErrorWithCause(err.Error(), "ConfigError", err)
+			return "", sdktemporal.NewApplicationErrorWithCause(err.Error(), "ConfigError", err)
 		}
 		return "", err
 	}
