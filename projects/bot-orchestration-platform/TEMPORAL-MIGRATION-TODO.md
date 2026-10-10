@@ -30,7 +30,7 @@
 ### 1. Setup Temporal Server (local dev)
 
 - [x] เพิ่ม Temporal server + Temporal UI + PostgreSQL เข้า `docker-compose.yml` — แยก instance กับ PostgreSQL ที่ BOP จะใช้เก็บ job history ใน Phase 0.4 (ตัดสินใจแยกไปเลย ไม่แชร์ database) และตั้งใจให้ scope ของ compose file นี้แคบมาก (แค่ Temporal เอง) ไม่ได้ containerize ตัว BOP app ด้วย — นั่นคือ Phase 2.1 เต็มรูปแบบที่ยังไม่เริ่ม
-- [ ] **ยังไม่ยืนยัน** ว่า Temporal server รันได้จริง เปิด Temporal UI (port 8233) เห็น namespace `default` — session ที่เขียน docker-compose.yml ติด Docker permission ในเครื่อง (ดูหมายเหตุสถานะที่หัวไฟล์) ยังไม่เคยรัน `docker compose up -d` สำเร็จเลยสักครั้ง **ต้องทำเป็นอย่างแรกก่อนเชื่อว่า Phase นี้ใช้งานได้จริง**
+- [x] ~~**ยังไม่ยืนยัน**~~ verify แล้วบนเครื่องอื่น ไม่ใช่เครื่อง dev ปัจจุบันที่ไม่มี Docker (เจ้าของ repo ยืนยัน 2026-10-10 รายละเอียดดู [README.md](README.md) หัวข้อ Next Steps) (แก้ Docker permission ด้วยการเพิ่ม user เข้า `docker` group) — ข้อความเดิม: ยังไม่ยืนยัน ว่า Temporal server รันได้จริง เปิด Temporal UI (port 8233) เห็น namespace `default` — session ที่เขียน docker-compose.yml ติด Docker permission ในเครื่อง (ดูหมายเหตุสถานะที่หัวไฟล์) ยังไม่เคยรัน `docker compose up -d` สำเร็จเลยสักครั้ง **ต้องทำเป็นอย่างแรกก่อนเชื่อว่า Phase นี้ใช้งานได้จริง**
 
 ### 2. เพิ่ม Temporal Go SDK
 
@@ -70,7 +70,7 @@
 
 ### 9. Deployment
 
-- [ ] เพิ่ม Temporal server เข้า K8s manifest — **ยังไม่ทำตามแผนเดิม** รอถึง [roadmap Phase 2.1](../../FULLSTACK-INFRA-ROADMAP.md#21-containerize--deploy-พื้นฐาน) จริงจัง (ยังไม่มี Dockerfile/K8s manifest ของ BOP เองเลยตอนนี้)
+- [ ] เพิ่ม Temporal server เข้า K8s manifest — **ยังไม่ทำตามแผนเดิม** รอถึง [roadmap Phase 2.1](../../FULLSTACK-INFRA-ROADMAP.md#21-containerize--deploy-พื้นฐาน) จริงจัง (อัปเดต 2026-10-10: มี Dockerfile ของ BOP และ K8s manifest ที่ `k8s/` ระดับ workspace แล้วแบบร่าง แต่ยังไม่มี Temporal server ใน manifest)
 
 ## Open Questions — ตัดสินใจแล้วทั้งหมด (เก็บไว้เป็น decision log)
 

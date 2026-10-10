@@ -4,7 +4,7 @@
 
 ## สถานะโดยรวม
 
-`go build ./...`, `go vet ./...`, `go test -race ./...` ผ่านหมดทั้ง `bot-orchestration-platform` และ `remote-job-worker` (2 Go module แยกกัน) — **แต่ยังไม่เคยทดสอบ end-to-end จริงกับ Temporal server/K8s cluster เลย** (ติด Docker permission ตอน implement, ยังไม่มี K8s cluster ให้ทดสอบ) มีแค่ unit test level (`TestActivityEnvironment`/`TestWorkflowEnvironment`/fake K8s clientset) — นี่คือช่องว่างที่สำคัญที่สุดที่ควรรู้ก่อนพูดว่า "production-ready"
+`go build ./...`, `go vet ./...`, `go test -race ./...` ผ่านหมดทั้ง `bot-orchestration-platform` และ `remote-job-worker` (2 Go module แยกกัน) — **Temporal server จริง verify แล้วบางส่วน** (เจ้าของ repo ยืนยัน ดู [README.md](README.md) หัวข้อ Next Steps: job เดี่ยว, auth, cancel, Schedule CRUD, `POST /workflow-runs`) **แต่ยังไม่ verify** route ข้าม task queue (remote worker) และ **ยังไม่เคยทดสอบกับ K8s cluster จริงเลย** (K8s Job hybrid มีแค่ unit test ด้วย fake clientset) — นี่คือช่องว่างที่สำคัญที่สุดที่ควรรู้ก่อนพูดว่า "production-ready"
 
 ## Feature ที่มีอยู่แล้ว
 
@@ -61,7 +61,7 @@ JWT (HS256, เขียนเอง) + httpOnly cookie — **แต่เป็
 
 1. **Job/Schedule definition ยังเป็น in-memory ทั้งหมด** — restart แล้วประวัติ job/schedule metadata หายหมด (Temporal เองยังรัน schedule ต่อได้ปกติ แต่ BOP "ลืม" ว่า schedule นั้นทำอะไร)
 2. **ไม่มี PostgreSQL/OpenSearch จริงเลยสักตัว** — ตามแผน Phase 0.4/2.2 แต่ยังไม่ได้ทำ
-3. **ยังไม่เคย containerize/deploy K8s จริง** — ไม่มี Dockerfile ด้วยซ้ำตอนนี้
+3. **ยังไม่เคย deploy K8s จริง** — containerize เริ่มแล้วแบบร่าง (commit `2cc446b`): มี `cmd/bop/Dockerfile`, `cmd/bop-worker/Dockerfile`, `Jenkinsfile` และ K8s manifest ที่ `k8s/` ระดับ workspace (ดู [KUBERNETES-DEPLOYMENT-TODO.md](../../KUBERNETES-DEPLOYMENT-TODO.md)) แต่ยังไม่เคย apply กับ cluster จริง
 4. **ไม่มี metric/tracing/alert เลย** — ไม่รู้ว่า bot ไหนพังเพราะอะไรจากภายนอก ต้องอ่าน log เอง
 5. **ไม่มี job dependency (DAG)** — ทุก step ต้องอยู่ใน workflow เดียวกันเรียงลำดับตายตัว ยังทำ "job B รอ job A จาก schedule คนละตัว" ไม่ได้
 6. **RBAC ยังไม่มี** — auth มีแค่ login/logout, ทุกคนที่ login ได้สิทธิ์เท่ากันหมด

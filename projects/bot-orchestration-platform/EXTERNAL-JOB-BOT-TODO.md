@@ -79,7 +79,7 @@
 ### 6. Docs
 
 - [x] อัปเดต [README.md](README.md) — บอกว่ามี bot ใหม่ + ตัวอย่าง config schema + curl example สร้าง job + หัวข้อ timeout ต่อ job/step
-- [ ] ถ้าถึง containerize จริง (Phase 2.1) ต้อง copy binary ภายนอกเข้า Dockerfile ของทั้ง `cmd/bop` และ `cmd/bop-worker` (ยังไม่ทำ — ยังไม่มี Dockerfile ของ process พวกนี้เลยตอนนี้)
+- [ ] ถ้าถึง containerize จริง (Phase 2.1) ต้อง copy binary ภายนอกเข้า Dockerfile ของทั้ง `cmd/bop` และ `cmd/bop-worker` (ยังไม่ทำ — อัปเดต 2026-10-10: Dockerfile ของทั้งสอง process มีแล้วแบบร่าง แต่ยังไม่ได้ copy binary ภายนอกเข้าไป)
 
 ## Reference
 

@@ -21,7 +21,7 @@
 - **ภาษา: Python** (Playwright, pandas/numpy, PostgreSQL)
 - **Browser**: ต่อเข้า Chrome ที่เปิดค้างไว้เอง (login แล้ว) ผ่าน CDP — **ไม่ spawn browser ใหม่**
 - **วิธีอ่านข้อมูล**: ดัก network response/WebSocket ที่หน้าเว็บโหลดเอง (ตัวเลขดิบแม่นยำ 100%) — **ไม่ใช้ AI vision อ่านภาพ pixel** (ลองแล้วตัดออกเพราะมี cost + ไม่แม่นยำเท่า)
-- **Analysis**: เขียนเอง — RSI (สูตรเดียวกับ `internal/bots/pricewatch/` ของ BOP), peak/trough detection, trendline, support/resistance
+- **Analysis**: เขียนเอง — RSI (เดิมตั้งใจใช้สูตรเดียวกับ `price-watch` ของ BOP แต่โค้ดนั้นไม่มีอยู่จริง ดูหมายเหตุด้านล่าง), peak/trough detection, trendline, support/resistance
 - **Backtesting เป็น phase บังคับ** ก่อนเชื่อ signal ใดๆ (เพิ่มเข้ามาเพราะจำเป็น ไม่ใช่ requirement เดิม)
 - **AI model (ถ้าทำ)**: ต้องมาหลัง backtesting ผ่านเกณฑ์แล้วเท่านั้น — แนะนำ Gradient Boosting (XGBoost/LightGBM) ไม่ใช่ Reinforcement Learning (ยากเกินไปสำหรับ solo project) ไม่ใช่ LLM สำเร็จรูป (ไม่ใช่ "ของตัวเอง")
 - **Risk management/position sizing (Component 7)**, **paper trading gate (Component 8)**, **operational monitoring/backup (Component 9)** — เพิ่มเข้ามาเพราะจำเป็น ไม่ใช่ requirement เดิม เช่นเดียวกับ backtesting — ห้ามใช้เงินจริงก่อนผ่าน paper trading period เต็มโดยไม่มี kill-switch trigger
@@ -35,4 +35,4 @@ Retail trader ส่วนใหญ่ขาดทุนระยะยาว (�
 
 - [TRADE-ANALYZER-TODO.md](TRADE-ANALYZER-TODO.md) — แผนเทคนิคเต็ม 9 component, phase checklist ละเอียด
 - [../bot-orchestration-platform/CHART-VISION-BOT-TODO.md](../bot-orchestration-platform/CHART-VISION-BOT-TODO.md) — เอกสารเวอร์ชันแรก (ถูกแทนที่แล้ว เก็บไว้เป็น decision log)
-- [../bot-orchestration-platform/internal/bots/pricewatch/](../bot-orchestration-platform/internal/bots/pricewatch/pricewatch.go) — bot ตัวแรกใน BOP เดิม (Go) ที่จุดประกายเรื่องนี้ทั้งหมด
+- `price-watch` bot ของ BOP (Go) ที่จุดประกายเรื่องนี้ทั้งหมด — **หมายเหตุ (2026-10-10)**: `bot-orchestration-platform/internal/bots/pricewatch/` ไม่มีอยู่ใน repo และไม่เคยถูก commit ใน git history ลิงก์เดิมจึงถูกเอาออก
