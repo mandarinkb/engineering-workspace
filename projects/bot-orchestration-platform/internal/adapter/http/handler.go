@@ -1,0 +1,516 @@
+// Package http คือ control-plane API ของทั้งระบบ — หน้า dashboard (roadmap Phase 1)
+// จะคุยกับ backend ผ่าน endpoint ที่นี่เท่านั้น ไม่มีทางอื่น package นี้เป็น adapter ชั้นนอก
+// สุดของ clean architecture: แปลง HTTP request เป็นการเรียก usecase (internal/usecase/...)
+// แล้วแปลงผลลัพธ์กลับเป็น JSON — ไม่มี business logic และไม่รู้จัก Temporal SDK,
+// worker pool, หรือ storage ตัวจริงเลย
+package http
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+
+	"bop/internal/domain/apperr"
+	"bop/internal/domain/bot"
+	"bop/internal/domain/logger"
+	"bop/internal/domain/workflow"
+	authuc "bop/internal/usecase/auth"
+	jobuc "bop/internal/usecase/job"
+	scheduleuc "bop/internal/usecase/schedule"
+	workflowrunuc "bop/internal/usecase/workflowrun"
+)
+
+// Server คือ HTTP API ของ BOP รวม handler ทุกตัวไว้ในที่เดียว
+type Server struct {
+	mux       *http.ServeMux // ตัว router มาตรฐานของ Go (ใช้ pattern matching แบบ method+path ของ Go 1.22+)
+	jobs      *jobuc.Service
+	runs      *workflowrunuc.Service
+	schedules *scheduleuc.Service
+	auth      *authuc.Service
+}
+
+// NewServer ผูก handler ทุกตัวเข้ากับ usecase ที่ส่งเข้ามา แล้วลงทะเบียน route ให้เรียบร้อย
+func NewServer(jobs *jobuc.Service, runs *workflowrunuc.Service, schedules *scheduleuc.Service, auth *authuc.Service) *Server {
+	s := &Server{mux: http.NewServeMux(), jobs: jobs, runs: runs, schedules: schedules, auth: auth}
+	s.routes()
+	return s
+}
+
+// dashboardOrigin คือ origin ของ Next.js dev server (projects/bop-dashboard/) — ต้องเปิด
+// CORS ให้ origin นี้เรียก API ได้ เพราะ dashboard แยก repo/deploy ออกจาก backend ไปเลย
+// (ไม่ใช่ same-origin) ดู decision log ที่ projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md
+// — อ่านจาก env var BOP_DASHBOARD_ORIGIN ก่อนเสมอ (ตอน deploy จริงค่านี้จะเป็น origin
+// จริงของ dashboard เช่น https://bop.example.com) fallback เป็น localhost:3000 เดิมถ้า
+// ไม่ได้ตั้ง (local dev)
+var dashboardOrigin = getenv("BOP_DASHBOARD_ORIGIN", "http://localhost:3000")
+
+// getenv คืนค่า environment variable ชื่อ key ถ้าตั้งไว้ (และไม่ใช่ค่าว่าง) ไม่งั้นคืนค่า
+// fallback แทน — ใช้กับ dashboardOrigin (ค่า config ของชั้น HTTP เอง ส่วน secret/credential
+// ของ auth ย้ายไปอ่านใน cmd/bop/main.go แล้ว)
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// ServeHTTP ทำให้ Server เป็น http.Handler ได้ — ก่อนส่งต่อให้ mux ภายในจัดการ จะใส่
+// CORS header ให้ทุก response ก่อนเสมอ (Access-Control-Allow-Credentials ต้องเป็น "true"
+// เพราะ dashboard ส่ง JWT ผ่าน httpOnly cookie มาด้วยทุก request — ตาม spec ของ CORS
+// การอนุญาต credentials แบบนี้ "ห้าม" ใช้ Access-Control-Allow-Origin: "*" เด็ดขาด ต้องระบุ
+// origin ที่อนุญาตตรงๆ เท่านั้น) request แบบ OPTIONS (preflight ที่เบราว์เซอร์ส่งมาก่อน
+// request จริงเองอัตโนมัติเวลามี custom header อย่าง Authorization) ตอบ 204 ทันทีโดยไม่ต้อง
+// ส่งต่อให้ mux เลย เพราะไม่มี route ไหนใน routes() รองรับ method OPTIONS ตรงๆ
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", dashboardOrigin)
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	s.mux.ServeHTTP(w, r)
+}
+
+// routes ลงทะเบียน endpoint ทั้งหมดของ API — ใช้ syntax "METHOD /path" ของ Go 1.22+
+// ที่รองรับ wildcard แบบ {name} ในตัว ServeMux เองโดยไม่ต้องพึ่ง library ภายนอก
+func (s *Server) routes() {
+	// GET /healthz — liveness: process ยังตอบสนองอยู่ไหม (ไม่เช็ค dependency ภายนอกเลย
+	// ตั้งใจ — liveness fail = K8s restart Pod ทันที ไม่ควร restart แค่เพราะ Temporal
+	// server ช้าชั่วคราว นั่นเป็นหน้าที่ของ readiness ไม่ใช่ liveness)
+	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// GET /readyz — readiness: process พร้อมรับ traffic จริงไหม (เช็คว่าต่อ Temporal ได้อยู่)
+	// K8s หยุดส่ง traffic มาที่ Pod นี้ชั่วคราว (ไม่ restart) ถ้า readiness fail — ต่างจาก
+	// liveness ตรงนี้แหละ: Temporal ล่มชั่วคราวไม่ควรทำให้ Pod ถูก restart วนไปเรื่อยๆ
+	// (CrashLoopBackOff) แค่หยุดรับ traffic จนกว่า Temporal จะกลับมา
+	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		if err := s.runs.Ready(r.Context()); err != nil {
+			http.Error(w, "temporal unreachable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	s.mux.HandleFunc("GET /bots", s.handleListBots)                       // ดูรายชื่อ bot ที่ register ไว้ทั้งหมด + config schema ของแต่ละตัว
+	s.mux.HandleFunc("POST /bots/{name}/jobs", s.handleCreateJob)         // สร้าง job ใหม่และสั่งรันทันที
+	s.mux.HandleFunc("GET /jobs", s.handleListJobs)                       // ดูรายการ job ทั้งหมด
+	s.mux.HandleFunc("GET /jobs/{id}", s.handleGetJob)                    // ดูรายละเอียด job เดียว (รวมสถานะล่าสุด)
+	s.mux.HandleFunc("GET /jobs/{id}/logs", s.handleGetJobLogs)           // ดู log ทั้งหมดของ job เดียว (REST snapshot ไว้ backfill)
+	s.mux.HandleFunc("GET /jobs/{id}/logs/stream", s.handleStreamJobLogs) // ดู log แบบ real-time ผ่าน SSE (roadmap ข้อ 1.5)
+	s.mux.HandleFunc("DELETE /jobs/{id}", s.handleCancelJob)              // สั่งยกเลิก job ที่กำลังรันอยู่
+
+	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)    // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
+	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun) // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
+	s.mux.HandleFunc("POST /workflow-runs", s.handleCreateWorkflowRun)  // รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน
+
+	s.mux.HandleFunc("POST /login", s.handleLogin)   // ตรวจ credential แล้วออก JWT ใส่ httpOnly cookie (roadmap ข้อ 1.8)
+	s.mux.HandleFunc("POST /logout", s.handleLogout) // ล้าง cookie ทิ้ง
+	s.mux.HandleFunc("GET /me", s.handleMe)          // เช็คว่า cookie ปัจจุบัน valid อยู่ไหม คืนชื่อ user ถ้าใช่
+
+	s.mux.HandleFunc("POST /schedules", s.handleCreateSchedule)                 // สร้าง schedule ใหม่ (interval หรือ cron)
+	s.mux.HandleFunc("GET /schedules", s.handleListSchedules)                   // list schedule ทั้งหมด
+	s.mux.HandleFunc("GET /schedules/{id}", s.handleGetSchedule)                // ดูรายละเอียด schedule เดียว
+	s.mux.HandleFunc("PUT /schedules/{id}", s.handleUpdateSchedule)             // แทนที่ schedule ทั้งก้อน (full replace)
+	s.mux.HandleFunc("DELETE /schedules/{id}", s.handleDeleteSchedule)          // ลบ schedule ถาวร
+	s.mux.HandleFunc("POST /schedules/{id}/pause", s.handlePauseSchedule)       // หยุดชั่วคราว (เทียบ Control-M "Hold")
+	s.mux.HandleFunc("POST /schedules/{id}/unpause", s.handleUnpauseSchedule)   // เริ่มใหม่หลัง pause (เทียบ "Free")
+	s.mux.HandleFunc("POST /schedules/{id}/trigger", s.handleTriggerSchedule)   // สั่งรันทันที นอกตารางเวลา (เทียบ "Order Now")
+	s.mux.HandleFunc("POST /schedules/{id}/backfill", s.handleBackfillSchedule) // รันย้อนหลังตามช่วงเวลา (เทียบ "Rerun")
+}
+
+// botSummary คือรูปแบบ JSON ที่คืนจาก GET /bots — ห่อ bot.Bot (interface, encode
+// ตรงๆ ไม่ได้เพราะไม่รู้จัก concrete type) ให้เหลือแค่สิ่งที่ dashboard ต้องใช้จริง:
+// ชื่อ (ไปใช้เป็น {name} ใน POST /bots/{name}/jobs) กับ config schema (ไปสร้าง
+// dynamic form ตาม roadmap ข้อ 1.3)
+type botSummary struct {
+	Name         string            `json:"name"`
+	ConfigSchema []bot.ConfigField `json:"config_schema"`
+}
+
+// handleListBots คืนรายชื่อ bot ที่ register ไว้ทั้งหมดพร้อม config schema ของแต่ละตัว —
+// เรียงตามชื่อ (a-z) ตาม job.Executor.List
+func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
+	bots := s.jobs.ListBots()
+	out := make([]botSummary, 0, len(bots))
+	for _, b := range bots {
+		out = append(out, botSummary{Name: b.Name(), ConfigSchema: b.ConfigSchema()})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleCreateJob รับ config เป็น JSON object (key-value เป็น string ล้วน ตรงกับ bot.Config)
+// จาก URL path จะได้ชื่อ bot ที่ต้องการรัน แล้วสร้าง job ใหม่พร้อมสถานะ pending
+// บันทึกลง repository ก่อน แล้วค่อยส่งเข้า worker pool ให้เริ่มทำงาน สุดท้ายตอบกลับ
+// client ทันทีด้วยสถานะ 202 Accepted พร้อมข้อมูล job (ที่ยังเป็น pending อยู่ เพราะ
+// job เพิ่งถูกส่งเข้า queue ยังไม่ได้เริ่มทำงานจริง — client ต้องไปเช็คสถานะทีหลังเองผ่าน
+// GET /jobs/{id})
+//
+// timeout_seconds เป็น query parameter (ไม่ใช่ field ใน JSON body) เพราะ body ตรงนี้คือ
+// bot.Config ล้วนๆ (flat map ที่ bot แต่ละตัวอ่านเองตาม ConfigSchema) มาตั้งแต่ต้น — การ
+// ห่อ body ใหม่เป็น {"config": {...}, "timeout_seconds": N} จะทำลาย wire format เดิมที่
+// dashboard (projects/bop-dashboard/) เรียกอยู่แล้ว ใช้ query param แทนเพื่อเพิ่มความ
+// สามารถนี้แบบ "เสริม" (additive) โดยไม่กระทบ client เดิมที่ไม่ได้ส่งค่านี้มาเลย (ปล่อยเป็น
+// 0 แล้ว worker.Pool จะ fallback ไปใช้ timeout กลางของระบบตามเดิมทุกประการ)
+func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
+	botName := r.PathValue("name") // ดึงค่าจาก {name} ใน path pattern
+
+	var cfg map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	timeoutSeconds := 0
+	if raw := r.URL.Query().Get("timeout_seconds"); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil || seconds <= 0 {
+			http.Error(w, "timeout_seconds must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		timeoutSeconds = seconds
+	}
+
+	// usecase ห่อ error จาก executor (เช่น ไม่รู้จัก bot) เป็น apperr.ErrInvalid -> 400 ส่วน
+	// error จาก repository เป็น error ธรรมดา -> 500
+	j, err := s.jobs.Create(r.Context(), botName, cfg, timeoutSeconds)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, apperr.ErrInvalid) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, j)
+}
+
+// handleListJobs คืนรายการ job ทั้งหมดในระบบ เรียงจากล่าสุดไปเก่าสุด
+func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	jobs, err := s.jobs.List(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, jobs)
+}
+
+// handleGetJob คืนข้อมูล job เดียวตาม ID ที่ระบุใน path (สถานะล่าสุด ณ ตอนที่เรียก)
+func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	j, err := s.jobs.Get(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, j)
+}
+
+// handleGetJobLogs คืน log ทั้งหมดที่บันทึกไว้ของ job นั้น (ยังไม่ใช่ real-time
+// ตอนนี้ — เป็นแค่ snapshot ของ log ณ ตอนที่เรียก endpoint นี้)
+func (s *Server) handleGetJobLogs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	lines, err := s.jobs.Logs(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, lines)
+}
+
+// handleStreamJobLogs สตรีม log ของ job ที่ระบุแบบ real-time ผ่าน Server-Sent Events
+// (SSE) — เลือกใช้ SSE แทน WebSocket เพราะ log stream เป็นทิศทางเดียว (server→client
+// เท่านั้น dashboard ไม่เคยต้องส่งอะไรกลับผ่าน channel นี้เลย) SSE เป็น HTTP ธรรมดา
+// (`Content-Type: text/event-stream`) เบราว์เซอร์มี auto-reconnect ในตัวผ่าน
+// `EventSource` โดยไม่ต้องเขียน reconnect logic เอง และฝั่ง Go เขียนง่ายกว่า WebSocket
+// มาก (ไม่ต้องพึ่ง library ภายนอกอย่าง gorilla/websocket เพื่อรักษาหลักการ dependency
+// น้อยที่สุดของโปรเจกต์นี้) — ดู decision log เต็มๆ ที่
+// projects/bop-dashboard/PHASE1-DASHBOARD-TODO.md
+//
+// ขั้นตอนการทำงาน (ลำดับสำคัญมาก อย่าสลับ):
+//  1. Subscribe เข้า logger.Logger ก่อนเสมอ — เปิด channel รับ log บรรทัดใหม่ที่จะเกิดขึ้น
+//     "นับจากตอนนี้เป็นต้นไป" ก่อน
+//  2. ค่อยเรียก History เอา log ทั้งหมดที่เคยบันทึกไว้ก่อนหน้านี้มาส่งเป็น backfill —
+//     ลำดับนี้ (Subscribe ก่อน History) ป้องกันไม่ให้พลาด log บรรทัดที่เกิดขึ้นระหว่าง
+//     สอง call นี้ (ถ้าสลับเป็น History ก่อน Subscribe จะมีช่วงเวลาสั้นๆ ที่ log ใหม่
+//     เกิดขึ้นแล้วไม่มีใครจับไว้เลย ข้อมูลหายจริง) — ข้อเสียที่ยอมรับได้ของลำดับนี้คือ
+//     "อาจ" เห็น log บรรทัดเดียวกันซ้ำ 2 ครั้งได้ในกรณีที่ Log() ถูกเรียกพอดีในช่วงเวลา
+//     สั้นๆ ระหว่าง Subscribe กับ History (ซ้ำแต่ไม่หาย ยอมรับได้มากกว่าหายไปเงียบๆ)
+//  3. ส่ง history ทั้งหมดออกไปก่อน (backfill) แล้ว flush ทันทีให้ client เห็นของเก่าครบ
+//  4. เข้าลูป: รอ log บรรทัดใหม่จาก channel แล้วส่งต่อทันที หรือรอ ctx ของ request ถูก
+//     ยกเลิก (client ปิดแท็บ/network หลุด) ก็เลิกลูปแล้ว unsubscribe ทิ้ง (ผ่าน defer)
+func (s *Server) handleStreamJobLogs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ch, unsubscribe := s.jobs.SubscribeLogs(id)
+	defer unsubscribe()
+
+	history, err := s.jobs.Logs(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	for _, line := range history {
+		writeSSELine(w, line)
+	}
+	flusher.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done(): // client ปิด connection แล้ว ไม่ต้องส่งต่ออีก
+			return
+		case line, ok := <-ch:
+			if !ok { // channel ถูกปิด (ปกติเกิดจาก unsubscribe ของเราเอง ไม่ควรเข้า case นี้ตอนอื่น)
+				return
+			}
+			writeSSELine(w, line)
+			flusher.Flush()
+		}
+	}
+}
+
+// writeSSELine เข้ารหัส log บรรทัดหนึ่งเป็น JSON แล้วเขียนตาม format ของ Server-Sent
+// Events ("data: <payload>\n\n" — ต้องมี \n\n คั่นท้ายเสมอ ไม่งั้นเบราว์เซอร์จะยังไม่ถือว่า
+// event นี้จบ) EventSource ฝั่ง client จะได้ event แต่ละอันเป็น log.Line ในรูป JSON string
+// พร้อม JSON.parse ต่อได้ทันที
+func writeSSELine(w http.ResponseWriter, line logger.Line) {
+	b, err := json.Marshal(line)
+	if err != nil {
+		return // ข้าม line นี้ถ้า encode ไม่ได้ (ไม่ควรเกิดจริง เพราะ logger.Line เป็น plain struct ล้วนๆ)
+	}
+	fmt.Fprintf(w, "data: %s\n\n", b)
+}
+
+// cookieName คือชื่อ cookie ที่เก็บ JWT — ใช้ชื่อเดียวกันทั้งตอน set (handleLogin),
+// ตอนอ่าน (handleMe), และตอนล้าง (handleLogout)
+const cookieName = "bop_session"
+
+// loginRequest คือ JSON body ที่ POST /login ต้องรับ
+type loginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// handleLogin ตรวจ username/password ผ่าน usecase auth ถ้าถูกต้องได้ JWT กลับมา แล้วฝังใน
+// httpOnly cookie ส่งกลับไป
+//
+// ทำไมเก็บ token ใน httpOnly cookie แทนที่จะให้ frontend เก็บเองใน localStorage:
+// httpOnly cookie เข้าถึงจาก JavaScript ฝั่ง client ไม่ได้เลย (แม้แต่โค้ดของ dashboard
+// เองก็อ่านไม่ได้) ป้องกัน token ถูกขโมยผ่าน XSS (ถ้ามี script อันตรายหลุดเข้ามารันบน
+// หน้าเว็บ) เบราว์เซอร์แนบ cookie ให้เองอัตโนมัติทุก request ถัดไปที่ยิงไป backend
+// origin เดียวกันตาม cookie policy โดย frontend ไม่ต้องจัดการเรื่องแนบ header เอง
+//
+// SameSite=Lax + Secure=false: dashboard (localhost:3000) กับ backend (localhost:8080)
+// เป็นคนละ origin (คนละ port) แต่ยังนับเป็น "same site" ตาม spec ของเบราว์เซอร์ (site
+// กำหนดจาก registrable domain ไม่นับ port) SameSite=Lax จึงยังใช้งานได้ปกติตอน local
+// dev โดยไม่ต้องเปิด HTTPS — **ต้องกลับมาทบทวนค่านี้ก่อน deploy จริง** ถ้า dashboard กับ
+// backend อยู่คนละ domain จริงๆ (ไม่ใช่แค่คนละ port บน localhost) ต้องเปลี่ยนเป็น
+// SameSite=None + Secure=true (บังคับต้องผ่าน HTTPS เท่านั้น ไม่งั้นเบราว์เซอร์จะทิ้ง
+// cookie นี้ไปเงียบๆ)
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	token, err := s.auth.Login(req.Username, req.Password)
+	if errors.Is(err, authuc.ErrInvalidCredentials) {
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false, // TODO: true ตอน deploy จริงผ่าน HTTPS (ดูหมายเหตุด้านบน)
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(authuc.TokenTTL.Seconds()),
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleLogout ล้าง cookie ทิ้งด้วยการตั้ง MaxAge เป็นค่าติดลบ (สั่งเบราว์เซอร์ให้ลบ
+// cookie นี้ทันที) — ไม่ต้องเช็ค token เดิมเลยก่อนล้าง เพราะการล้าง cookie ปลอดภัยเสมอ
+// ไม่ว่า token เดิมจะยังใช้ได้อยู่หรือหมดอายุไปแล้วก็ตาม
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleMe ตรวจ cookie ปัจจุบันว่ายัง valid อยู่ไหม (signature ถูกต้อง + ยังไม่หมดอายุ)
+// คืนชื่อ user ถ้าผ่าน — dashboard เรียก endpoint นี้ตอนโหลดหน้าแรกเพื่อรู้ว่า user
+// ยัง login ค้างอยู่ไหม (แทนที่จะพยายามอ่าน/ถอดรหัส JWT เองฝั่ง client ซึ่งทำไม่ได้อยู่
+// แล้วเพราะ cookie เป็น httpOnly)
+func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		http.Error(w, "not authenticated", http.StatusUnauthorized)
+		return
+	}
+	username, err := s.auth.Verify(cookie.Value)
+	if err != nil {
+		http.Error(w, "not authenticated", http.StatusUnauthorized)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"username": username})
+}
+
+// handleCancelJob สั่งยกเลิก job ที่กำลังรันอยู่ คืน 409 Conflict ถ้า job นั้นไม่ได้
+// กำลังรันอยู่แล้ว (จบไปแล้ว หรือ ID ไม่มีอยู่จริง)
+func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.jobs.Cancel(id) {
+		http.Error(w, "job not running", http.StatusConflict)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// workflowRunSummary คือรูปแบบ JSON ที่คืนให้ dashboard ดู — แปลงมาจาก
+// workflow.RunSummary ของ domain (ซึ่ง adapter ฝั่ง Temporal แปลงมาจาก protobuf type
+// อีกทอดหนึ่ง) เก็บไว้แค่เท่าที่ dashboard ต้องใช้จริง
+type workflowRunSummary struct {
+	WorkflowID   string     `json:"workflow_id"`
+	RunID        string     `json:"run_id"`
+	WorkflowName string     `json:"workflow_name"`
+	Status       string     `json:"status"`
+	StartedAt    time.Time  `json:"started_at"`
+	EndedAt      *time.Time `json:"ended_at,omitempty"`
+}
+
+// toRunSummary แปลง workflow.RunSummary ของ domain เป็นรูปแบบ JSON ของ API
+func toRunSummary(run workflow.RunSummary) workflowRunSummary {
+	return workflowRunSummary{
+		WorkflowID:   run.WorkflowID,
+		RunID:        run.RunID,
+		WorkflowName: run.WorkflowName,
+		Status:       run.Status,
+		StartedAt:    run.StartedAt,
+		EndedAt:      run.EndedAt,
+	}
+}
+
+// handleListWorkflowRuns คืนรายการ workflow run ทั้งหมด (ทั้งที่กำลังรันอยู่และจบไปแล้ว)
+// เรียงจากล่าสุดไปเก่าสุดตาม default ordering ของ Temporal Visibility API — ใช้ดูว่า
+// scheduled workflow ทำงานไปแล้วกี่รอบ สำเร็จ/ล้มเหลวรอบไหนบ้าง (engine เป็นคนเก็บ event
+// history + visibility record ให้ทั้งหมด ดู internal/external/temporal/engine.go)
+func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) {
+	list, err := s.runs.List(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	runs := make([]workflowRunSummary, 0, len(list))
+	for _, run := range list {
+		runs = append(runs, toRunSummary(run))
+	}
+	writeJSON(w, http.StatusOK, runs)
+}
+
+// workflowRunDetail ต่อยอดจาก workflowRunSummary เพิ่มผลลัพธ์ทีละ step เข้ามา
+type workflowRunDetail struct {
+	workflowRunSummary
+	Steps []workflow.StepResult `json:"steps"`
+}
+
+// handleGetWorkflowRun คืนรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step ที่รันไปแล้ว
+// — id ในที่นี้คือ Temporal Workflow ID — ใช้ได้ทั้งตอน workflow ยังรันอยู่และจบไปแล้ว
+// (ดูวิธีดึงผลลัพธ์ทีละ step ที่ internal/external/temporal/engine.go)
+func (s *Server) handleGetWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	run, err := s.runs.Get(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, workflowRunDetail{
+		workflowRunSummary: toRunSummary(run.RunSummary),
+		Steps:              run.Steps,
+	})
+}
+
+// createWorkflowRunRequest คือ JSON body ของ POST /workflow-runs — เหมือน steps/workflow_name
+// ของ createScheduleRequest แต่ไม่มี spec/overlap เพราะ endpoint นี้ไม่ได้สร้าง schedule
+// (การรันซ้ำตามตารางเวลา) แค่รัน step ที่ระบุ "ทันทีครั้งเดียว" (ad-hoc) เท่านั้น
+type createWorkflowRunRequest struct {
+	WorkflowName string          `json:"workflow_name"`
+	Steps        []workflow.Step `json:"steps"`
+}
+
+// createWorkflowRunResponse คือ JSON response — ให้แค่ id ที่พอเอาไป poll สถานะต่อผ่าน
+// GET /workflow-runs/{id} ที่มีอยู่แล้ว (ไม่ต้องเพิ่ม endpoint หรือ repository ใหม่เลย)
+type createWorkflowRunResponse struct {
+	WorkflowID string `json:"workflow_id"`
+	RunID      string `json:"run_id"`
+}
+
+// handleCreateWorkflowRun สั่งรัน workflow (1 หรือหลาย step เรียงกัน) ทันทีแบบ ad-hoc —
+// ดูเหตุผลและกฎการตั้ง workflow ID ที่ workflowrun.Service.Start
+//
+// เหมือนกับ handleCreateJob endpoint นี้เป็น fire-and-forget (เริ่ม workflow แล้ว return
+// ทันที ไม่รอผลลัพธ์) — client ต้อง poll สถานะทีหลังเองผ่าน GET /workflow-runs/{workflow_id}
+func (s *Server) handleCreateWorkflowRun(w http.ResponseWriter, r *http.Request) {
+	var req createWorkflowRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	run, err := s.runs.Start(r.Context(), req.WorkflowName, req.Steps)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, apperr.ErrInvalid) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, createWorkflowRunResponse{
+		WorkflowID: run.WorkflowID,
+		RunID:      run.RunID,
+	})
+}
+
+// writeJSON คือ helper เขียน response กลับเป็น JSON พร้อมตั้ง header/status code ให้ครบ
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}

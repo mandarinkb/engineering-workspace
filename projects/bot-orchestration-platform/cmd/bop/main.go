@@ -22,16 +22,18 @@ import (
 
 	"go.temporal.io/sdk/client"
 
-	apihttp "bop/internal/api/http" // ตั้งชื่อ alias เพราะ package นี้ก็ชื่อ "http" เหมือน net/http
-	"bop/internal/bots/externaljob"
-	"bop/internal/bots/httpstatus"
-	"bop/internal/job"
-	"bop/internal/logger"
-	memlogger "bop/internal/logger/memory"   // alias เพราะซ้ำชื่อกับ repository/memory ด้านล่าง
-	memrepo "bop/internal/repository/memory" // alias เพราะซ้ำชื่อกับ logger/memory ด้านบน
-	"bop/internal/schedule"
-	"bop/internal/worker"
-	"bop/internal/workflow"
+	apihttp "bop/internal/adapter/http" // ตั้งชื่อ alias เพราะ package นี้ก็ชื่อ "http" เหมือน net/http
+	"bop/internal/domain/job"
+	"bop/internal/external/bots/externaljob"
+	"bop/internal/external/bots/httpstatus"
+	"bop/internal/external/temporal"
+	memlogger "bop/internal/pkg/logger"
+	"bop/internal/pkg/worker"
+	"bop/internal/repository/memory"
+	authuc "bop/internal/usecase/auth"
+	jobuc "bop/internal/usecase/job"
+	scheduleuc "bop/internal/usecase/schedule"
+	workflowrunuc "bop/internal/usecase/workflowrun"
 )
 
 func main() {
@@ -40,7 +42,7 @@ func main() {
 	// (ดู roadmap Phase 0.4 และ Phase 2.2) การสลับไปใช้ implementation จริงในอนาคต
 	// จะแก้แค่ 2 บรรทัดนี้เท่านั้น โค้ดส่วนอื่นทั้งหมดไม่ต้องแตะเลย เพราะทุกที่อ้างอิง
 	// ผ่าน interface (job.Repository, logger.Logger) ไม่เคยอ้างอิง concrete type ตรงๆ
-	repo := memrepo.NewJobRepository()
+	repo := memory.NewJobRepository()
 	appLogger := memlogger.New()
 
 	// ขั้นตอนที่ 2: สร้าง worker pool — จำกัดให้รันได้พร้อมกันสูงสุด 4 job และแต่ละ job
@@ -53,7 +55,7 @@ func main() {
 	pool.Register(externaljob.New())
 
 	// ขั้นตอนที่ 4: ต่อ Temporal client — ใช้แค่ "อ่าน" สถานะ workflow run ผ่าน
-	// GET /workflow-runs (ดู internal/api/http/handler.go) เท่านั้น ไม่ได้ใช้สั่งรัน
+	// GET /workflow-runs (ดู internal/adapter/http/handler.go) เท่านั้น ไม่ได้ใช้สั่งรัน
 	// workflow เอง (การสั่งรันอัตโนมัติตามตารางเวลาย้ายไปอยู่ที่ cmd/bop-worker ทั้งหมด
 	// แล้ว ผ่าน Temporal Schedule — ดูเหตุผลการแยก process ที่หัวไฟล์ cmd/bop-worker/main.go)
 	// ต้องรัน `docker compose up -d` (ดู docker-compose.yml) ให้ Temporal server พร้อมก่อน
@@ -62,7 +64,7 @@ func main() {
 	// ถ้าไม่ได้ตั้ง env var ไว้ (เช่นตอน local dev)
 	temporalClient, err := client.Dial(client.Options{
 		HostPort:  getenv("TEMPORAL_HOST_PORT", "localhost:7233"),
-		Namespace: workflow.Namespace,
+		Namespace: temporal.Namespace,
 	})
 	if err != nil {
 		log.Fatalf("connect to temporal: %v", err)
@@ -71,8 +73,8 @@ func main() {
 
 	// ขั้นตอนที่ 5: bookkeeping ของ schedule definition (ชื่อ workflow + steps ต่อ
 	// schedule หนึ่งตัว) — ดูเหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ ที่
-	// internal/schedule/schedule.go
-	scheduleRepo := memrepo.NewScheduleRepository()
+	// internal/domain/schedule/schedule.go
+	scheduleRepo := memory.NewScheduleRepository()
 
 	// ขั้นตอนที่ 6: เช็คว่าถูกเรียกแบบ CLI mode หรือไม่ (มี argument แรกเป็นคำว่า "run")
 	// ถ้าใช่ ให้ทำงานแบบ CLI แล้วจบโปรแกรมทันทีหลังจากนั้น ไม่เปิด HTTP server ต่อ
@@ -81,8 +83,24 @@ func main() {
 		return
 	}
 
+	// ขั้นตอนที่ 7: ประกอบ usecase จาก port ทั้งหมด (clean architecture: HTTP adapter รู้จัก
+	// แค่ usecase, usecase รู้จักแค่ interface ใน internal/domain ส่วน implementation จริง
+	// ทั้งหมดถูกเลือกที่นี่ที่เดียว) — secret/credential ของ auth อ่านจาก env var ที่นี่
+	// **ห้ามใช้ค่า fallback ใน production เด็ดขาด** BOP_JWT_SECRET ต้องสุ่มค่าใหม่ด้วย
+	// `openssl rand -base64 32` แล้วตั้งผ่าน K8s Secret ก่อน deploy จริง (ดู
+	// KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 3.4) credential admin เป็นตัวเดียวที่ระบบรู้จัก
+	// ตอนนี้เพราะยังไม่มี user database (BOP เป็น single-operator tool)
+	jobs := jobuc.NewService(repo, pool, appLogger)
+	runs := workflowrunuc.NewService(temporal.NewEngine(temporalClient))
+	schedules := scheduleuc.NewService(temporal.NewScheduler(temporalClient), scheduleRepo)
+	auth := authuc.NewService(
+		[]byte(getenv("BOP_JWT_SECRET", "bop-dev-secret-change-me-before-deploying")),
+		getenv("BOP_ADMIN_USERNAME", "admin"),
+		getenv("BOP_ADMIN_PASSWORD", "changeme"),
+	)
+
 	// ถ้าไม่ใช่ CLI mode ให้เปิด HTTP API server ตามปกติ (ค่า default ของโปรแกรมนี้)
-	serve(repo, appLogger, pool, temporalClient, scheduleRepo)
+	serve(apihttp.NewServer(jobs, runs, schedules, auth))
 }
 
 // runCLI คือโหมดสำหรับทดสอบ engine โดยไม่ต้องเปิด server หรือมี UI เลย ใช้แบบนี้:
@@ -138,12 +156,10 @@ func runCLI(repo job.Repository, pool *worker.Pool, args []string) {
 	}
 }
 
-// serve เปิด HTTP API server — ผูก dependency ทั้งหมดเข้ากับ Server ที่ประกาศไว้ใน
-// internal/api/http แล้วปล่อยให้ http.ListenAndServe รับ request เข้ามาเรื่อยๆ จนกว่า
-// โปรแกรมจะถูกปิด (Ctrl+C หรือ signal อื่น) — addr อ่านจาก env var BOP_HTTP_ADDR ก่อนเสมอ
-// fallback เป็น ":8080" เดิมถ้าไม่ได้ตั้ง (local dev)
-func serve(repo job.Repository, l logger.Logger, pool *worker.Pool, temporalClient client.Client, scheduleRepo schedule.Repository) {
-	srv := apihttp.NewServer(repo, l, pool, temporalClient, scheduleRepo)
+// serve เปิด HTTP API server แล้วปล่อยให้ http.ListenAndServe รับ request เข้ามาเรื่อยๆ
+// จนกว่าโปรแกรมจะถูกปิด (Ctrl+C หรือ signal อื่น) — addr อ่านจาก env var BOP_HTTP_ADDR
+// ก่อนเสมอ fallback เป็น ":8080" เดิมถ้าไม่ได้ตั้ง (local dev)
+func serve(srv http.Handler) {
 	addr := getenv("BOP_HTTP_ADDR", ":8080")
 	fmt.Printf("bop api listening on %s\n", addr)
 	if err := http.ListenAndServe(addr, srv); err != nil {

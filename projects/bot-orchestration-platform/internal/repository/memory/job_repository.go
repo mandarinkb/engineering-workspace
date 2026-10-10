@@ -10,7 +10,7 @@ import (
 	"sort"
 	"sync"
 
-	"bop/internal/job"
+	"bop/internal/domain/job"
 )
 
 // JobRepository เก็บ job ทั้งหมดไว้ใน map ธรรมดาในหน่วยความจำ ป้องกันการเข้าถึงพร้อมกัน
@@ -28,7 +28,7 @@ func NewJobRepository() *JobRepository {
 // หมายเหตุสำคัญเกี่ยวกับทุก method ด้านล่าง: ทุกตัวจะ "copy" ค่า Job ก่อนเก็บ/คืนค่าเสมอ
 // ไม่เคยส่ง pointer ตัวเดิมที่ผู้เรียกส่งเข้ามา (ตอน Create/Update) หรือ pointer ที่เก็บไว้
 // ใน map ออกไปให้ผู้เรียก (ตอน Get/List) โดยตรง — เหตุผลคือ job.Job ถูกแก้ไข field ต่างๆ
-// ระหว่างที่ worker pool กำลังรัน job นั้นอยู่ (ดู internal/worker) ถ้าปล่อยให้ pointer
+// ระหว่างที่ worker pool กำลังรัน job นั้นอยู่ (ดู internal/pkg/worker) ถ้าปล่อยให้ pointer
 // เดียวกันถูกถือโดยหลาย goroutine พร้อมกัน (เช่น worker กำลังเขียน ในขณะที่ HTTP handler
 // กำลังอ่านเพื่อส่ง response) จะเกิด data race ทันที — การ copy ทุกครั้งที่ผ่านเข้า-ออก
 // repository ทำให้ mutex ตัวนี้เป็นจุดเดียวที่ต้องป้องกัน ผู้เรียกที่ถือ Job ที่ได้จาก Get/List

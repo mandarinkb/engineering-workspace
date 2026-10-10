@@ -2,7 +2,7 @@
 
 > ⚠️ **เอกสารนี้ถูกแทนที่แล้ว** — scope ขยายใหญ่ขึ้นมาก (เพิ่ม database + backtesting + real-time display) จนใหญ่เกินกว่าจะเป็นแค่ bot 1 ตัวใน BOP ย้ายไปเป็นโปรเจกต์แยกต่างหากที่ [projects/trade-analyzer/TRADE-ANALYZER-TODO.md](../trade-analyzer/TRADE-ANALYZER-TODO.md) แล้ว — เอกสารนี้เก็บไว้เป็น **decision log** ของแนวคิดที่นำไปต่อยอด (เหตุผลที่เลือก network interception แทน pixel/vision) ไม่ใช่แผนที่ใช้งานจริงอีกต่อไป
 >
-> **สถานะ**: design doc เขียนไว้ล่วงหน้า ยังไม่เริ่ม implement — ต่อยอดจาก `price-watch` bot ([internal/bots/pricewatch/](internal/bots/pricewatch/pricewatch.go)) ที่ implement ไปแล้วก่อนหน้า **ไม่ได้แทนที่กัน**
+> **สถานะ**: design doc เขียนไว้ล่วงหน้า ยังไม่เริ่ม implement — ต่อยอดจาก `price-watch` bot **ไม่ได้แทนที่กัน** — **หมายเหตุ (2026-10-10)**: `internal/bots/pricewatch/` ไม่มีอยู่ใน repo นี้ และไม่เคยถูก commit ใน git history เลย ส่วนที่เอกสารนี้อ้างถึง `price-watch` (RSI, Binance API, `computeRSI`/`interpretRSI`) จึงยังไม่มีโค้ดจริงรองรับ ถ้าจะต่อยอดต้องเขียน `price-watch` ใหม่ก่อน หรือหาโค้ดเดิมที่ไม่ได้ commit
 >
 > **เปลี่ยนทิศทางจากร่างแรก**: เวอร์ชันแรกของเอกสารนี้ออกแบบให้ถ่าย screenshot แล้วส่งให้ vision-capable LLM วิเคราะห์ (ทางเลือก A เดิม) — **ตัดสินใจเปลี่ยนแล้ว**: ดึงข้อมูลราคาดิบผ่าน browser โดยตรง (ไม่ตีความจากภาพ) แล้วเขียน logic วิเคราะห์เองทั้งหมด **ไม่พึ่ง AI API ภายนอกเลย** — ตัด section เรื่อง cost ของ vision API ออกเพราะไม่เกี่ยวแล้ว
 >

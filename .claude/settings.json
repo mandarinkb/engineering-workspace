@@ -1,50 +1,38 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(git -C /home/m710q/Workspace/engineering-workspace status)",
-      "Bash(git -C /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-aebac1446b323ea5b log --stat -1)",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-a7d7caf4f12b4ed35/books/07-docker/*.md /home/m710q/Workspace/engineering-workspace/books/07-docker/)",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-a7d7caf4f12b4ed35/books/08-kubernetes/*.md /home/m710q/Workspace/engineering-workspace/books/08-kubernetes/)",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-aebac1446b323ea5b/books/09-authentication/*.md /home/m710q/Workspace/engineering-workspace/books/09-authentication/)",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-aebac1446b323ea5b/books/10-apisix/*.md /home/m710q/Workspace/engineering-workspace/books/10-apisix/)",
-      "Bash(cp -r /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-ab96447c8edfaed73/books/14-observability/. /home/m710q/Workspace/engineering-workspace/books/14-observability/)",
-      "Bash(cp -r /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-ab96447c8edfaed73/books/15-security/. /home/m710q/Workspace/engineering-workspace/books/15-security/)",
-      "Bash(cp -r /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-ab96447c8edfaed73/books/16-cicd/. /home/m710q/Workspace/engineering-workspace/books/16-cicd/)",
-      "Bash(xargs -I{} sh -c 'echo \"{}\"; wc -l \"{}\"')",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-a6e5803c921e5f07b/books/05-postgresql/*.md /home/m710q/Workspace/engineering-workspace/books/05-postgresql/)",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-a6e5803c921e5f07b/books/06-redis/*.md /home/m710q/Workspace/engineering-workspace/books/06-redis/)",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/11-microservices/*.md /home/m710q/Workspace/engineering-workspace/books/11-microservices/)",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/12-kafka/*.md /home/m710q/Workspace/engineering-workspace/books/12-kafka/)",
-      "Bash(cp -v /home/m710q/Workspace/engineering-workspace/.claude/worktrees/agent-acbe5fcefcd686de1/books/13-temporal/01-workflow-and-activity.md /home/m710q/Workspace/engineering-workspace/books/13-temporal/)",
-      "Bash(go version *)",
-      "Bash(go build *)",
-      "Bash(go vet *)",
-      "Bash(go test *)",
-      "Bash(go run *)",
-      "Bash(git status *)",
-      "Bash(gofmt -l .)",
-      "Bash(gofmt -w .)",
-      "Bash(echo \"---exit: $?---\")",
-      "Bash(lsof -ti:8080)",
-      "Bash(xargs -r kill -9)",
-      "Bash(kill -9 17779)",
-      "Bash(find ~/.claude/skills -maxdepth 3 2>/dev/null)",
-      "Read(//home/m710q/.claude/skills/**)",
-      "Read(//home/m710q/.claude/skills/karpathy-guidelines/**)",
-      "Bash(go env *)",
-      "Bash(timeout 15 go list -m -versions go.temporal.io/sdk)",
-      "Bash(docker --version)",
-      "Bash(docker compose *)",
-      "Bash(go get *)",
-      "Bash(go mod *)",
-      "Bash(go list *)",
-      "Bash(head -5 \"$\\(go env GOMODCACHE\\)/go.temporal.io/api@v1.44.1/workflowservice/v1/request_response.pb.go\")",
-      "Bash(head -5 \"$\\(go env GOMODCACHE\\)/go.temporal.io/api@v1.44.1/workflow/v1/message.pb.go\")",
-      "Bash(grep -n \"^package\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/api@v1.44.1/workflowservice/v1/request_response.pb.go\")",
-      "Bash(grep -n \"^package\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/api@v1.44.1/workflow/v1/message.pb.go\")",
-      "Bash(grep -n \"ErrScheduleAlreadyRunning\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/sdk@v1.47.0/client/client.go\")",
-      "Bash(grep -rn \"ErrScheduleAlreadyRunning\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/sdk@v1.47.0\"/*.go \"$\\(go env GOMODCACHE\\)/go.temporal.io/sdk@v1.47.0\"/client/*.go)",
-      "Bash(grep -rln \"ErrScheduleAlreadyRunning\" \"$\\(go env GOMODCACHE\\)/go.temporal.io/sdk@v1.47.0\")"
-    ]
-  }
+    "statusLine": {
+        "type": "command",
+        "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/statusline.sh"
+    },
+    "hooks": {
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/start.sh"
+                    }
+                ]
+            }
+        ],
+        "PermissionRequest": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/approve.sh"
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/stop.sh"
+                    }
+                ]
+            }
+        ]
+    }
 }
