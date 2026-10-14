@@ -1,11 +1,11 @@
 import { QueryClient } from "@tanstack/react-query";
 
-import { ApiError } from "@/types/api";
+import { ApiError } from "./api-error";
 
 // createQueryClient สร้าง TanStack QueryClient ตัวใหม่พร้อม config กลางที่ใช้ร่วมกันทั้ง
 // แอป — แยกเป็นฟังก์ชันแทนที่จะสร้าง instance เดียวระดับ module เพราะ Next.js App Router
 // render ฝั่ง server ด้วย (แม้ query hook ส่วนใหญ่จะทำงานเฉพาะฝั่ง client) การสร้าง
-// QueryClient ใหม่ทุกครั้งที่ Providers component (src/app/providers.tsx) mount ป้องกันไม่ให้
+// QueryClient ใหม่ทุกครั้งที่ Providers component (src/app/providers/providers.tsx) mount ป้องกันไม่ให้
 // request ของ user คนหนึ่งไปแชร์ cache กับ user อีกคนโดยไม่ตั้งใจตอนรันบน server ที่มีหลาย
 // request พร้อมกัน (ทุก request ควรได้ QueryClient ของตัวเอง)
 export function createQueryClient(): QueryClient {

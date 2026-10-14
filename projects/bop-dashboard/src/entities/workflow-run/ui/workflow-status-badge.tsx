@@ -1,4 +1,4 @@
-import { StatusBadge, type BadgeTone } from "@/components/ui/status-badge";
+import { StatusBadge, type BadgeTone } from "@/shared/ui";
 
 // STATUS_META แปลง Temporal enum string ดิบ (เช่น "WORKFLOW_EXECUTION_STATUS_RUNNING" —
 // ดูที่มาที่ info.GetStatus().String() ใน internal/api/http/handler.go: toRunSummary)

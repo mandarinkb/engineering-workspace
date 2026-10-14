@@ -1,4 +1,4 @@
-import type { LogLevel, LogLine } from "../types";
+import type { LogLevel, LogLine } from "../model/types";
 
 // filterLogLines คือ pure function แยกออกมาจาก job-log-viewer.tsx ตั้งใจ เพื่อให้ test
 // ได้โดยไม่ต้อง render component จริง (ไม่ต้อง mock SSE/fetch) — กรอง 2 ชั้น: ตาม level

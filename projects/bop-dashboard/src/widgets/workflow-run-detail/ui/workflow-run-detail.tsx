@@ -2,10 +2,7 @@
 
 import { useState } from "react";
 
-import { useWorkflowRun } from "../api/use-workflow-run";
-import { StepPipelineView } from "./step-pipeline-view";
-import { StepResultList } from "./step-result-list";
-import { WorkflowStatusBadge } from "./workflow-status-badge";
+import { useWorkflowRun, StepPipelineView, StepResultList, WorkflowStatusBadge } from "@/entities/workflow-run";
 
 interface WorkflowRunDetailProps {
   workflowId: string;

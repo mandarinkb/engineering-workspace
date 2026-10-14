@@ -1,4 +1,4 @@
-import type { StepResult } from "../types";
+import type { StepResult } from "../model/types";
 
 interface StepResultListProps {
   steps: StepResult[];

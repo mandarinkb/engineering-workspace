@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
-import type { Job } from "../types";
+import { apiClient } from "@/shared/api";
+import type { Job } from "../model/types";
 
 // useJob เรียก GET /jobs/{id} — ใช้แสดงหัวข้อ/สถานะ/summary ของหน้า live monitor (ข้อ
 // 1.5) คู่กับ log ที่มาจาก useJobLogStream แยกต่างหาก (คนละ endpoint คนละ concern:

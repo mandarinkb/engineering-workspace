@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient } from "@/shared/api";
 
 // useCancelJob เรียก DELETE /jobs/{id} — สั่งยกเลิก job ที่กำลังรันอยู่ (backend คืน 204
 // ถ้าสำเร็จ, 409 Conflict ถ้า job นั้นไม่ได้กำลังรันอยู่แล้ว ดู handleCancelJob ใน

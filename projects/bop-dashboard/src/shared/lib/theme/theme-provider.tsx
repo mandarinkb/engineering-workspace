@@ -34,14 +34,14 @@ function getInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-// ThemeProvider mount ที่ src/app/providers.tsx ครอบทั้งแอป — ตั้งใจ hand-roll เอง
-// (ไม่ใช้ next-themes) ตาม ethos เดียวกับ ToastProvider (src/components/ui/toast-provider.tsx)
+// ThemeProvider mount ที่ src/app/providers/providers.tsx ครอบทั้งแอป — ตั้งใจ hand-roll เอง
+// (ไม่ใช้ next-themes) ตาม ethos เดียวกับ ToastProvider (src/shared/ui/toast-provider.tsx)
 //
 // หมายเหตุเรื่อง hydration: ค่าเริ่มต้นของ useState เป็น "light" เสมอ (ไม่เรียก
 // getInitialTheme() ตรงๆ ตอน initial state) เพราะ localStorage/matchMedia อ่านได้แค่
 // ฝั่ง client เท่านั้น ถ้าเรียกตอน render ครั้งแรกจะได้ค่าไม่ตรงกันระหว่าง server-rendered
 // HTML กับ client — ใช้ useEffect อ่านค่าจริงหลัง mount แทน (ไม่มี flash ของ theme ผิด
-// เพราะมี inline <script> ใน src/app/layout.tsx ใส่ class "dark" ให้ <html> ไปก่อนแล้ว
+// เพราะมี inline <script> ใน app/layout.tsx ใส่ class "dark" ให้ <html> ไปก่อนแล้ว
 // ตั้งแต่ก่อน React จะ hydrate ด้วยซ้ำ — ไฟล์นี้แค่ sync React state ให้ตรงกับ class ที่
 // มีอยู่แล้วจริงบน DOM)
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

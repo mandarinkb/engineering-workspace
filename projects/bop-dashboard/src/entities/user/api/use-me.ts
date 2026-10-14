@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
-import { ApiError } from "@/types/api";
-import type { User } from "../types";
+import { apiClient, ApiError } from "@/shared/api";
+import type { User } from "../model/types";
 
 // useMe เรียก GET /me เพื่อเช็คว่า cookie (JWT httpOnly) ที่เบราว์เซอร์ถืออยู่ตอนนี้ยัง
 // valid อยู่ไหม — เป็น query เดียวที่ทั้งแอปใช้ตัดสินว่า user "login อยู่หรือเปล่า" ไม่มี

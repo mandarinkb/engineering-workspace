@@ -8,7 +8,7 @@ export type OverlapPolicy = "skip" | "buffer_one" | "buffer_all" | "cancel_other
 
 // ScheduleStep คือ 1 ขั้นตอนของ workflow ที่ schedule นี้สั่งรัน — mirror จาก
 // internal/workflow/workflow.go (Step struct) เก็บแยกจาก StepResult ของ
-// features/workflow-runs/types (นั่นคือ "ผลลัพธ์หลังรันไปแล้ว" ส่วนนี้คือ "นิยามว่าจะรันอะไร")
+// entities/workflow-run/model/types.ts (นั่นคือ "ผลลัพธ์หลังรันไปแล้ว" ส่วนนี้คือ "นิยามว่าจะรันอะไร")
 //
 // task_queue/k8s_job คือ field ที่เพิ่มมาทีหลัง (mirror จาก workflow.Step.TaskQueue /
 // workflow.Step.K8sJob) — ทั้งคู่ optional และ mutually exclusive กันโดยธรรมชาติ (ตั้งได้

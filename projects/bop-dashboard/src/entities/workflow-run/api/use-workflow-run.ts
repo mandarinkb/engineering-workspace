@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
-import type { WorkflowRunDetail } from "../types";
+import { apiClient } from "@/shared/api";
+import type { WorkflowRunDetail } from "../model/types";
 
 // useWorkflowRun เรียก GET /workflow-runs/{id} — id ตรงนี้คือ Temporal Workflow ID
 // (ไม่ใช่ random Run ID แบบเวอร์ชันก่อนย้ายไป Temporal) ฝั่ง backend ดึงผลลัพธ์ทีละ step

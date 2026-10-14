@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
-import type { OverlapPolicy } from "../types";
+import { apiClient } from "@/shared/api";
+import type { OverlapPolicy } from "@/entities/schedule";
 
 interface BackfillInput {
   start_time: string;

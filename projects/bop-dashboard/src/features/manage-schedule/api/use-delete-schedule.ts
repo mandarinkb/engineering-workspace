@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient } from "@/shared/api";
 
 // useDeleteSchedule เรียก DELETE /schedules/{id} — ลบถาวรทั้งฝั่ง Temporal และ
 // definition ของ backend เอง (ดู handleDeleteSchedule) ไม่มีทาง undo

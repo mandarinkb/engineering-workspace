@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
-import type { OverlapPolicy, ScheduleDetail, ScheduleSpecInput, ScheduleStep } from "../types";
+import { apiClient } from "@/shared/api";
+import type { OverlapPolicy, ScheduleDetail, ScheduleSpecInput, ScheduleStep } from "@/entities/schedule";
 
 export interface CreateScheduleInput {
   id: string;
@@ -12,7 +12,7 @@ export interface CreateScheduleInput {
 }
 
 // useCreateSchedule เรียก POST /schedules — invalidate query "schedules" (list) ให้
-// refetch ทันทีหลังสร้างสำเร็จ เหมือน pattern เดียวกับ useCreateJob ใน features/bots
+// refetch ทันทีหลังสร้างสำเร็จ เหมือน pattern เดียวกับ useCreateJob ใน features/create-job
 export function useCreateSchedule() {
   const queryClient = useQueryClient();
 

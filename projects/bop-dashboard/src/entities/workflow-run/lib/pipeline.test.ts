@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { StepResult } from "../types";
+import type { StepResult } from "../model/types";
 import { buildPipelineNodes } from "./pipeline";
 
 const STEPS: StepResult[] = [

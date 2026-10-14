@@ -3,9 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { useBots } from "../api/use-bots";
-import { BotCard } from "./bot-card";
-import { BotForm } from "./bot-form";
+import { useBots, BotCard } from "@/entities/bot";
+import { BotForm } from "@/features/create-job";
 
 // BotList คือหน้าหลักของ roadmap ข้อ 1.2 — โหลดรายชื่อ bot ผ่าน useBots (useEffect ซ่อน
 // อยู่ภายใน TanStack Query แล้ว ไม่ต้องเขียน useEffect ยิง fetch เองตรงๆ) แสดงเป็นกริดของ

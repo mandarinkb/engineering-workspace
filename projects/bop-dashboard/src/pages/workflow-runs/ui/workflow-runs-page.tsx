@@ -1,6 +1,6 @@
-import { WorkflowRunTable } from "@/features/workflow-runs/components/workflow-run-table";
+import { WorkflowRunTable } from "@/widgets/workflow-run-table";
 
-export default function WorkflowRunsPage() {
+export function WorkflowRunsPage() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-semibold">Workflow Runs</h1>

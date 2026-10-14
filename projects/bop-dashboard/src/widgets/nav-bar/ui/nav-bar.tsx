@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-import { useTheme } from "@/app/theme-provider";
-import { useLogout } from "@/features/auth/api/use-logout";
-import { useAuth } from "@/features/auth/hooks/use-auth";
+import { useTheme } from "@/shared/lib/theme";
+import { useLogout } from "@/features/auth";
+import { useAuth } from "@/entities/user";
 
 const NAV_LINKS = [
   { href: "/bots", label: "Bots" },
@@ -14,19 +14,16 @@ const NAV_LINKS = [
   { href: "/workflow-runs", label: "Workflow Runs" },
 ];
 
-// NavBar อยู่ที่ src/components/layout ไม่ใช่ src/features/*/components เพราะใช้ร่วม
-// ทุกหน้าใน (dashboard) route group (ดู app/(dashboard)/layout.tsx) ไม่ได้ผูกกับ feature
-// ไหนเป็นพิเศษ — แต่ยัง import hook จาก features/auth ได้ตามกติกาที่วางไว้ (components/
-// ห้าม import จาก features/ ตรงๆ... ยกเว้นกรณีนี้ที่ nav ต้องรู้ว่า user คนไหน login อยู่
-// ซึ่งเป็น concept ของ auth feature จริงๆ — ถือเป็นข้อยกเว้นที่ยอมรับได้เพราะ auth เป็น
-// cross-cutting concern ที่แทบทุกหน้าต้องรู้ ต่างจาก concept เฉพาะของ bots/jobs/
-// workflow-runs ที่ NavBar ไม่ควรรู้จักเลย)
+// NavBar เป็น widget (ชั้น widgets ของ FSD) เพราะใช้ร่วมทุกหน้าใน (dashboard) route group
+// (ดู app/(dashboard)/layout.tsx) และประกอบจากหลายชั้นล่าง: user ที่ login อยู่จาก
+// entities/user, การ logout จาก features/auth และ theme จาก shared/lib/theme — widget
+// import ชั้นล่างเหล่านี้ได้ตามกฎปกติ ไม่ต้องเป็นข้อยกเว้นเหมือนตอนอยู่ที่ src/components
 export function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
   const logout = useLogout();
-  // useTheme มาจาก src/app/theme-provider.tsx (ไม่ใช่ features/) — ข้อยกเว้นเดียวกับ
+  // useTheme มาจาก src/shared/lib/theme/theme-provider.tsx (ไม่ใช่ features/) — ข้อยกเว้นเดียวกับ
   // auth ด้านบน: theme เป็น cross-cutting concern ที่ nav ต้องรู้ (ปุ่ม toggle ต้องอยู่
   // ตรงนี้) ไม่ใช่ concept เฉพาะของ feature ไหนเลย
   const { theme, toggleTheme } = useTheme();

@@ -1,4 +1,4 @@
-import { StatusBadge } from "@/components/ui/status-badge";
+import { StatusBadge } from "@/shared/ui";
 
 // ScheduleStatusBadge แสดงแค่ 2 สถานะ (ต่างจาก JobStatusBadge/WorkflowStatusBadge ที่มี
 // หลายสถานะ) เพราะ schedule มีแค่ paused หรือไม่ paused เท่านั้น — เขียว = active

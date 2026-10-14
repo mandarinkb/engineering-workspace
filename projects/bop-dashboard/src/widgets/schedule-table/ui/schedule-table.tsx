@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 
-import { useScheduleActions } from "../api/use-schedule-actions";
-import { useSchedules } from "../api/use-schedules";
-import type { ScheduleSummary } from "../types";
-import { ScheduleStatusBadge } from "./schedule-status-badge";
+import { useScheduleActions } from "@/features/manage-schedule";
+import { useSchedules, type ScheduleSummary, ScheduleStatusBadge } from "@/entities/schedule";
 
 // specLabel แปลง spec ของ schedule (interval หรือ cron — mutually exclusive เสมอ ดู
 // ScheduleSpecInput) เป็นข้อความอ่านง่ายบรรทัดเดียวสำหรับตาราง

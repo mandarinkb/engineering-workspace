@@ -1,10 +1,10 @@
-import { ScheduleDetailView } from "@/features/schedules/components/schedule-detail";
+import { ScheduleDetailView } from "@/widgets/schedule-detail";
 
 interface ScheduleDetailPageProps {
   params: Promise<{ id: string }>; // Next.js 15: params เป็น Promise เสมอ ต้อง await
 }
 
-export default async function ScheduleDetailPage({ params }: ScheduleDetailPageProps) {
+export async function ScheduleDetailPage({ params }: ScheduleDetailPageProps) {
   const { id } = await params;
   return (
     <div className="flex flex-col gap-6">

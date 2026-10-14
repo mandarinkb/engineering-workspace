@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { ConfigField } from "../types";
+import type { ConfigField } from "./types";
 
 // buildConfigSchema สร้าง zod schema แบบ "dynamic" จาก config_schema ที่ backend ประกาศไว้
 // (bot.ConfigSchema() ฝั่ง Go — ดู internal/bot/bot.go) นี่คือหัวใจของ dynamic form ตาม

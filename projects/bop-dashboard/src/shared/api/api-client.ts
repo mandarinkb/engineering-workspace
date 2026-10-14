@@ -1,4 +1,4 @@
-import { ApiError } from "@/types/api";
+import { ApiError } from "./api-error";
 
 // API_URL อ่านจาก environment variable ที่มี prefix NEXT_PUBLIC_ (ต้องมี prefix นี้เท่านั้น
 // โค้ดฝั่ง client/เบราว์เซอร์ถึงจะอ่านค่านี้ได้ — ดู .env.example) ถ้าไม่ได้ตั้งไว้เลย

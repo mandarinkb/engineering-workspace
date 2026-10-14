@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
-import type { WorkflowRunSummary } from "../types";
+import { apiClient } from "@/shared/api";
+import type { WorkflowRunSummary } from "../model/types";
 
 // useWorkflowRuns เรียก GET /workflow-runs — ต่างจาก useJobs ตรงที่ backend endpoint นี้
 // ไม่ได้อ่านจาก database ของ BOP เองเลย แต่ query ตรงไปที่ Temporal Visibility API (ดู

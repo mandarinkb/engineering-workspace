@@ -3,11 +3,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { ToastProvider } from "@/components/ui/toast-provider";
-import { WatchedJobsProvider } from "@/features/jobs/components/watched-jobs-provider";
-import { createQueryClient } from "@/lib/query-client";
+import { ToastProvider } from "@/shared/ui";
+import { WatchedJobsProvider } from "@/features/watch-job";
+import { createQueryClient } from "@/shared/api";
 
-import { ThemeProvider } from "./theme-provider";
+import { ThemeProvider } from "@/shared/lib/theme";
 
 // Providers ต้องเป็น Client Component ("use client" บรรทัดบนสุด) เพราะ
 // QueryClientProvider ใช้ React Context ซึ่งทำงานได้เฉพาะฝั่ง client เท่านั้น — ถ้าเอา

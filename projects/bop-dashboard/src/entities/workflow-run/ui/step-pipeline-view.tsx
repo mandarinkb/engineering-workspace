@@ -1,5 +1,5 @@
 import { buildPipelineNodes } from "../lib/pipeline";
-import type { StepResult } from "../types";
+import type { StepResult } from "../model/types";
 import { PipelineNode } from "./pipeline-node";
 
 interface StepPipelineViewProps {

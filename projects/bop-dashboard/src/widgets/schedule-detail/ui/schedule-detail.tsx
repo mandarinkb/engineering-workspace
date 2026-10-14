@@ -4,10 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { useDeleteSchedule } from "../api/use-delete-schedule";
-import { useSchedule } from "../api/use-schedule";
-import { useScheduleActions } from "../api/use-schedule-actions";
-import { ScheduleStatusBadge } from "./schedule-status-badge";
+import { useDeleteSchedule, useScheduleActions } from "@/features/manage-schedule";
+import { useSchedule, ScheduleStatusBadge } from "@/entities/schedule";
 
 interface ScheduleDetailViewProps {
   id: string;

@@ -2,12 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { useJob } from "../api/use-job";
-import { useJobLogStream } from "../api/use-job-log-stream";
-import { filterLogLines } from "../lib/log-filters";
-import type { LogLevel } from "../types";
-import { JobStatusBadge } from "./job-status-badge";
-import { useWatchJob } from "./watched-jobs-provider";
+import { useJob, useJobLogStream, filterLogLines, type LogLevel, JobStatusBadge } from "@/entities/job";
+import { useWatchJob } from "@/features/watch-job";
 
 const CONNECTION_LABEL: Record<string, string> = {
   connecting: "กำลังเชื่อมต่อ...",
@@ -61,7 +57,7 @@ export function JobLogViewer({ jobId }: JobLogViewerProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
 
-  // ลงทะเบียนให้ WatchedJobsProvider (mount ที่ src/app/providers.tsx) เริ่ม poll
+  // ลงทะเบียนให้ WatchedJobsProvider (mount ที่ src/app/providers/providers.tsx) เริ่ม poll
   // สถานะของ job นี้ต่อไปเรื่อยๆ แม้ user จะออกจากหน้านี้ไปแล้วก่อน job จะจบ — เรียกครั้ง
   // เดียวตอน mount พอ ไม่ต้อง cleanup (ดูเหตุผลเต็มที่ watched-jobs-provider.tsx)
   useWatchJob(jobId);

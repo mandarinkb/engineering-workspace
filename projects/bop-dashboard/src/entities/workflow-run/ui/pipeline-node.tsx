@@ -1,4 +1,4 @@
-import { StatusBadge, type BadgeTone } from "@/components/ui/status-badge";
+import { StatusBadge, type BadgeTone } from "@/shared/ui";
 
 import type { PipelineNodeData } from "../lib/pipeline";
 

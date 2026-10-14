@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Job } from "../types";
+import type { Job } from "../model/types";
 import { computeJobStats } from "./job-stats";
 
 function makeJob(overrides: Partial<Job>): Job {

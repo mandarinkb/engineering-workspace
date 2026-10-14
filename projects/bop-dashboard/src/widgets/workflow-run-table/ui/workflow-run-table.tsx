@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 
-import { useWorkflowRuns } from "../api/use-workflow-runs";
-import { WorkflowStatusBadge } from "./workflow-status-badge";
+import { useWorkflowRuns, WorkflowStatusBadge } from "@/entities/workflow-run";
 
 // WorkflowRunTable แสดงว่า scheduled workflow (ตัวอย่าง check-example-com ที่
 // cmd/bop-worker สร้าง Schedule ไว้ — ดู TEMPORAL-MIGRATION-TODO.md) รันไปแล้วกี่รอบ

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { connectSSE, type SSEStatus } from "@/lib/sse-client";
-import type { LogLine } from "../types";
+import { connectSSE, type SSEStatus } from "@/shared/api";
+import type { LogLine } from "../model/types";
 
 // useJobLogStream คือ hook หลักของ Live Job Monitor (roadmap ข้อ 1.5 — จุดที่ยากที่สุด
 // และมีค่าที่สุดของทั้ง phase) — เปิดเชื่อมต่อ SSE ไปที่ GET /jobs/{id}/logs/stream แล้ว

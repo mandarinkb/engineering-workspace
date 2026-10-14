@@ -24,10 +24,10 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 
 const DEFAULT_DURATION_MS = 5000;
 
-// ToastProvider คือ context กลางของทั้งแอป (mount ที่ src/app/providers.tsx เพียงจุด
+// ToastProvider คือ context กลางของทั้งแอป (mount ที่ src/app/providers/providers.tsx เพียงจุด
 // เดียว) เก็บ array ของ toast ที่กำลังแสดงอยู่ — ไม่ใช้ library ภายนอก (เช่น sonner) ตั้งใจ
 // ให้ hand-roll เอง สอดคล้องกับแนวทางที่โปรเจกต์นี้ hand-roll SSE client/fetch wrapper เอง
-// มาตลอด (ดู src/lib/sse-client.ts, src/lib/api-client.ts)
+// มาตลอด (ดู src/shared/api/sse-client.ts, src/shared/api/api-client.ts)
 //
 // nextId เป็น useRef ธรรมดา (ไม่ใช่ state) เพราะเป็นแค่ตัวนับ id ที่ไม่ต้องกระตุ้น
 // re-render เมื่อเปลี่ยนค่า — เพิ่มค่าแล้วอ่านค่าปัจจุบันพอ ไม่ต้องผ่าน setState
@@ -70,7 +70,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 }
 
 // useToast ต้องเรียกภายใต้ <ToastProvider> เท่านั้น (ครอบทั้งแอปไว้แล้วที่
-// src/app/providers.tsx) — throw ทันทีถ้าเรียกผิดที่ ดีกว่าให้ silently ทำอะไรไม่ได้
+// src/app/providers/providers.tsx) — throw ทันทีถ้าเรียกผิดที่ ดีกว่าให้ silently ทำอะไรไม่ได้
 export function useToast(): ToastContextValue {
   const ctx = useContext(ToastContext);
   if (!ctx) {

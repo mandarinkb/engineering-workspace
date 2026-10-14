@@ -1,4 +1,4 @@
-import type { Bot } from "../types";
+import type { Bot } from "../model/types";
 
 interface BotCardProps {
   bot: Bot;

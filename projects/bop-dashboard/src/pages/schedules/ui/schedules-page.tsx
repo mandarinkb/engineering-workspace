@@ -1,8 +1,8 @@
 import Link from "next/link";
 
-import { ScheduleTable } from "@/features/schedules/components/schedule-table";
+import { ScheduleTable } from "@/widgets/schedule-table";
 
-export default function SchedulesPage() {
+export function SchedulesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">

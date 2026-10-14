@@ -4,10 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
-import { useCancelJob } from "../api/use-cancel-job";
-import { useJobs } from "../api/use-jobs";
-import type { Job, JobStatus } from "../types";
-import { JobStatusBadge } from "./job-status-badge";
+import { useCancelJob } from "@/features/cancel-job";
+import { useJobs, type Job, type JobStatus, JobStatusBadge } from "@/entities/job";
 
 const PAGE_SIZE = 20;
 
@@ -31,7 +29,7 @@ function isWithinDateRange(job: Job, from: string, to: string): boolean {
 }
 
 // JobTable คือหน้าหลักของ roadmap ข้อ 1.4 — ดึง job ทั้งหมดผ่าน useJobs (TanStack Query
-// cache/retry อัตโนมัติให้แล้ว ดู src/lib/query-client.ts) แล้วกรอง+แบ่งหน้าฝั่ง client
+// cache/retry อัตโนมัติให้แล้ว ดู src/shared/api/query-client.ts) แล้วกรอง+แบ่งหน้าฝั่ง client
 // เอง (ไม่พึ่ง backend ทำ filter/pagination เพราะ endpoint GET /jobs ยังไม่รองรับ query
 // parameter พวกนี้ และจำนวน job ทั้งระบบตอนนี้ยังน้อยพอที่ client-side filter จะไม่ช้า)
 //

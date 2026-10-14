@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ConfigField } from "../types";
+import type { ConfigField } from "./types";
 import { buildConfigSchema } from "./bot-config.schema";
 
 // ทดสอบตาม roadmap ข้อ 1.9 ตรงๆ: "test form validation logic" — buildConfigSchema คือ

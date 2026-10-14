@@ -20,24 +20,26 @@ npm run test          # vitest run
 npm run build         # production build (รัน type-check + lint ในตัวด้วย)
 ```
 
-เข้า `http://localhost:3000` แล้วจะถูก redirect ไป `/login` อัตโนมัติถ้ายัง login ไม่อยู่ (ดู `src/middleware.ts`) — credential เริ่มต้นตอนนี้ hard-code ไว้ที่ฝั่ง backend คือ `admin` / `changeme` (ดู `internal/api/http/handler.go` — **ต้องเปลี่ยนก่อน deploy จริงเสมอ**)
+เข้า `http://localhost:3000` แล้วจะถูก redirect ไป `/login` อัตโนมัติถ้ายัง login ไม่อยู่ (ดู `middleware.ts`) — credential เริ่มต้นตอนนี้ hard-code ไว้ที่ฝั่ง backend คือ `admin` / `changeme` (ดู `internal/adapter/http/handler.go` ของ BOP — **ต้องเปลี่ยนก่อน deploy จริงเสมอ**)
 
 ## โครงสร้างโปรเจกต์
 
-Feature-based structure ดูคำอธิบายเหตุผลและ diagram เต็มๆ ที่ [PHASE1-DASHBOARD-TODO.md](PHASE1-DASHBOARD-TODO.md#โครงสร้างโปรเจกต์ที่แนะนำ-feature-based) สรุปสั้นๆ:
+ใช้ **Feature-Sliced Design (FSD)** ดูรายละเอียดเต็ม กฎการ import และที่วางโค้ดใหม่ที่ [ARCHITECTURE.md](ARCHITECTURE.md) สรุปสั้นๆ:
 
 ```
+app/                Next.js routing เท่านั้น — page.tsx แค่ re-export จาก src/pages
+middleware.ts       protected route (UX shortcut — security ตัวจริงอยู่ที่ backend)
+pages/README.md     โฟลเดอร์ว่างที่ตั้งใจไว้ กัน Next.js ตีความ src/pages เป็น Pages Router
 src/
-├── app/            routing/layout เท่านั้น (ไม่มี business logic)
-├── features/       1 feature = 1 โฟลเดอร์ (bots, jobs, schedules, workflow-runs, auth)
-├── components/ui   UI component กลาง ไม่ผูก feature ไหน (StatusBadge ฯลฯ)
-├── components/layout  NavBar
-├── lib/            api-client, query-client, sse-client (infrastructure กลาง)
-├── types/          type กลางข้าม feature (ApiError)
-└── middleware.ts   protected route (UX shortcut — security ตัวจริงอยู่ที่ backend)
+├── app/            providers ระดับแอป (React Query, toast, theme, watched jobs)
+├── pages/          1 หน้า = 1 slice ประกอบ widgets/features
+├── widgets/        บล็อก UI ใหญ่ที่ประกอบหลายชั้น (nav-bar, job-table, schedule-detail ฯลฯ)
+├── features/       action ของ user (create-job, cancel-job, schedule-form, manage-schedule ฯลฯ)
+├── entities/       business entity: bot, job, schedule, workflow-run, user
+└── shared/         api-client, sse-client, query-client, ApiError, UI กลาง, theme
 ```
 
-**ข้อยกเว้นกติกา import ที่ตั้งใจ**: ปกติ `features/X` ห้าม import จาก `features/Y` ตรงๆ แต่ `features/schedules` import `useBots`/`ConfigField` จาก `features/bots` เพราะ "bot catalog" เป็นข้อมูลอ้างอิงที่ทั้งสอง feature ต้องใช้จริง (เลือก bot ต่อ step ของ schedule ก็ต้องรู้ config schema เหมือนตอนสร้าง job เดี่ยว) — เหตุผลเดียวกับที่ `NavBar` import จาก `features/auth` ดู comment เต็มที่ `schedule-form.tsx`
+ชั้นบนสุด (`app`) import ชั้นล่างได้เท่านั้น ห้าม import ย้อนขึ้น และนอก slice ต้อง import ผ่าน `index.ts` ของ slice — ESLint (`no-restricted-imports` ใน `eslint.config.mjs`) บังคับกฎนี้ให้
 
 ## Feature: Schedules (จัดการ cron job แบบ Control-M)
 

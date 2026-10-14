@@ -1,4 +1,4 @@
-import type { StepResult } from "../types";
+import type { StepResult } from "../model/types";
 
 // ข้อจำกัดสำคัญที่ต้องรู้ก่อนอ่านไฟล์นี้: StepResult (mirror จาก internal/workflow/
 // workflow.go ฝั่ง Go) ไม่มี field สถานะของตัวเอง มีแค่ step_index/bot_name/summary?/

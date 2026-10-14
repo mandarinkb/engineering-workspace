@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
-import type { OverlapPolicy, ScheduleDetail, ScheduleSpecInput, ScheduleStep } from "../types";
+import { apiClient } from "@/shared/api";
+import type { OverlapPolicy, ScheduleDetail, ScheduleSpecInput, ScheduleStep } from "@/entities/schedule";
 
 export interface UpdateScheduleInput {
   workflow_name: string;

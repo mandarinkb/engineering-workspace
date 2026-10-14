@@ -1,4 +1,4 @@
-import type { Job } from "../types";
+import type { Job } from "../model/types";
 
 // JobStats คือผลลัพธ์ของ computeJobStats — แยกเป็น pure function ต่างหากจาก
 // job-stats.tsx (component) ด้วยเหตุผลเดียวกับ log-filters.ts: ทดสอบ logic การคำนวณ

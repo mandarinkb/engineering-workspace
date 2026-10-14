@@ -1,4 +1,4 @@
-import { NavBar } from "@/components/layout/nav-bar";
+import { NavBar } from "@/widgets/nav-bar";
 
 // layout.tsx ของ route group (dashboard) ครอบทุกหน้าใต้ bots/, jobs/, workflow-runs/
 // ด้วย NavBar เดียวกัน (roadmap ข้อ 1.6) — Next.js render layout.tsx ล้อมรอบ page.tsx

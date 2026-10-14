@@ -1,10 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient } from "@/shared/api";
 
 // CreatedJob เก็บแค่ field เดียวที่ bot-form.tsx ต้องใช้จริง (id เอาไป redirect ไปหน้า
 // live monitor ของ job ที่เพิ่งสร้างต่อ) — ตั้งใจไม่ import type Job เต็มๆ จาก
-// features/jobs/types เพราะจะกลายเป็น cross-feature import ที่ผิดกติกาที่วางไว้ใน
+// entities/job/model/types.ts เพราะจะกลายเป็น cross-feature import ที่ผิดกติกาที่วางไว้ใน
 // PHASE1-DASHBOARD-TODO.md (features/X ห้าม import จาก features/Y อื่นตรงๆ) — backend
 // ตอบ field อื่นมาด้วยจริง (bot_name, status, created_at, ...) แต่ฝั่งนี้ไม่ได้ใช้เลย
 // จึงไม่ต้องประกาศ type ให้ครบตามที่ backend ส่งมาจริง

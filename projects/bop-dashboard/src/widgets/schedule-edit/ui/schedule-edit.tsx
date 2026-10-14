@@ -1,7 +1,7 @@
 "use client";
 
-import { useSchedule } from "../api/use-schedule";
-import { ScheduleForm } from "./schedule-form";
+import { useSchedule } from "@/entities/schedule";
+import { ScheduleForm } from "@/features/schedule-form";
 
 interface ScheduleEditViewProps {
   id: string;

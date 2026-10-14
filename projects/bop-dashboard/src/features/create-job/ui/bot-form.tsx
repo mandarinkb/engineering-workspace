@@ -4,8 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import { useCreateJob } from "../api/use-create-job";
-import { buildConfigSchema } from "../schemas/bot-config.schema";
-import type { Bot } from "../types";
+import { buildConfigSchema, type Bot } from "@/entities/bot";
 
 interface BotFormProps {
   bot: Bot;

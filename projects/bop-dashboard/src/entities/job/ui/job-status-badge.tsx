@@ -1,5 +1,5 @@
-import { StatusBadge, type BadgeTone } from "@/components/ui/status-badge";
-import type { JobStatus } from "../types";
+import { StatusBadge, type BadgeTone } from "@/shared/ui";
+import type { JobStatus } from "../model/types";
 
 // toneByStatus แปลง JobStatus (จาก Go: pending/running/succeeded/failed/cancelled) เป็นสี
 // ตามที่ roadmap ข้อ 1.7 กำหนดไว้: running=เหลือง, succeeded=เขียว, failed=แดง — pending

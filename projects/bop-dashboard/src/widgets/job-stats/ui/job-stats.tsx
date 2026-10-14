@@ -1,9 +1,8 @@
 "use client";
 
-import { StatCard } from "@/components/ui/stat-card";
+import { StatCard } from "@/shared/ui";
 
-import { useJobs } from "../api/use-jobs";
-import { computeJobStats } from "../lib/job-stats";
+import { useJobs, computeJobStats } from "@/entities/job";
 
 // JobStats แสดง stat card สรุปด้านบนหน้า job history — เรียก useJobs() เอง (เหมือน
 // JobTable) แทนที่จะรับ jobs เป็น prop จาก page.tsx เพราะ page.tsx เป็น Server

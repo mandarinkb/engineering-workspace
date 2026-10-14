@@ -1,10 +1,10 @@
-import { ScheduleEditView } from "@/features/schedules/components/schedule-edit";
+import { ScheduleEditView } from "@/widgets/schedule-edit";
 
 interface EditSchedulePageProps {
   params: Promise<{ id: string }>; // Next.js 15: params เป็น Promise เสมอ ต้อง await
 }
 
-export default async function EditSchedulePage({ params }: EditSchedulePageProps) {
+export async function EditSchedulePage({ params }: EditSchedulePageProps) {
   const { id } = await params;
   return (
     <div className="flex flex-col gap-6">

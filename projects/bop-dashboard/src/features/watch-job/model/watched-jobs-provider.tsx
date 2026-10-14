@@ -2,9 +2,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import { useToast } from "@/components/ui/toast-provider";
-import { apiClient } from "@/lib/api-client";
-import type { Job, JobStatus } from "../types";
+import { useToast } from "@/shared/ui";
+import { apiClient } from "@/shared/api";
+import type { Job, JobStatus } from "@/entities/job";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -32,7 +32,7 @@ const STATUS_LABEL_TH: Record<JobStatus, string> = {
 // ถ้าจะเปิดใหม่ทุกครั้งที่ user เข้าหน้า job detail แล้วให้มันรอดไปหลังออกจากหน้าด้วย
 // จะซับซ้อนกว่า poll ธรรมดาเยอะ (ต้อง reparent EventSource ข้าม component tree) จึง
 // เลือก**poll `GET /jobs/{id}` ทุก 3 วิ ผ่าน provider ที่ mount อยู่ที่ root** แทน
-// (src/app/providers.tsx) — provider ไม่ unmount ตาม route เปลี่ยน จึง poll ต่อเนื่องได้
+// (src/app/providers/providers.tsx) — provider ไม่ unmount ตาม route เปลี่ยน จึง poll ต่อเนื่องได้
 // จริงแม้ user จะย้ายไปหน้าอื่นแล้วก็ตาม จนกว่า job นั้นจะจบ (ถึงจะเลิก poll เองอัตโนมัติ)
 //
 // เรียกผ่าน hook useWatchJob(jobId) จากหน้าที่เปิดดู job (เช่น JobLogViewer) แค่ตอน

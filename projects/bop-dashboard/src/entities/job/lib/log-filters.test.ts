@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { LogLine } from "../types";
+import type { LogLine } from "../model/types";
 import { filterLogLines } from "./log-filters";
 
 const LINES: LogLine[] = [

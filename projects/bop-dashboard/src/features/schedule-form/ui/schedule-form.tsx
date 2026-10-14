@@ -6,19 +6,13 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
-// cross-feature import ที่ตั้งใจ (ผิดกติกาทั่วไปที่ PHASE1-DASHBOARD-TODO.md วางไว้ว่า
-// features/X ห้าม import จาก features/Y ตรงๆ) — เหตุผลเดียวกับที่ NavBar (ดู
-// src/components/layout/nav-bar.tsx) import จาก features/auth: "bot catalog" (รายชื่อ
-// bot + config schema ของแต่ละตัว) เป็นข้อมูลอ้างอิงที่หลาย feature ต้องใช้จริง
-// (features/bots ใช้ทำหน้า bot list, features/schedules ใช้เลือก bot ต่อ step) ไม่ใช่
-// business logic เฉพาะของ bots feature — ถือเป็นข้อยกเว้นที่ยอมรับได้เพราะเป็น
-// cross-cutting reference data ไม่ใช่การพันกันของ business logic สอง feature จริงๆ
-import { useBots } from "@/features/bots/api/use-bots";
-import type { ConfigField } from "@/features/bots/types";
+// รายชื่อ bot + config schema มาจาก entities/bot ซึ่งเป็นชั้นล่างกว่า features ตามกฎของ
+// FSD จึง import ได้ตามปกติ (เดิมตอนเป็น features/bots ต้องถือเป็นข้อยกเว้น cross-feature)
+import { useBots, type ConfigField } from "@/entities/bot";
 
 import { useCreateSchedule } from "../api/use-create-schedule";
 import { useUpdateSchedule } from "../api/use-update-schedule";
-import type { DispatchMode, OverlapPolicy, ScheduleDetail, ScheduleStep } from "../types";
+import type { DispatchMode, OverlapPolicy, ScheduleDetail, ScheduleStep } from "@/entities/schedule";
 
 // dispatchModeOf derive DispatchMode จาก field ที่มีอยู่จริงใน step (ดู workflow.Step
 // ฝั่ง Go: TaskQueue/K8sJob เป็น optional field ที่ mutually exclusive กันโดยธรรมชาติ —
