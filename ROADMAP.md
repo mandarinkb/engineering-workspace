@@ -42,6 +42,10 @@
 
 - [ ] [Volume 17: System Design](books/17-system-design/README.md)
 
+## เสริม — Fullstack (แผนเร่งรัด 8 สัปดาห์)
+
+- [ ] [Volume 18: Fullstack — Frontend สำหรับ Backend Engineer](books/18-fullstack-frontend/README.md)
+
 ## Final Project
 
 - [ ] [Enterprise E-commerce](projects/ecommerce/README.md) — รวมทุก Volume เข้าด้วยกันเป็นระบบจริง

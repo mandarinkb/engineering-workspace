@@ -46,6 +46,11 @@ Golang เป็นภาษาหลักของหลักสูตรน�
 - [ ] **Dependency Injection** — constructor injection, wiring แบบ manual vs library (เช่น wire, fx)
 - [ ] **Middleware** — HTTP middleware chain, use case: logging, auth, recovery, tracing
 
+### [บทเสริม — Hexagonal vs Clean Architecture](05-hexagonal-vs-clean.md)
+
+- [ ] ความต่างแบบเข้าใจง่าย พร้อมตารางเทียบและตัวอย่างโค้ด Go
+- [ ] สิ่งที่เหมือนกัน, การใช้ในงานจริง, แนวตอบสัมภาษณ์
+
 ## Lab / Source Code ที่เกี่ยวข้อง
 
 - [source-code/golang/](../../source-code/golang/README.md) — เก็บโค้ดตัวอย่างประกอบเล่มนี้
