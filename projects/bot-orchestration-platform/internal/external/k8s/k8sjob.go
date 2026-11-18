@@ -216,7 +216,7 @@ func (a *K8sJobActivities) streamPodLogs(ctx context.Context, namespace, jobName
 // ctx ถูกยกเลิก/timeout ระหว่างรอ (ปกติปล่อยให้ TTL controller ของ K8s ลบเองหลังจบงาน
 // ตาม jobTTLSecondsAfterFinished) ใช้ context.Background() แทน ctx เดิม เพราะ ctx เดิม
 // น่าจะ done ไปแล้วตอนถูกเรียก (เหตุผลเดียวกับ pattern "context ใหม่สำหรับบันทึกครั้ง
-// สุดท้าย" ใน internal/pkg/worker/pool.go)
+// สุดท้าย" ใน internal/adapter/worker/pool.go)
 func (a *K8sJobActivities) deleteJob(namespace, name string) {
 	propagation := metav1.DeletePropagationForeground
 	_ = a.clientset.BatchV1().Jobs(namespace).Delete(context.Background(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})

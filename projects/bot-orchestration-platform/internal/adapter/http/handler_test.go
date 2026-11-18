@@ -11,10 +11,10 @@ import (
 	"time"
 
 	apihttp "bop/internal/adapter/http"
+	"bop/internal/adapter/worker"
 	"bop/internal/domain/bot"
 	"bop/internal/external/temporal"
 	memlogger "bop/internal/pkg/logger"
-	"bop/internal/pkg/worker"
 	"bop/internal/repository/memory"
 	authuc "bop/internal/usecase/auth"
 	jobuc "bop/internal/usecase/job"

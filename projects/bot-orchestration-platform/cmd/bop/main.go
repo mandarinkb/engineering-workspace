@@ -23,12 +23,12 @@ import (
 	"go.temporal.io/sdk/client"
 
 	apihttp "bop/internal/adapter/http" // ตั้งชื่อ alias เพราะ package นี้ก็ชื่อ "http" เหมือน net/http
+	"bop/internal/adapter/worker"
 	"bop/internal/domain/job"
 	"bop/internal/external/bots/externaljob"
 	"bop/internal/external/bots/httpstatus"
 	"bop/internal/external/temporal"
 	memlogger "bop/internal/pkg/logger"
-	"bop/internal/pkg/worker"
 	"bop/internal/repository/memory"
 	authuc "bop/internal/usecase/auth"
 	jobuc "bop/internal/usecase/job"
@@ -148,7 +148,7 @@ func runCLI(repo job.Repository, pool *worker.Pool, args []string) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if current.Status != job.StatusPending && current.Status != job.StatusRunning {
+		if current.Status.IsFinal() {
 			fmt.Printf("job %s finished: status=%s summary=%q error=%q\n",
 				current.ID, current.Status, current.Summary, current.Error)
 			return

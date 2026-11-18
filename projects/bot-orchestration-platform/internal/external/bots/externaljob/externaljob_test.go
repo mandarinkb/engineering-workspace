@@ -167,7 +167,7 @@ func TestRun_NonZeroExitIsOrdinaryError(t *testing.T) {
 // TestRun_ContextCancelKillsProcess ทดสอบว่า ctx ถูกยกเลิกระหว่างที่ process ลูกกำลังทำงาน
 // อยู่ (jobcode SLEEP ใช้เวลา 5 วินาที) ทำให้ Run คืนกลับเร็วกว่านั้นมาก (พิสูจน์ว่า
 // exec.CommandContext kill process ลูกจริง ไม่ปล่อยให้ทำงานจนจบ) — pattern เดียวกับ
-// TestPool_CancelStopsAJobInFlight ใน internal/pkg/worker/pool_test.go
+// TestPool_CancelStopsAJobInFlight ใน internal/adapter/worker/pool_test.go
 func TestRun_ContextCancelKillsProcess(t *testing.T) {
 	b := &Bot{binaryPath: fakeScript(t)}
 	log, _ := collectLog(t)

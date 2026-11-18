@@ -40,7 +40,7 @@ func (s *Service) ListBots() []bot.Bot {
 // input จาก client ส่วน error จาก repository ปล่อยเป็น error ธรรมดา
 //
 // อ่านค่า job ที่คืนไปได้อย่างปลอดภัย เพราะ executor copy ค่าออกไปเป็นของตัวเองแล้วตั้งแต่
-// ตอน Submit (ดู internal/pkg/worker/pool.go) จึงไม่มีทางชนกับ goroutine ที่กำลังรัน
+// ตอน Submit (ดู internal/adapter/worker/pool.go) จึงไม่มีทางชนกับ goroutine ที่กำลังรัน
 // job อยู่เบื้องหลัง
 func (s *Service) Create(ctx context.Context, botName string, cfg map[string]string, timeoutSeconds int) (*job.Job, error) {
 	j := &job.Job{

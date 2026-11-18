@@ -5,6 +5,8 @@ package job
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"bop/internal/domain/bot"
@@ -24,7 +26,7 @@ const (
 
 // Job คือ record หนึ่งรายการของการรัน bot หนึ่งครั้ง เก็บทั้งข้อมูล config ที่ใช้รัน,
 // สถานะปัจจุบัน, และผลลัพธ์ (ถ้ามี) — struct นี้ถูกแก้ไข field ต่างๆ ระหว่างที่ job
-// กำลังทำงานอยู่ (ดู internal/pkg/worker) จึงต้องระวังเรื่อง concurrent access เป็นพิเศษ
+// กำลังทำงานอยู่ (ดู internal/adapter/worker) จึงต้องระวังเรื่อง concurrent access เป็นพิเศษ
 // (ดูคำอธิบายละเอียดใน internal/repository/memory ว่าทำไมถึงต้อง copy struct นี้
 // ทุกครั้งที่ส่งเข้า-ออกจาก repository)
 // json tag ทุก field เป็น snake_case ตั้งใจให้ตรงกับ endpoint กลุ่ม /workflow-runs
@@ -50,6 +52,64 @@ type Job struct {
 	EndedAt        *time.Time `json:"ended_at,omitempty"`   // เวลาที่ job จบ ไม่ว่าจะสำเร็จ/ล้มเหลว/ถูกยกเลิก (เป็น pointer ด้วยเหตุผลเดียวกัน)
 }
 
+// ErrInvalidTransition คือ error ที่ method เปลี่ยนสถานะด้านล่างคืน เมื่อสถานะปัจจุบัน
+// ของ job ไม่อนุญาตให้เปลี่ยนไปเป็นสถานะที่ขอ (เช่นสั่ง Start job ที่จบไปแล้ว)
+var ErrInvalidTransition = errors.New("job: invalid status transition")
+
+// IsFinal บอกว่าสถานะนี้คือสถานะจบแล้ว (succeeded/failed/cancelled) ที่จะไม่เปลี่ยนอีก
+func (s Status) IsFinal() bool {
+	return s == StatusSucceeded || s == StatusFailed || s == StatusCancelled
+}
+
+// Start เปลี่ยน job จาก pending เป็น running และบันทึกเวลาเริ่ม — ทำได้เฉพาะ job ที่ยัง pending
+// method เปลี่ยนสถานะทุกตัวรับเวลาเข้ามาแทนการเรียก time.Now() เอง เพื่อให้ test กำหนดเวลาได้
+func (j *Job) Start(now time.Time) error {
+	if j.Status != StatusPending {
+		return fmt.Errorf("%w: start from %q", ErrInvalidTransition, j.Status)
+	}
+	j.Status = StatusRunning
+	j.StartedAt = &now
+	return nil
+}
+
+// Succeed จบ job ที่กำลัง running ด้วยผลสำเร็จ พร้อมข้อความสรุปผล
+func (j *Job) Succeed(summary string, now time.Time) error {
+	if err := j.finish(StatusSucceeded, now); err != nil {
+		return err
+	}
+	j.Summary = summary
+	return nil
+}
+
+// Fail จบ job ที่กำลัง running ด้วยความล้มเหลว พร้อมข้อความ error
+func (j *Job) Fail(reason string, now time.Time) error {
+	if err := j.finish(StatusFailed, now); err != nil {
+		return err
+	}
+	j.Error = reason
+	return nil
+}
+
+// Cancel จบ job ที่กำลัง running เพราะถูกสั่งยกเลิกกลางทาง พร้อมเหตุผล
+func (j *Job) Cancel(reason string, now time.Time) error {
+	if err := j.finish(StatusCancelled, now); err != nil {
+		return err
+	}
+	j.Error = reason
+	return nil
+}
+
+// finish คือกฎร่วมของการจบ job ทุกแบบ: ต้องอยู่ในสถานะ running เท่านั้น ถ้าผิดกฎจะ
+// คืน error โดยไม่แตะ field ใดๆ ของ job เลย
+func (j *Job) finish(to Status, now time.Time) error {
+	if j.Status != StatusRunning {
+		return fmt.Errorf("%w: %q to %q", ErrInvalidTransition, j.Status, to)
+	}
+	j.Status = to
+	j.EndedAt = &now
+	return nil
+}
+
 // Repository คือ interface สำหรับเก็บและค้นหา Job — ตอนนี้มี implementation เดียวคือ
 // in-memory (internal/repository/memory) ซึ่งข้อมูลจะหายไปทุกครั้งที่ restart โปรแกรม
 // เมื่อไหร่ที่ต้องการให้ job history อยู่ถาวรข้าม restart (ดู roadmap Phase 0.4)
@@ -68,7 +128,7 @@ type Repository interface {
 }
 
 // Executor คือ port ของ "ตัวรัน job เดี่ยว" ที่ usecase ใช้ — ตอนนี้ implement โดย
-// worker.Pool (internal/pkg/worker) ที่รัน bot ใน process เดียวกับ HTTP server
+// worker.Pool (internal/adapter/worker) ที่รัน bot ใน process เดียวกับ HTTP server
 // usecase รู้จักแค่ interface นี้ ไม่รู้ว่าข้างหลังเป็น goroutine pool หรืออย่างอื่น
 type Executor interface {
 	// Submit ส่ง job เข้าคิวรันแบบไม่รอผล — error ถ้าไม่รู้จัก bot ตาม j.BotName

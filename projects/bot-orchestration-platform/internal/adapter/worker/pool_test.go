@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"bop/internal/adapter/worker"
 	"bop/internal/domain/bot"
 	"bop/internal/domain/job"
 	memlogger "bop/internal/pkg/logger"
-	"bop/internal/pkg/worker"
 	"bop/internal/repository/memory"
 )
 
@@ -166,4 +166,28 @@ func TestPool_PerJobTimeoutOverridesDefault(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("job did not time out using its own TimeoutSeconds within the expected window")
+}
+
+// TestPool_DoesNotRunJobThatIsNotPending ทดสอบว่า pool เคารพกฎของ entity: job ที่จบไปแล้ว
+// (หรือไม่ได้อยู่ในสถานะ pending) จะไม่ถูกรันซ้ำ และ SubmitAndWait ต้องไม่ค้าง
+func TestPool_DoesNotRunJobThatIsNotPending(t *testing.T) {
+	repo := memory.NewJobRepository()
+	log := memlogger.New()
+	pool := worker.NewPool(1, 5*time.Second, repo, log)
+	pool.Register(&stubBot{delay: 10 * time.Millisecond})
+
+	j := &job.Job{ID: "already-done", BotName: "stub", Status: job.StatusSucceeded, Summary: "old", CreatedAt: time.Now()}
+	if err := repo.Create(context.Background(), j); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	final, err := pool.SubmitAndWait(ctx, j)
+	if err != nil {
+		t.Fatalf("SubmitAndWait: %v", err)
+	}
+	if final.Status != job.StatusSucceeded || final.Summary != "old" || final.StartedAt != nil {
+		t.Errorf("job was re-run: status=%q summary=%q startedAt=%v", final.Status, final.Summary, final.StartedAt)
+	}
 }

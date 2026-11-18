@@ -13,7 +13,7 @@
   internal/adapter/http ──► internal/usecase ──► internal/domain ◄── internal/external
                                                      ▲              internal/repository
                                                      │              internal/pkg/logger
-                                                     │              internal/pkg/worker
+                                                     │              internal/adapter/worker
                                      (implement port ที่ประกาศไว้ใน domain)
 ```
 
@@ -43,6 +43,7 @@ internal/
 
   adapter/
     http/                  ขาเข้า: HTTP handler แปลง JSON <-> usecase เท่านั้น
+    worker/                ขาออก: Pool รัน bot ใน process เดียวกัน (implement domain/job.Executor)
 
   external/                ขาออก: implement port ด้วยระบบภายนอก
     temporal/              Engine, Scheduler, Execute (workflow function), Activities.RunStep
@@ -56,21 +57,20 @@ internal/
     jwt/                   JWT HS256 เขียนเอง (ไม่รู้จัก domain)
     idgen/                 สุ่ม ID ด้วย crypto/rand (ไม่รู้จัก domain)
     logger/                Logger แบบ in-memory (implement domain/logger.Logger)
-    worker/                Pool (implement domain/job.Executor)
 ```
 
 ## หน้าที่ของแต่ละชั้น
 
 ### `domain`
 
-- เก็บ entity, value object, กฎที่ไม่ขึ้นกับเทคโนโลยี (เช่น `schedule.Spec.Validate`, `schedule.ParseOverlap`) และ **port** คือ interface ที่ชั้นนอกต้อง implement
+- เก็บ entity, value object, กฎที่ไม่ขึ้นกับเทคโนโลยี (เช่น `schedule.Spec.Validate`, `schedule.ParseOverlap`, การเปลี่ยนสถานะ `job.Job.Start/Succeed/Fail/Cancel`) และ **port** คือ interface ที่ชั้นนอกต้อง implement
 - import ได้แค่ stdlib และ `domain` ด้วยกันเอง
 - json tag บน `job.Job`, `logger.Line`, `workflow.Step`, `workflow.StepResult` และ `bot.ConfigField` ตั้งใจเก็บไว้ที่ domain เพราะเป็นทั้ง wire format ของ API และ payload ที่ Temporal serialize ไว้ (ดูหัวข้อ "ข้อห้ามที่ทำให้ระบบเดิมพัง")
 
 | Port | ประกาศที่ | Implementation ปัจจุบัน |
 |---|---|---|
 | `job.Repository` | `domain/job` | `repository/memory.JobRepository` |
-| `job.Executor` | `domain/job` | `pkg/worker.Pool` |
+| `job.Executor` | `domain/job` | `adapter/worker.Pool` |
 | `logger.Logger` | `domain/logger` | `pkg/logger.Logger` |
 | `schedule.Repository` | `domain/schedule` | `repository/memory.ScheduleRepository` |
 | `schedule.Scheduler` | `domain/schedule` | `external/temporal.Scheduler` |
@@ -89,6 +89,11 @@ internal/
 - เก็บเรื่องที่เป็นของ HTTP ล้วน ๆ: CORS, cookie, SSE, การ parse query parameter
 - ไม่มี business logic และไม่ import Temporal SDK
 
+### `adapter/worker`
+
+- `Pool` implement `job.Executor` ด้วย goroutine pool ใน process เดียวกับ HTTP server (จำกัด concurrency, timeout ต่อ job, ยกเลิกกลางทาง)
+- เปลี่ยนสถานะ job ผ่าน method ของ entity (`Start`, `Succeed`, `Fail`, `Cancel`) เท่านั้น ห้ามตั้ง `Status` เอง เพราะกฎการเปลี่ยนสถานะอยู่ใน `domain/job`
+
 ### `external`
 
 - implement port ด้วยระบบภายนอก และแปลง error ของระบบนั้นเป็น `apperr` เช่น `serviceerror.NotFound` ของ Temporal เป็น `apperr.ErrNotFound` และ `ErrScheduleAlreadyRunning` เป็น `apperr.ErrConflict`
@@ -103,7 +108,7 @@ internal/
 ### `pkg`
 
 - `jwt` และ `idgen` เป็น library ทั่วไปที่ไม่รู้จัก domain
-- `logger` และ `worker` เป็นข้อยกเว้นที่ import `domain` อยู่ เพราะ implement port ของ domain ถ้าวันหนึ่ง logger ย้ายไปเก็บใน PostgreSQL หรือ OpenSearch ให้สร้าง implementation ใหม่ที่ `repository/` แทน
+- `logger` เป็นข้อยกเว้นที่ import `domain` อยู่ เพราะ implement port ของ domain ถ้าวันหนึ่ง logger ย้ายไปเก็บใน PostgreSQL หรือ OpenSearch ให้สร้าง implementation ใหม่ที่ `repository/` แทน
 
 ### `cmd` (composition root)
 
@@ -119,9 +124,10 @@ internal/
 | domain | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | usecase | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ jwt, idgen |
 | adapter/http | ✅ | ✅ | — | ❌ | ❌ | ❌ |
+| adapter/worker | ✅ | ❌ | — | ❌ | ❌ | ❌ |
 | external | ✅ | ❌ | ❌ | — | ❌ | ❌ |
 | repository | ✅ | ❌ | ❌ | ❌ | — | ❌ |
-| pkg | ✅ logger, worker | ❌ | ❌ | ❌ | ❌ | ✅ |
+| pkg | ✅ logger | ❌ | ❌ | ❌ | ❌ | ✅ |
 | cmd | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ตรวจว่าชั้นในยังสะอาดได้ด้วย:

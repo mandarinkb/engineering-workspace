@@ -172,10 +172,15 @@ func (p *Pool) run(b bot.Bot, j job.Job, done chan<- *job.Job) {
 		p.mu.Unlock()
 	}()
 
-	// ขั้นตอนที่ 3: บันทึกว่า job เริ่มรันแล้ว พร้อมเวลาเริ่ม แล้วเปลี่ยนสถานะเป็น running
-	now := time.Now()
-	j.StartedAt = &now
-	j.Status = job.StatusRunning
+	// ขั้นตอนที่ 3: เปลี่ยนสถานะเป็น running ผ่าน entity (กฎว่าเริ่มได้เฉพาะ job ที่ pending
+	// อยู่ใน domain/job) — ถ้า job ไม่ได้อยู่ในสถานะ pending จะไม่รัน bot เลย แค่ log ไว้
+	// แล้วส่งค่าเดิมกลับทาง done เพื่อไม่ให้ SubmitAndWait ค้างรอ
+	if err := j.Start(time.Now()); err != nil {
+		p.log.Log(context.Background(), j.ID, logger.LevelError, fmt.Sprintf("job not started: %v", err))
+		final := j
+		done <- &final
+		return
+	}
 	_ = p.repo.Update(ctx, &j)
 	p.log.Log(ctx, j.ID, logger.LevelInfo, fmt.Sprintf("job started: bot=%s", j.BotName))
 
@@ -187,23 +192,21 @@ func (p *Pool) run(b bot.Bot, j job.Job, done chan<- *job.Job) {
 	result, err := b.Run(ctx, log, j.Config)
 
 	// ขั้นตอนที่ 5: บันทึกผลลัพธ์สุดท้าย แยกเป็น 3 กรณี: ถูกยกเลิก / ล้มเหลว / สำเร็จ
+	// ตรงนี้ j อยู่ในสถานะ running แน่นอน (Start ผ่านแล้วในขั้นตอนที่ 3 และไม่มีใครแก้ j
+	// นอกจาก goroutine นี้) method จบงานของ entity จึงไม่คืน error ในทางปฏิบัติ
 	end := time.Now()
-	j.EndedAt = &end
 	switch {
 	case err != nil && ctx.Err() == context.Canceled:
 		// ctx.Err() == context.Canceled หมายความว่า error ที่ bot คืนมาเกิดจากการที่
 		// เราสั่งยกเลิกเอง (ผ่าน Cancel()) ไม่ใช่ bot ทำงานผิดพลาดเอง จึงแยกสถานะเป็น
 		// "cancelled" ไม่ใช่ "failed" เพื่อให้ dashboard แสดงผลถูกต้องตามความเป็นจริง
-		j.Status = job.StatusCancelled
-		j.Error = "cancelled by user"
+		_ = j.Cancel("cancelled by user", end)
 		p.log.Log(context.Background(), j.ID, logger.LevelWarn, "job cancelled")
 	case err != nil:
-		j.Status = job.StatusFailed
-		j.Error = err.Error()
+		_ = j.Fail(err.Error(), end)
 		p.log.Log(context.Background(), j.ID, logger.LevelError, fmt.Sprintf("job failed: %v", err))
 	default:
-		j.Status = job.StatusSucceeded
-		j.Summary = result.Summary
+		_ = j.Succeed(result.Summary, end)
 		p.log.Log(context.Background(), j.ID, logger.LevelInfo, fmt.Sprintf("job succeeded: %s", result.Summary))
 	}
 	// ใช้ context ใหม่ (ไม่ใช่ ctx เดิม) สำหรับการบันทึกครั้งสุดท้ายนี้ เพราะ ctx เดิมอาจ
