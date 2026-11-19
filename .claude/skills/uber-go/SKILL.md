@@ -17,7 +17,7 @@ When a project convention overrides a rule, follow the project and mention the c
 
 ## Steps
 
-**Writing or refactoring Go:** apply every rule in the index to the code you touch. Leave untouched code as it is, unless the user asked for a style pass.
+**Writing or refactoring Go:** apply every rule in the index to the code you touch. Leave untouched code as it is, unless the user asked for a style pass. When the module has a `.golangci.yml`, the work is done when `golangci-lint run ./...` and `golangci-lint fmt --diff ./...` both pass. Fix each issue in the code; a `//nolint:<linter>` needs a comment giving the reason.
 
 **Reviewing Go:** go through every rule in the index against the diff. Report each violation with `file:line`, the rule's heading name exactly as written in the index, and the fix. The review is done when every rule has been checked against every changed file.
 
