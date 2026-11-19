@@ -33,20 +33,21 @@ func New() *Logger {
 // ขั้นตอนการทำงาน:
 //  1. สร้าง Line ใหม่พร้อม timestamp ปัจจุบัน
 //  2. lock แล้วเก็บ Line นี้ต่อท้าย slice log ของ job นั้น (สำหรับ History ในอนาคต)
-//  3. คัดลอกรายชื่อ subscriber ปัจจุบันออกมา (เพื่อจะได้ unlock ก่อนส่งข้อความ
-//     ไม่ปล่อยให้ subscriber ที่ส่งช้าทำให้ mutex ถูก lock ค้างนาน)
-//  4. ส่งข้อความไปยังทุก channel ที่คัดลอกมา — ถ้า channel ไหนเต็ม (subscriber อ่านช้า
-//     เกินไป) จะ "ทิ้ง" ข้อความนั้นไปเลยแทนที่จะรอ (ผ่าน select + default) เพื่อไม่ให้
-//     subscriber คนเดียวที่ช้าไปทำให้ bot ที่กำลังทำงานอยู่ต้องหยุดรอ
+//  3. ส่งข้อความไปยังทุก subscriber ของ job นั้น "ขณะที่ยังถือ lock อยู่" — ถ้า channel
+//     ไหนเต็ม (subscriber อ่านช้าเกินไป) จะ "ทิ้ง" ข้อความนั้นไปเลยแทนที่จะรอ (ผ่าน
+//     select + default) การส่งจึงไม่มีทางบล็อค และถือ lock ไว้แค่ช่วงสั้นๆ
+//
+// ต้องส่งภายใต้ lock เดียวกับที่ unsubscribe ใช้ปิด channel: เดิมเคยคัดลอกรายชื่อ subscriber
+// ออกมาแล้ว unlock ก่อนส่ง ทำให้ unsubscribe แทรกเข้ามา close channel ได้ระหว่างนั้น แล้ว
+// การส่งเข้า channel ที่ปิดแล้วจะ panic ทันที (select + default กันไม่ได้) ทั้ง process ล่ม
+// (ดู TestLogger_UnsubscribeWhileLogging)
 func (l *Logger) Log(_ context.Context, jobID string, level logger.Level, message string) {
 	line := logger.Line{JobID: jobID, Time: time.Now(), Level: level, Message: message}
 
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.logs[jobID] = append(l.logs[jobID], line)
-	subs := append([]chan logger.Line(nil), l.subs[jobID]...) // คัดลอก slice ออกมาก่อน unlock
-	l.mu.Unlock()
-
-	for _, ch := range subs {
+	for _, ch := range l.subs[jobID] {
 		select {
 		case ch <- line:
 		default: // subscriber อ่านไม่ทัน: ทิ้งข้อความนี้ไปแทนที่จะบล็อครอ (ไม่ให้กระทบ bot ที่กำลังรัน)
