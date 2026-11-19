@@ -75,7 +75,7 @@ type K8sJobSpec struct {
 	// Env คือ environment variable เพิ่มเติมที่ set ให้ container
 	Env map[string]string `json:"env,omitempty"`
 	// Namespace คือ K8s namespace ที่จะสร้าง Job — ถ้าเป็นค่าว่าง ใช้ default namespace ที่
-	// K8sJobActivities ถูก config ไว้ตอน wiring ใน cmd/bop-worker/main.go (ไม่ hardcode
+	// JobActivities ถูก config ไว้ตอน wiring ใน cmd/bop-worker/main.go (ไม่ hardcode
 	// namespace ไว้ในนี้ตรงๆ เพราะอยากให้ต่าง environment (dev/staging/prod) ตั้งค่า
 	// namespace default ต่างกันได้โดยไม่ต้องแก้ workflow.Step ทุกจุดที่เรียกใช้)
 	Namespace string `json:"namespace,omitempty"`

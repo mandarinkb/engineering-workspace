@@ -1,4 +1,4 @@
-// ไฟล์นี้ implement K8sJobActivities.RunKubernetesJob — Temporal Activity ที่สั่งสร้าง
+// Package k8s implement JobActivities.RunKubernetesJob — Temporal Activity ที่สั่งสร้าง
 // Kubernetes Job (ephemeral container) ต่อ step หนึ่งครั้ง แล้วรอดูผล แทนที่จะรันผ่าน
 // bot.Bot registry ในกระบวนการเดียวกัน (Activities.RunStep, internal/external/temporal/activity.go) หรือ route ไปยัง
 // remote Temporal task queue (Step.TaskQueue) — ดู design doc เต็มๆ ที่
@@ -31,7 +31,7 @@ import (
 )
 
 // defaultPollInterval คือความถี่ที่ awaitJobCompletion เช็คสถานะ Job + ส่ง heartbeat —
-// ตั้งเป็นค่าเริ่มต้นตอน NewK8sJobActivities แต่ test เปลี่ยนได้ตรงๆ ผ่าน field ที่ไม่
+// ตั้งเป็นค่าเริ่มต้นตอน NewJobActivities แต่ test เปลี่ยนได้ตรงๆ ผ่าน field ที่ไม่
 // export (white-box, เหมือน binaryPath ของ internal/external/bots/externaljob และ
 // total/heartbeatEvery ของ projects/remote-job-worker) เพื่อไม่ต้องรอจริงหลายวินาทีทุกครั้ง
 // ที่รัน test
@@ -43,23 +43,23 @@ const defaultPollInterval = 2 * time.Second
 // streamPodLogs) ไม่ต้องพึ่ง Job/Pod object ที่ค้างอยู่ใน cluster เพื่อดู log ย้อนหลัง
 const jobTTLSecondsAfterFinished = int32(300)
 
-// K8sJobActivities คือตัวห่อ (adapter) ที่ทำให้ Step.K8sJob (internal/domain/workflow/workflow.go) ถูกเรียกจาก
+// JobActivities คือตัวห่อ (adapter) ที่ทำให้ Step.K8sJob (internal/domain/workflow/workflow.go) ถูกเรียกจาก
 // Temporal Activity ได้ — คนละ struct กับ Activities (internal/external/temporal/activity.go) ตั้งใจ เพราะไม่มี
 // bot.Bot registry เกี่ยวข้องเลย มีแค่ Kubernetes clientset + logger เท่านั้น
-type K8sJobActivities struct {
+type JobActivities struct {
 	clientset        kubernetes.Interface
 	defaultNamespace string
 	log              logger.Logger
 	pollInterval     time.Duration
 }
 
-// NewK8sJobActivities สร้าง K8sJobActivities พร้อมใช้งาน — clientset ควรเป็น
+// NewJobActivities สร้าง JobActivities พร้อมใช้งาน — clientset ควรเป็น
 // in-cluster config ตอนรันจริงใน K8s (ดู cmd/bop-worker/main.go เรื่อง best-effort
 // construction เพราะ local dev ยังไม่มี cluster) defaultNamespace คือ namespace ที่ Job
 // จะถูกสร้างถ้า Step.K8sJob.Namespace ไม่ได้ระบุมา (แนะนำใช้ namespace แยกจาก BOP เอง
 // เช่น "bop-jobs" ดู K8S-JOB-HYBRID-EXECUTION-TODO.md Open Question ข้อ 3)
-func NewK8sJobActivities(clientset kubernetes.Interface, defaultNamespace string, log logger.Logger) *K8sJobActivities {
-	return &K8sJobActivities{
+func NewJobActivities(clientset kubernetes.Interface, defaultNamespace string, log logger.Logger) *JobActivities {
+	return &JobActivities{
 		clientset:        clientset,
 		defaultNamespace: defaultNamespace,
 		log:              log,
@@ -86,7 +86,7 @@ func NewK8sJobActivities(clientset kubernetes.Interface, defaultNamespace string
 // return — หลักการเดียวกับที่ externaljob ต้อง kill ทั้ง process group ตอน cancel ไม่ใช่
 // ปล่อย orphan ทิ้งไว้ (ที่นี่ "orphan" คือ Job/Pod ที่ยังรันต่อใน cluster ทั้งที่ Temporal
 // ถือว่า activity นี้จบไปแล้ว)
-func (a *K8sJobActivities) RunKubernetesJob(ctx context.Context, spec workflow.K8sJobSpec) (string, error) {
+func (a *JobActivities) RunKubernetesJob(ctx context.Context, spec workflow.K8sJobSpec) (string, error) {
 	if spec.Image == "" {
 		err := fmt.Errorf("k8sjob: missing required field %q", "image")
 		return "", sdktemporal.NewApplicationErrorWithCause(err.Error(), "ConfigError", err)
@@ -164,7 +164,7 @@ func buildJobObject(name, namespace string, spec workflow.K8sJobSpec) *batchv1.J
 // runLongTask ของ projects/remote-job-worker) และเรียก activity.RecordHeartbeat ทุกรอบ
 // เพื่อบอก Temporal ว่า activity นี้ยังทำงานอยู่จริง ไม่ได้ค้าง (สำคัญเพราะ activity นี้
 // ส่วนใหญ่ใช้เวลาแค่ "รอ" ไม่ได้ทำงานหนักเอง)
-func (a *K8sJobActivities) awaitJobCompletion(ctx context.Context, namespace, name string) (succeeded bool, err error) {
+func (a *JobActivities) awaitJobCompletion(ctx context.Context, namespace, name string) (succeeded bool, err error) {
 	ticker := time.NewTicker(a.pollInterval)
 	defer ticker.Stop()
 
@@ -194,7 +194,7 @@ func (a *K8sJobActivities) awaitJobCompletion(ctx context.Context, namespace, na
 // fatal error ของ activity ทั้งหมด (Job ทำงานสำเร็จ/ล้มเหลวไปแล้วจริงๆ ไม่เกี่ยวกับดึง log
 // ได้หรือไม่ได้ — pattern เดียวกับ handleGetWorkflowRun ใน internal/adapter/http/get_workflow_run.go
 // ที่ปล่อย steps เป็น slice ว่างถ้า QueryWorkflow error แทนที่จะ fail response ทั้งก้อน)
-func (a *K8sJobActivities) streamPodLogs(ctx context.Context, namespace, jobName string, log func(string)) {
+func (a *JobActivities) streamPodLogs(ctx context.Context, namespace, jobName string, log func(string)) {
 	pods, err := a.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + jobName})
 	if err != nil || len(pods.Items) == 0 {
 		return
@@ -217,7 +217,7 @@ func (a *K8sJobActivities) streamPodLogs(ctx context.Context, namespace, jobName
 // ตาม jobTTLSecondsAfterFinished) ใช้ context.Background() แทน ctx เดิม เพราะ ctx เดิม
 // น่าจะ done ไปแล้วตอนถูกเรียก (เหตุผลเดียวกับ pattern "context ใหม่สำหรับบันทึกครั้ง
 // สุดท้าย" ใน internal/adapter/worker/pool.go)
-func (a *K8sJobActivities) deleteJob(namespace, name string) {
+func (a *JobActivities) deleteJob(namespace, name string) {
 	propagation := metav1.DeletePropagationForeground
 	_ = a.clientset.BatchV1().Jobs(namespace).Delete(context.Background(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 }

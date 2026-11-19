@@ -17,6 +17,7 @@ import (
 // pending (รอคิว) -> running (กำลังรัน) -> succeeded/failed/cancelled (จบแล้ว)
 type Status string
 
+// สถานะทั้งหมดของ job (ดูลำดับการเปลี่ยนที่ Status)
 const (
 	StatusPending   Status = "pending"   // สร้าง job แล้วแต่ยังไม่ได้เริ่มรัน (รอ worker ว่าง)
 	StatusRunning   Status = "running"   // worker กำลังรัน bot อยู่ตอนนี้

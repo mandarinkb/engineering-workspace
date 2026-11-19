@@ -56,6 +56,7 @@ func (s Spec) Validate() error {
 // trigger/backfill ส่งต่อเป็นค่าว่างให้ engine ใช้ policy default ของ schedule นั้นเอง
 type Overlap string
 
+// policy ทั้งหมดที่รองรับ (ดูความหมายของแต่ละค่าที่ Overlap)
 const (
 	OverlapUnspecified    Overlap = ""
 	OverlapSkip           Overlap = "skip"

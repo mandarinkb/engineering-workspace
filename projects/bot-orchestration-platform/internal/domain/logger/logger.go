@@ -15,6 +15,7 @@ import (
 // Level คือระดับความสำคัญของ log แต่ละบรรทัด
 type Level string
 
+// ระดับของ log ที่รองรับ
 const (
 	LevelInfo  Level = "info"  // ข้อมูลทั่วไป (เช่น "เริ่มทำงานแล้ว", "กำลังโหลดหน้า...")
 	LevelWarn  Level = "warn"  // สิ่งผิดปกติแต่ยังไม่ถึงกับทำให้ job ล้มเหลว

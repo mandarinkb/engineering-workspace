@@ -145,11 +145,12 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Pause/Unpause เทียบเท่า "Hold"/"Free" ของ Control-M — หยุดชั่วคราวโดยไม่ลบ schedule ทิ้ง
+// Pause หยุด schedule ชั่วคราวโดยไม่ลบทิ้ง — เทียบเท่า "Hold" ของ Control-M
 func (s *Service) Pause(ctx context.Context, id, note string) error {
 	return s.scheduler.Pause(ctx, id, note)
 }
 
+// Unpause เริ่ม schedule ที่ pause ไว้ใหม่ — เทียบเท่า "Free" ของ Control-M
 func (s *Service) Unpause(ctx context.Context, id, note string) error {
 	return s.scheduler.Unpause(ctx, id, note)
 }

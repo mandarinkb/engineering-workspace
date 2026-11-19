@@ -117,7 +117,7 @@ func run() error {
 	} else if clientset, err := kubernetes.NewForConfig(cfg); err != nil {
 		log.Printf("k8s clientset init failed, skipping K8s Job hybrid execution: %v", err)
 	} else {
-		k8sActivities := k8s.NewK8sJobActivities(clientset, k8sJobDefaultNamespace, appLogger)
+		k8sActivities := k8s.NewJobActivities(clientset, k8sJobDefaultNamespace, appLogger)
 		w.RegisterActivityWithOptions(k8sActivities.RunKubernetesJob, activity.RegisterOptions{Name: temporal.K8sJobActivityName})
 		log.Printf("k8s job hybrid execution enabled (default namespace %q)", k8sJobDefaultNamespace)
 	}
@@ -143,7 +143,7 @@ func run() error {
 // อยู่) แค่ log ไว้ ไม่หยุด worker เพราะ health probe ไม่ใช่งานหลักของ process นี้
 func startHealthServer() (stop func()) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	srv := &http.Server{Addr: workerHealthAddr, Handler: mux}

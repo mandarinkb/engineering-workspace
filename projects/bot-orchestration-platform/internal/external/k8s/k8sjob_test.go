@@ -72,7 +72,7 @@ func markFirstJobAs(t *testing.T, clientset *fake.Clientset, namespace string, s
 // bot.ConfigError ของ httpstatus/externaljob: config ผิด/ขาด retry กี่ครั้งก็ผลลัพธ์เดิม
 func TestRunKubernetesJob_MissingImage(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
-	activities := NewK8sJobActivities(clientset, "default", memlogger.New())
+	activities := NewJobActivities(clientset, "default", memlogger.New())
 	env := newK8sTestEnv(t, activities.RunKubernetesJob)
 
 	_, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{})
@@ -93,7 +93,7 @@ func TestRunKubernetesJob_MissingImage(t *testing.T) {
 // ดูเหตุผลที่ buildJobObject) และ RestartPolicy=Never
 func TestRunKubernetesJob_Success(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
-	activities := NewK8sJobActivities(clientset, "default", memlogger.New())
+	activities := NewJobActivities(clientset, "default", memlogger.New())
 	activities.pollInterval = 20 * time.Millisecond
 	env := newK8sTestEnv(t, activities.RunKubernetesJob)
 
@@ -133,7 +133,7 @@ func TestRunKubernetesJob_Success(t *testing.T) {
 // default (เหมือนที่ตัดสินใจไว้กับ externaljob ตอน exit code ไม่ใช่ 0)
 func TestRunKubernetesJob_Failure(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
-	activities := NewK8sJobActivities(clientset, "default", memlogger.New())
+	activities := NewJobActivities(clientset, "default", memlogger.New())
 	activities.pollInterval = 20 * time.Millisecond
 	env := newK8sTestEnv(t, activities.RunKubernetesJob)
 
@@ -150,11 +150,11 @@ func TestRunKubernetesJob_Failure(t *testing.T) {
 }
 
 // TestRunKubernetesJob_DefaultNamespace ทดสอบว่า workflow.K8sJobSpec.Namespace ว่างเปล่า ทำให้ Job
-// ถูกสร้างใน defaultNamespace ที่ตั้งไว้ตอน NewK8sJobActivities (ไม่ใช่ namespace ว่างเปล่า
+// ถูกสร้างใน defaultNamespace ที่ตั้งไว้ตอน NewJobActivities (ไม่ใช่ namespace ว่างเปล่า
 // หรือ "default" ของ K8s เอง)
 func TestRunKubernetesJob_DefaultNamespace(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
-	activities := NewK8sJobActivities(clientset, "bop-jobs", memlogger.New())
+	activities := NewJobActivities(clientset, "bop-jobs", memlogger.New())
 	activities.pollInterval = 20 * time.Millisecond
 	env := newK8sTestEnv(t, activities.RunKubernetesJob)
 
@@ -178,7 +178,7 @@ func TestRunKubernetesJob_DefaultNamespace(t *testing.T) {
 // เดียวกับ TestRunLongTask_StopsWhenContextCancelled ของ projects/remote-job-worker
 func TestAwaitJobCompletion_StopsWhenContextCancelled(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
-	activities := NewK8sJobActivities(clientset, "default", memlogger.New())
+	activities := NewJobActivities(clientset, "default", memlogger.New())
 	activities.pollInterval = 2 * time.Second // ยาวตั้งใจ — ถ้า cancellation ไม่ทำงานจริง test จะค้างจนกว่าจะ timeout
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -200,7 +200,7 @@ func TestAwaitJobCompletion_StopsWhenContextCancelled(t *testing.T) {
 // ถูกยกเลิกกลางทาง กัน Job กลายเป็น orphan ทำงานต่อทั้งที่ Temporal ถือว่า activity จบแล้ว)
 func TestDeleteJob(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
-	activities := NewK8sJobActivities(clientset, "default", memlogger.New())
+	activities := NewJobActivities(clientset, "default", memlogger.New())
 
 	job := buildJobObject("test-job", "default", workflow.K8sJobSpec{Image: "example.com/x:1"})
 	if _, err := clientset.BatchV1().Jobs("default").Create(context.Background(), job, metav1.CreateOptions{}); err != nil {

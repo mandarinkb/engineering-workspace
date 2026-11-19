@@ -48,6 +48,7 @@ type Bot interface {
 // validation ของเบราว์เซอร์เพิ่มเข้ามาให้ฟรีๆ)
 type ConfigFieldType string
 
+// ชนิดของ input ที่รองรับ
 const (
 	ConfigFieldText ConfigFieldType = "text" // ข้อความทั่วไป
 	ConfigFieldURL  ConfigFieldType = "url"  // URL — dashboard ควร validate รูปแบบ URL ด้วย

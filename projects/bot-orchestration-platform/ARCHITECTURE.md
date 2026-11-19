@@ -47,7 +47,7 @@ internal/
 
   external/                ขาออก: implement port ด้วยระบบภายนอก
     temporal/              Engine, Scheduler, Execute (workflow function), Activities.RunStep
-    k8s/                   K8sJobActivities.RunKubernetesJob
+    k8s/                   JobActivities.RunKubernetesJob
     bots/                  httpstatus, externaljob (implement bot.Bot)
 
   repository/              ขาออก: implement Repository port (storage)
@@ -133,7 +133,7 @@ internal/
 | pkg | ✅ logger | ❌ | ❌ | ❌ | ❌ | ✅ |
 | cmd | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-ตรวจว่าชั้นในยังสะอาดได้ด้วย:
+`golangci-lint run ./...` บังคับตารางนี้อัตโนมัติผ่าน `depguard` (กฎอยู่ใน `.golangci.yml` และรันใน CI) ถ้าแก้ตารางนี้ต้องแก้ `.golangci.yml` ให้ตรงกันด้วย หรือตรวจด้วยมือได้ด้วย:
 
 ```bash
 go list -f '{{.ImportPath}}: {{join .Imports " "}}' ./internal/domain/... ./internal/usecase/... \

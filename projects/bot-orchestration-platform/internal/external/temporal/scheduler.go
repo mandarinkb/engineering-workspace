@@ -39,6 +39,7 @@ func workflowAction(wf wfdomain.Workflow) *client.ScheduleWorkflowAction {
 	}
 }
 
+// Create สร้าง Temporal Schedule ใหม่ คืน apperr.ErrConflict ถ้า id นี้มีอยู่แล้ว
 func (s *Scheduler) Create(ctx context.Context, id string, spec schedule.Spec, overlap schedule.Overlap, wf wfdomain.Workflow) error {
 	_, err := s.c.ScheduleClient().Create(ctx, client.ScheduleOptions{
 		ID:      id,
@@ -149,24 +150,29 @@ func (s *Scheduler) Update(ctx context.Context, id string, spec schedule.Spec, o
 	return translate(err)
 }
 
+// Delete ลบ Temporal Schedule ทิ้งถาวร
 func (s *Scheduler) Delete(ctx context.Context, id string) error {
 	return translate(s.c.ScheduleClient().GetHandle(ctx, id).Delete(ctx))
 }
 
+// Pause หยุด schedule ชั่วคราว พร้อม note บอกเหตุผล
 func (s *Scheduler) Pause(ctx context.Context, id, note string) error {
 	return translate(s.c.ScheduleClient().GetHandle(ctx, id).Pause(ctx, client.SchedulePauseOptions{Note: note}))
 }
 
+// Unpause เริ่ม schedule ที่ pause ไว้ใหม่
 func (s *Scheduler) Unpause(ctx context.Context, id, note string) error {
 	return translate(s.c.ScheduleClient().GetHandle(ctx, id).Unpause(ctx, client.ScheduleUnpauseOptions{Note: note}))
 }
 
+// Trigger สั่งรัน schedule ทันทีหนึ่งครั้ง นอกตารางเวลาปกติ
 func (s *Scheduler) Trigger(ctx context.Context, id string, overlap schedule.Overlap) error {
 	return translate(s.c.ScheduleClient().GetHandle(ctx, id).Trigger(ctx, client.ScheduleTriggerOptions{
 		Overlap: overlapPolicyByName[overlap],
 	}))
 }
 
+// Backfill สั่งรันย้อนหลังตามช่วงเวลา start ถึง end
 func (s *Scheduler) Backfill(ctx context.Context, id string, start, end time.Time, overlap schedule.Overlap) error {
 	return translate(s.c.ScheduleClient().GetHandle(ctx, id).Backfill(ctx, client.ScheduleBackfillOptions{
 		Backfill: []client.ScheduleBackfill{{Start: start, End: end, Overlap: overlapPolicyByName[overlap]}},

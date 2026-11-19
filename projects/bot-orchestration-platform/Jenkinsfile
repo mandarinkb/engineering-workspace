@@ -26,6 +26,10 @@ pipeline {
               image: golang:1.26
               command: ['sleep']
               args: ['infinity']
+            - name: golangci-lint
+              image: golangci/golangci-lint:v2.15.0 # pin เวอร์ชันให้ตรงกับที่ใช้ตอน dev (ดู .golangci.yml)
+              command: ['sleep']
+              args: ['infinity']
             - name: gitleaks
               image: zricethezav/gitleaks:latest
               command: ['sleep']
@@ -67,6 +71,12 @@ pipeline {
         container('go') {
           sh 'go vet ./...'
           sh 'gofmt -l . | tee /tmp/fmt.out && [ ! -s /tmp/fmt.out ]' // fail ถ้ามีไฟล์ format ไม่ตรง
+        }
+        // errcheck/staticcheck/revive + depguard (Dependency Rule ตาม ARCHITECTURE.md) และเช็คว่า
+        // import เรียงตาม goimports — กฎทั้งหมดอยู่ใน .golangci.yml
+        container('golangci-lint') {
+          sh 'golangci-lint run ./...'
+          sh 'golangci-lint fmt --diff ./...'
         }
       }
     }

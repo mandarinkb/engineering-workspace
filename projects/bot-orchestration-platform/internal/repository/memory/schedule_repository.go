@@ -23,6 +23,7 @@ func NewScheduleRepository() *ScheduleRepository {
 	return &ScheduleRepository{items: make(map[string]*schedule.Definition)}
 }
 
+// Create บันทึก definition ใหม่ จะ error ถ้ามี ID นี้อยู่แล้ว
 func (r *ScheduleRepository) Create(_ context.Context, d *schedule.Definition) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -33,6 +34,7 @@ func (r *ScheduleRepository) Create(_ context.Context, d *schedule.Definition) e
 	return nil
 }
 
+// Update บันทึกทับ definition ที่มีอยู่แล้ว จะ error ถ้าไม่พบ ID นี้
 func (r *ScheduleRepository) Update(_ context.Context, d *schedule.Definition) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -43,6 +45,7 @@ func (r *ScheduleRepository) Update(_ context.Context, d *schedule.Definition) e
 	return nil
 }
 
+// Delete ลบ definition ทิ้ง จะ error ถ้าไม่พบ ID นี้
 func (r *ScheduleRepository) Delete(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -53,6 +56,7 @@ func (r *ScheduleRepository) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+// Get คืนสำเนาของ definition ตาม ID จะ error ถ้าไม่พบ
 func (r *ScheduleRepository) Get(_ context.Context, id string) (*schedule.Definition, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -63,6 +67,7 @@ func (r *ScheduleRepository) Get(_ context.Context, id string) (*schedule.Defini
 	return cloneDefinition(d), nil
 }
 
+// List คืนสำเนาของ definition ทั้งหมด เรียงตาม ID
 func (r *ScheduleRepository) List(_ context.Context) ([]*schedule.Definition, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

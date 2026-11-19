@@ -1,4 +1,4 @@
-// Package auth ให้กลไก JWT (JSON Web Token) แบบ HS256 (HMAC-SHA256) ขั้นต่ำสุดที่ BOP
+// Package jwt ให้กลไก JWT (JSON Web Token) แบบ HS256 (HMAC-SHA256) ขั้นต่ำสุดที่ BOP
 // ต้องใช้สำหรับ roadmap Phase 1.8 (login + protected route ของ dashboard) — implement
 // เอง (ไม่พึ่ง library ภายนอกอย่าง golang-jwt/jwt) เพราะ JWT ที่ต้องการตรงนี้เรียบง่ายมาก
 // (มีแค่ signing algorithm เดียว, claim ไม่กี่ตัว, ไม่ต้องรองรับ RSA/algorithm อื่น) เขียน

@@ -1,0 +1,129 @@
+# golangci-lint v2 — รันด้วย `golangci-lint run ./...` (CI รันใน stage "Lint + Vet" ของ Jenkinsfile)
+# baseline ตาม Uber Go Style Guide (errcheck, govet, staticcheck, revive, goimports) บวก
+# depguard ที่บังคับ Dependency Rule ตามตาราง "การ import" ใน ARCHITECTURE.md
+version: "2"
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - revive
+    - depguard
+
+  exclusions:
+    # ไม่บังคับเช็ค error ของ Close/Flush/Fprintf ฯลฯ ที่ Go เขียนข้ามกันเป็นปกติ (เช่น
+    # defer resp.Body.Close()) — preset มาตรฐานของ golangci-lint
+    presets:
+      - std-error-handling
+
+  settings:
+    depguard:
+      # ไฟล์ _test.go ได้รับยกเว้น เพราะ ARCHITECTURE.md อนุญาตให้ test import ชั้นอื่นเพื่อประกอบ test ได้
+      rules:
+        domain:
+          files: ["**/internal/domain/**", "!$test"]
+          deny:
+            - pkg: bop/internal/usecase
+              desc: domain import ได้แค่ stdlib และ domain ด้วยกัน
+            - pkg: bop/internal/adapter
+              desc: domain import ได้แค่ stdlib และ domain ด้วยกัน
+            - pkg: bop/internal/external
+              desc: domain import ได้แค่ stdlib และ domain ด้วยกัน
+            - pkg: bop/internal/repository
+              desc: domain import ได้แค่ stdlib และ domain ด้วยกัน
+            - pkg: bop/internal/pkg
+              desc: domain import ได้แค่ stdlib และ domain ด้วยกัน
+            - pkg: go.temporal.io
+              desc: domain ต้องไม่รู้จัก Temporal ให้ประกาศ port แล้วให้ external implement
+            - pkg: k8s.io
+              desc: domain ต้องไม่รู้จัก Kubernetes ให้ประกาศ port แล้วให้ external implement
+            - pkg: net/http
+              desc: domain ต้องไม่รู้จัก HTTP
+
+        usecase:
+          files: ["**/internal/usecase/**", "!$test"]
+          deny:
+            - pkg: bop/internal/adapter
+              desc: usecase ทำงานผ่าน port ใน domain เท่านั้น
+            - pkg: bop/internal/external
+              desc: usecase ทำงานผ่าน port ใน domain เท่านั้น
+            - pkg: bop/internal/repository
+              desc: usecase ทำงานผ่าน port ใน domain เท่านั้น
+            - pkg: bop/internal/pkg/logger
+              desc: usecase ใช้ได้แค่ pkg/jwt และ pkg/idgen ส่วน logger ให้ใช้ port domain/logger
+            - pkg: go.temporal.io
+              desc: usecase ต้องไม่รู้จัก Temporal SDK
+            - pkg: k8s.io
+              desc: usecase ต้องไม่รู้จัก Kubernetes client
+            - pkg: net/http
+              desc: usecase ต้องไม่รู้จัก HTTP
+
+        adapter-http:
+          files: ["**/internal/adapter/http/**", "!$test"]
+          deny:
+            - pkg: bop/internal/external
+              desc: handler เรียกผ่าน usecase เท่านั้น
+            - pkg: bop/internal/repository
+              desc: handler เรียกผ่าน usecase เท่านั้น
+            - pkg: bop/internal/adapter/worker
+              desc: handler เรียกผ่าน usecase เท่านั้น
+            - pkg: bop/internal/pkg
+              desc: handler เรียกผ่าน usecase เท่านั้น
+            - pkg: go.temporal.io
+              desc: handler ต้องไม่ import Temporal SDK
+
+        adapter-worker:
+          files: ["**/internal/adapter/worker/**", "!$test"]
+          deny:
+            - pkg: bop/internal/usecase
+              desc: adapter ขาออก implement port ของ domain เท่านั้น
+            - pkg: bop/internal/adapter/http
+              desc: adapter ขาออก implement port ของ domain เท่านั้น
+            - pkg: bop/internal/external
+              desc: adapter ขาออก implement port ของ domain เท่านั้น
+            - pkg: bop/internal/repository
+              desc: adapter ขาออก implement port ของ domain เท่านั้น
+            - pkg: bop/internal/pkg
+              desc: adapter ขาออก implement port ของ domain เท่านั้น
+
+        external-repository:
+          files: ["**/internal/external/**", "**/internal/repository/**", "!$test"]
+          deny:
+            - pkg: bop/internal/usecase
+              desc: implement port ของ domain เท่านั้น ห้ามเรียก usecase
+            - pkg: bop/internal/adapter
+              desc: implement port ของ domain เท่านั้น
+            - pkg: bop/internal/pkg
+              desc: implement port ของ domain เท่านั้น
+
+        pkg:
+          files: ["**/internal/pkg/**", "!$test"]
+          deny:
+            - pkg: bop/internal/usecase
+              desc: pkg เป็น library กลาง ห้ามรู้จักชั้นอื่น
+            - pkg: bop/internal/adapter
+              desc: pkg เป็น library กลาง ห้ามรู้จักชั้นอื่น
+            - pkg: bop/internal/external
+              desc: pkg เป็น library กลาง ห้ามรู้จักชั้นอื่น
+            - pkg: bop/internal/repository
+              desc: pkg เป็น library กลาง ห้ามรู้จักชั้นอื่น
+
+        pkg-generic:
+          # jwt และ idgen เป็น library ทั่วไปที่ไม่รู้จัก domain (pkg/logger เป็นข้อยกเว้นตาม ARCHITECTURE.md)
+          files: ["**/internal/pkg/jwt/**", "**/internal/pkg/idgen/**", "!$test"]
+          deny:
+            - pkg: bop/internal/domain
+              desc: jwt และ idgen ต้องไม่รู้จัก domain
+
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      # โปรเจกต์นี้แยก import เป็น 3 กลุ่ม: stdlib / third-party / bop (convention ของโปรเจกต์
+      # มาก่อน Uber guide ที่แนะนำ 2 กลุ่ม — ดู .claude/skills/uber-go/SKILL.md หัวข้อ Precedence)
+      local-prefixes:
+        - bop
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

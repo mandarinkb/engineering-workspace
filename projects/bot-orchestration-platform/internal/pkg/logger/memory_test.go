@@ -12,7 +12,7 @@ import (
 // TestLogger_UnsubscribeWhileLogging ทดสอบว่า Log กับ unsubscribe ที่เกิดพร้อมกัน (เช่น
 // bot กำลังเขียน log อยู่ตอนที่ผู้ใช้ปิดหน้า live log) ต้องไม่ทำให้ส่งข้อมูลเข้า channel ที่
 // ปิดไปแล้ว ซึ่งจะ panic และทำให้ process ล่มทั้งตัว
-func TestLogger_UnsubscribeWhileLogging(t *testing.T) {
+func TestLogger_UnsubscribeWhileLogging(_ *testing.T) {
 	l := memlogger.New()
 	ctx := context.Background()
 

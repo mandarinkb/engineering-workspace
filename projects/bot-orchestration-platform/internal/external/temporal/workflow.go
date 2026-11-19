@@ -32,7 +32,7 @@ const TaskQueueName = "bop-workflows"
 const ActivityName = "RunStep"
 
 // K8sJobActivityName คือชื่อ Activity คนละตัวกับ ActivityName ด้านบน — ใช้เฉพาะ step ที่มี
-// Step.K8sJob ไม่เป็น nil (ดู internal/domain/workflow/workflow.go) ต้องตรงกับชื่อที่ K8sJobActivities.RunKubernetesJob
+// Step.K8sJob ไม่เป็น nil (ดู internal/domain/workflow/workflow.go) ต้องตรงกับชื่อที่ JobActivities.RunKubernetesJob
 // (internal/external/k8s/k8sjob.go) ถูก register ไว้ใน cmd/bop-worker เป๊ะ — แยกชื่อ/registry ออกจาก ActivityName
 // ตั้งใจ เพราะเป็น activity คนละความหมายกันเลย (RunStep หา bot.Bot จาก registry แล้วเรียก
 // bot.Bot.Run ตรงๆ ในกระบวนการเดียวกัน ส่วน RunKubernetesJob สั่งสร้าง K8s Job แล้วรอดูผล
@@ -113,7 +113,7 @@ func Execute(ctx workflow.Context, wf wfdomain.Workflow) ([]wfdomain.StepResult,
 		})
 
 		// step.K8sJob ไม่เป็น nil หมายความว่า step นี้ไม่ผ่าน bot.Bot registry เลย (ทั้ง local
-		// และ remote task queue) แต่สั่งผ่าน K8sJobActivities.RunKubernetesJob แทน — คนละ
+		// และ remote task queue) แต่สั่งผ่าน JobActivities.RunKubernetesJob แทน — คนละ
 		// activity name/registry กับ ActivityName ("RunStep") ปกติ (ดู K8sJobActivityName
 		// ด้านบน และ internal/domain/workflow/workflow.go เรื่อง Step.K8sJob) ส่ง *step.K8sJob (ไม่ใช่ step ทั้งก้อน)
 		// เป็น input เพราะ activity นี้ไม่สนใจ BotName/Config/TaskQueue เลย

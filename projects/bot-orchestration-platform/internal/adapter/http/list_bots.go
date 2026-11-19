@@ -17,7 +17,7 @@ type botSummary struct {
 
 // handleListBots คืนรายชื่อ bot ที่ register ไว้ทั้งหมดพร้อม config schema ของแต่ละตัว —
 // เรียงตามชื่อ (a-z) ตาม job.Executor.List
-func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListBots(w http.ResponseWriter, _ *http.Request) {
 	bots := s.jobs.ListBots()
 	out := make([]botSummary, 0, len(bots))
 	for _, b := range bots {

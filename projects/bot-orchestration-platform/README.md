@@ -48,7 +48,7 @@ cmd/bop-worker/main.go   composition root ของ Temporal Worker process — 
    ├── internal/external              ขาออก: implementation ของ port ที่คุยกับระบบภายนอก
    │   ├── temporal     Engine/Scheduler (implement port ด้วย Temporal client) + Execute (workflow
    │   │                function) + Activities.RunStep (Temporal Activity ที่เรียก bot.Bot.Run)
-   │   ├── k8s          K8sJobActivities.RunKubernetesJob — K8s Job hybrid execution
+   │   ├── k8s          JobActivities.RunKubernetesJob — K8s Job hybrid execution
    │   └── bots         httpstatus (zero dependency), externaljob (shell out ผ่าน os/exec)
    │
    ├── internal/repository            ขาออก: implementation ของ Repository port (storage)
@@ -170,7 +170,7 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 ทางเลือกที่สาม (คู่กับ `externaljob` และ remote Temporal worker ด้านบน) — ดู design doc เต็มๆ พร้อมตารางเทียบทั้ง 3 ทางเลือกที่ [K8S-JOB-HYBRID-EXECUTION-TODO.md](K8S-JOB-HYBRID-EXECUTION-TODO.md) แทนที่จะมี worker รันค้างไว้ตลอด (poll task queue) ให้ **Temporal Activity ของ `cmd/bop-worker` เองสั่งสร้าง Kubernetes `Job` (ephemeral container) ต่อการรันหนึ่งครั้ง** แล้วรอดูผล — container image เป็นอะไรก็ได้ ไม่ต้อง embed Temporal SDK เข้าไปในโค้ดของ job เองเลยด้วยซ้ำ (ต่างจาก remote worker) แลกกับ cold-start latency ที่สูงกว่า
 
 - **`workflow.Step.K8sJob *K8sJobSpec`** (optional) — nil = รันผ่าน `bot.Bot` registry/remote task queue ตามเดิมทุกประการ ถ้าไม่ nil จะข้ามทั้งสองทางนั้นไปเลย แล้วเรียก activity คนละตัว/คนละ registry (`K8sJobActivityName = "RunKubernetesJob"`) แทน — `K8sJobSpec` มี `image` (required), `command`/`args`/`env` (optional), `namespace` (optional, default `bop-jobs`)
-- **`internal/external/k8s/k8sjob.go`** (`K8sJobActivities.RunKubernetesJob`) — สร้าง `batchv1.Job` ด้วย **`BackoffLimit: 0` เสมอ** (สำคัญมาก — ให้ Temporal `RetryPolicy` เป็นเจ้าของ retry decision แต่ผู้เดียว ไม่ให้ K8s retry ซ้อนอีกชั้น) poll สถานะเป็นระยะพร้อม `activity.RecordHeartbeat`, stream log ของ Pod เข้า BOP logger ทันทีที่ Job จบ (ก่อน TTL controller ลบ Job ทิ้ง), และลบ Job ทิ้งทันทีถ้า activity ถูกยกเลิก/timeout (กัน orphan Job ทำงานต่อในเบื้องหลัง)
+- **`internal/external/k8s/k8sjob.go`** (`JobActivities.RunKubernetesJob`) — สร้าง `batchv1.Job` ด้วย **`BackoffLimit: 0` เสมอ** (สำคัญมาก — ให้ Temporal `RetryPolicy` เป็นเจ้าของ retry decision แต่ผู้เดียว ไม่ให้ K8s retry ซ้อนอีกชั้น) poll สถานะเป็นระยะพร้อม `activity.RecordHeartbeat`, stream log ของ Pod เข้า BOP logger ทันทีที่ Job จบ (ก่อน TTL controller ลบ Job ทิ้ง), และลบ Job ทิ้งทันทีถ้า activity ถูกยกเลิก/timeout (กัน orphan Job ทำงานต่อในเบื้องหลัง)
 - **Register แบบ best-effort ใน `cmd/bop-worker/main.go`** — ลอง `rest.InClusterConfig()` ก่อน ถ้าล้มเหลว (เช่น รันบนเครื่อง dev ธรรมดา ไม่ได้อยู่ใน K8s Pod) แค่ log คำเตือนแล้วข้ามไป ไม่ `log.Fatalf` ปิด process ทั้งตัว — bot local/remote task queue อื่นๆ ยังใช้งานได้ปกติ
 
 ```json
