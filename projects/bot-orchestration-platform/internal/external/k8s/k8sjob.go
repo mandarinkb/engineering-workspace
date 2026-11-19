@@ -192,7 +192,7 @@ func (a *K8sJobActivities) awaitJobCompletion(ctx context.Context, namespace, na
 // Pod ลูกของ Job ทุกตัวโดยอัตโนมัติ ไม่ต้องตั้งเอง) แล้วอ่าน log ทีละบรรทัดส่งเข้า log()
 // ที่ส่งเข้ามา — ความล้มเหลวระหว่างขั้นตอนนี้ (หา Pod ไม่เจอ/ดึง log ไม่ได้) ไม่ถือเป็น
 // fatal error ของ activity ทั้งหมด (Job ทำงานสำเร็จ/ล้มเหลวไปแล้วจริงๆ ไม่เกี่ยวกับดึง log
-// ได้หรือไม่ได้ — pattern เดียวกับ handleGetWorkflowRun ใน internal/adapter/http/handler.go
+// ได้หรือไม่ได้ — pattern เดียวกับ handleGetWorkflowRun ใน internal/adapter/http/get_workflow_run.go
 // ที่ปล่อย steps เป็น slice ว่างถ้า QueryWorkflow error แทนที่จะ fail response ทั้งก้อน)
 func (a *K8sJobActivities) streamPodLogs(ctx context.Context, namespace, jobName string, log func(string)) {
 	pods, err := a.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + jobName})

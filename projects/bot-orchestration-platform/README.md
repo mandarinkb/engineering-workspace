@@ -182,7 +182,7 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 
 ## จัดการ Schedule (CRUD + manual trigger — เทียบเท่า Control-M job management)
 
-`internal/external/temporal/scheduler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK (เปิดเป็น HTTP endpoint ผ่าน `internal/usecase/schedule` และ `internal/adapter/http/schedule_handler.go`) — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) BOP เก็บเพิ่มแค่ "workflow definition" (ชื่อ + steps) ไว้ใน `schedule.Repository` (`internal/domain/schedule`, implementation in-memory ที่ `internal/repository/memory`, เหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ อยู่ใน comment ของไฟล์นั้น)
+`internal/external/temporal/scheduler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK (เปิดเป็น HTTP endpoint ผ่าน `internal/usecase/schedule` และ `internal/adapter/http/*_schedule.go`) — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) BOP เก็บเพิ่มแค่ "workflow definition" (ชื่อ + steps) ไว้ใน `schedule.Repository` (`internal/domain/schedule`, implementation in-memory ที่ `internal/repository/memory`, เหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ อยู่ใน comment ของไฟล์นั้น)
 
 | Endpoint | เทียบ Control-M | หมายเหตุ |
 |---|---|---|

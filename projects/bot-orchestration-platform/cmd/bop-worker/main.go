@@ -172,7 +172,7 @@ func startHealthServer() (stop func()) {
 // ในโค้ด ตอนนี้ย้ายมาไว้ที่นี่เพราะ cmd/bop-worker คือ process ที่ "เป็นเจ้าของ" workflow
 // ที่รันอัตโนมัติตามตาราง ส่วน cmd/bop มีหน้าที่แค่ตอบ HTTP request เท่านั้น
 //
-// หมายเหตุ (หลังเพิ่ม schedule CRUD API ใน internal/adapter/http/schedule_handler.go):
+// หมายเหตุ (หลังเพิ่ม schedule CRUD API ใน internal/adapter/http/*_schedule.go):
 // schedule ตัวนี้สร้างตรงผ่าน Temporal SDK ในนี้ ไม่ได้ผ่าน POST /schedules เลย จึงไม่มี
 // entry คู่กันใน schedule.Repository ของ cmd/bop (คนละ process กัน ดู
 // internal/domain/schedule/schedule.go) — GET /schedules/check-example-com-schedule จะเห็น

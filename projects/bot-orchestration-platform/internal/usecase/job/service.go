@@ -78,7 +78,7 @@ func (s *Service) Logs(ctx context.Context, id string) ([]logger.Line, error) {
 
 // SubscribeLogs เปิดช่องทางรับ log บรรทัดใหม่ของ job แบบ real-time — ผู้เรียกต้องเรียก
 // unsubscribe เมื่อเลิกฟัง ดูลำดับการใช้คู่กับ Logs ที่ handler SSE ใน
-// internal/adapter/http/handler.go
+// internal/adapter/http/stream_job_logs.go
 func (s *Service) SubscribeLogs(id string) (<-chan logger.Line, func()) {
 	return s.log.Subscribe(id)
 }

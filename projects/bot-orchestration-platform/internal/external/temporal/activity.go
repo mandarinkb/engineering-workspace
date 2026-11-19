@@ -25,7 +25,7 @@ import (
 // (MaxConcurrentActivityExecutionSize) และ timeout ต่อ activity ก็ตั้งผ่าน
 // workflow.ActivityOptions.StartToCloseTimeout แทน (ดู workflow.go) — worker.Pool เดิม
 // ยังถูกใช้อยู่ แต่เฉพาะกับ job เดี่ยวๆ ที่สั่งตรงผ่าน POST /bots/{name}/jobs เท่านั้น
-// (ดู internal/adapter/http/handler.go) ไม่เกี่ยวกับ workflow ที่รันผ่าน Temporal อีกต่อไป
+// (ดู internal/adapter/http/create_job.go) ไม่เกี่ยวกับ workflow ที่รันผ่าน Temporal อีกต่อไป
 type Activities struct {
 	bots map[string]bot.Bot
 	log  logger.Logger

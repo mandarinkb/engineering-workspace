@@ -42,7 +42,7 @@ internal/
     auth/                  ตรวจ credential + ออก/ตรวจ token
 
   adapter/
-    http/                  ขาเข้า: HTTP handler แปลง JSON <-> usecase เท่านั้น
+    http/                  ขาเข้า: HTTP handler แปลง JSON <-> usecase เท่านั้น (1 ไฟล์ต่อ 1 endpoint)
     worker/                ขาออก: Pool รัน bot ใน process เดียวกัน (implement domain/job.Executor)
 
   external/                ขาออก: implement port ด้วยระบบภายนอก
@@ -85,7 +85,8 @@ internal/
 
 ### `adapter/http`
 
-- แปลง request เป็นการเรียก usecase แล้วแปลงผลลัพธ์เป็น JSON (DTO อยู่ในไฟล์ handler เอง เช่น `scheduleSummary`, `workflowRunSummary`)
+- แปลง request เป็นการเรียก usecase แล้วแปลงผลลัพธ์เป็น JSON
+- 1 ไฟล์ต่อ 1 endpoint ตั้งชื่อตาม action + resource (`create_job.go`, `pause_schedule.go`) request/response DTO ที่ใช้ endpoint เดียวอยู่ในไฟล์ของ endpoint นั้น ส่วนที่ใช้ร่วมกันอยู่ใน `*_common.go` (`scheduleSummary`, `workflowRunSummary`, `writeScheduleError`) route ทั้งหมดลงทะเบียนที่ `server.go` และ `writeJSON` อยู่ที่ `response.go`
 - เก็บเรื่องที่เป็นของ HTTP ล้วน ๆ: CORS, cookie, SSE, การ parse query parameter
 - ไม่มี business logic และไม่ import Temporal SDK
 
@@ -119,7 +120,7 @@ internal/
 
 ## ตารางการ import
 
-ตารางนี้นับเฉพาะโค้ดหลัก ไฟล์ `_test.go` import ชั้นอื่นเพื่อประกอบ test ได้ (เช่น `adapter/http/handler_test.go` ใช้ `external/temporal` และ `repository/memory`)
+ตารางนี้นับเฉพาะโค้ดหลัก ไฟล์ `_test.go` import ชั้นอื่นเพื่อประกอบ test ได้ (เช่น `adapter/http/main_test.go` ใช้ `external/temporal` และ `repository/memory`)
 
 | จาก \ ไป | domain | usecase | adapter | external | repository | pkg |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
@@ -171,7 +172,7 @@ wrapper ทุกตัวใน `apperr` คืนข้อความเด�
 | อยากเพิ่ม | ที่อยู่ | ต้องแก้ที่ไหนอีก |
 |---|---|---|
 | bot ชนิดใหม่ | `internal/external/bots/<name>/` implement `bot.Bot` | register ทั้ง `cmd/bop` (`pool.Register`) และ `cmd/bop-worker` (`activities.Register`) |
-| endpoint ใหม่ | handler ใน `adapter/http` + method ใน usecase ที่เกี่ยวข้อง | ถ้าต้องใช้ระบบภายนอกใหม่ ให้ประกาศ port ใน `domain` ก่อน |
+| endpoint ใหม่ | ไฟล์ใหม่ใน `adapter/http` (เช่น `get_bot.go`) + route ใน `server.go` + method ใน usecase ที่เกี่ยวข้อง | ถ้าต้องใช้ระบบภายนอกใหม่ ให้ประกาศ port ใน `domain` ก่อน |
 | storage ใหม่ (PostgreSQL) | `internal/repository/postgres/` implement `job.Repository` / `schedule.Repository` | สลับใน `cmd/bop/main.go` แล้วรัน test ชุดเดียวกันกับ in-memory |
 | ระบบภายนอกใหม่ (เช่น ส่งแจ้งเตือน) | port ใน `domain/<concept>` + implementation ใน `internal/external/<system>/` | usecase เรียกผ่าน port แล้วประกอบใน `cmd` |
 | กฎทางธุรกิจที่ไม่ขึ้นกับเทคโนโลยี | method บน type ใน `domain` (แบบ `Spec.Validate`) | usecase เป็นคนเรียก |

@@ -20,7 +20,7 @@ import (
 
 // Step คือขั้นตอนหนึ่งใน workflow — สั่งรัน bot ตัวหนึ่งด้วย config ที่กำหนด — json tag
 // เป็น snake_case เพราะตอนนี้ type นี้ถูกใช้เป็น request/response body ตรงๆ ของ
-// POST /schedules (ดู internal/adapter/http/schedule_handler.go) ไม่ใช่แค่ argument ภายใน
+// POST /schedules (ดู internal/adapter/http/create_schedule.go) ไม่ใช่แค่ argument ภายใน
 // ที่ส่งผ่าน Temporal payload เหมือนเดิมอย่างเดียวแล้ว
 type Step struct {
 	BotName string     `json:"bot_name"`
@@ -97,7 +97,7 @@ func (s Step) Clone() Step {
 
 // Workflow คือลำดับของ Step ที่ต้องรันเรียงกันตามลำดับ (step แรกสุดในลิสต์รันก่อนเสมอ)
 // — Name ถูกใช้เป็นส่วนหนึ่งของ Temporal Workflow ID ตอนสร้าง Schedule (ดู
-// cmd/bop-worker/main.go, internal/adapter/http/schedule_handler.go) เพื่อให้เปิด Temporal
+// cmd/bop-worker/main.go, internal/usecase/schedule) เพื่อให้เปิด Temporal
 // UI แล้วรู้ทันทีว่า run ไหนเป็นของ workflow ที่ชื่ออะไร
 type Workflow struct {
 	Name  string `json:"name"`

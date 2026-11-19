@@ -31,7 +31,7 @@ const (
 // (ดูคำอธิบายละเอียดใน internal/repository/memory ว่าทำไมถึงต้อง copy struct นี้
 // ทุกครั้งที่ส่งเข้า-ออกจาก repository)
 // json tag ทุก field เป็น snake_case ตั้งใจให้ตรงกับ endpoint กลุ่ม /workflow-runs
-// (ดู internal/adapter/http/handler.go) เพื่อให้ JSON ที่ dashboard (projects/bop-dashboard/)
+// (ดู internal/adapter/http/workflow_run_common.go) เพื่อให้ JSON ที่ dashboard (projects/bop-dashboard/)
 // ได้รับมี casing สม่ำเสมอกันทั้ง API ไม่ใช่ผสมกันระหว่าง PascalCase (ค่า default ของ Go
 // ตอนไม่มี tag) กับ snake_case แบบที่เคยเป็นมาก่อนหน้านี้
 type Job struct {

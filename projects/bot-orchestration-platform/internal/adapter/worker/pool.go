@@ -62,7 +62,7 @@ func (p *Pool) Register(b bot.Bot) {
 }
 
 // List คืน bot ทั้งหมดที่ register ไว้ เรียงตามชื่อ (a-z) — ใช้ให้ HTTP handler ตอบ
-// GET /bots (ดู internal/adapter/http/handler.go) โดย handler ไม่ต้องรู้จัก concrete
+// GET /bots (ดู internal/adapter/http/list_bots.go) โดย handler ไม่ต้องรู้จัก concrete
 // bot.Bot ใดๆ เลย แค่เอา Name()/ConfigSchema() ของแต่ละตัวไปแปลงเป็น JSON ต่อ
 //
 // หมายเหตุเรื่อง concurrency: อ่าน p.bots ตรงๆ โดยไม่ล็อค เพราะ p.bots ถูกเขียนแค่ตอน

@@ -1,12 +1,12 @@
 // Package schedule เก็บ "definition" ของ schedule แต่ละตัวที่สร้างผ่าน BOP HTTP API
-// (ดู internal/adapter/http/schedule_handler.go) — คือ workflow name + steps ที่ schedule
+// (ดู internal/adapter/http/create_schedule.go) — คือ workflow name + steps ที่ schedule
 // นั้นสั่งรันตามเวลา
 //
 // หมายเหตุสำคัญเรื่องขอบเขตความรับผิดชอบ (อ่านก่อนแก้ไข อย่าสับสน): package นี้ "ไม่ใช่"
 // แหล่งข้อมูลจริง (source of truth) ของสถานะ schedule เลย — Temporal เองเป็นคนเก็บและ
 // ควบคุมทุกอย่างที่เกี่ยวกับ "เวลา/สถานะ" จริงๆ (next run time, paused หรือไม่, ประวัติ
 // การรันย้อนหลัง) ผ่าน client.ScheduleClient ต่างหาก (ดู
-// internal/adapter/http/schedule_handler.go: buildScheduleSpec, handleGetSchedule ฯลฯ)
+// internal/external/temporal/scheduler.go: toScheduleSpec, Describe ฯลฯ)
 // สิ่งเดียวที่ package นี้เก็บคือ "workflow นี้ทำอะไรบ้าง" (ชื่อ + steps) ซึ่ง Temporal
 // เก็บไว้เหมือนกันแต่เข้ารหัสเป็น payload ที่ decode กลับมายากกว่าเก็บเองตรงๆ (ดูเหตุผล
 // เต็มๆ ที่ comment ของ Repository ด้านล่าง)

@@ -28,7 +28,7 @@ type header struct {
 
 // Claims คือข้อมูลที่เข้ารหัสอยู่ใน JWT — เก็บแค่เท่าที่ระบบนี้ต้องใช้จริงตอนนี้ (ยังไม่มี
 // user database จริงจัง Subject จึงเป็นแค่ username ธรรมดา ไม่ใช่ user ID จาก DB — ดู
-// handleLogin ที่ internal/adapter/http/handler.go)
+// handleLogin ที่ internal/adapter/http/login.go)
 type Claims struct {
 	Subject   string `json:"sub"` // ใครเป็นเจ้าของ token นี้
 	ExpiresAt int64  `json:"exp"` // เวลาหมดอายุ เป็น Unix timestamp (วินาที) ตาม JWT spec

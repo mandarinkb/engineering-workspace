@@ -75,7 +75,7 @@ func run() error {
 	pool.Register(externaljob.New())
 
 	// ขั้นตอนที่ 4: ต่อ Temporal client — ใช้แค่ "อ่าน" สถานะ workflow run ผ่าน
-	// GET /workflow-runs (ดู internal/adapter/http/handler.go) เท่านั้น ไม่ได้ใช้สั่งรัน
+	// GET /workflow-runs (ดู internal/adapter/http/list_workflow_runs.go) เท่านั้น ไม่ได้ใช้สั่งรัน
 	// workflow เอง (การสั่งรันอัตโนมัติตามตารางเวลาย้ายไปอยู่ที่ cmd/bop-worker ทั้งหมด
 	// แล้ว ผ่าน Temporal Schedule — ดูเหตุผลการแยก process ที่หัวไฟล์ cmd/bop-worker/main.go)
 	// ต้องรัน `docker compose up -d` (ดู docker-compose.yml) ให้ Temporal server พร้อมก่อน
