@@ -2,6 +2,7 @@ package worker_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -189,5 +190,90 @@ func TestPool_DoesNotRunJobThatIsNotPending(t *testing.T) {
 	}
 	if final.Status != job.StatusSucceeded || final.Summary != "old" || final.StartedAt != nil {
 		t.Errorf("job was re-run: status=%q summary=%q startedAt=%v", final.Status, final.Summary, final.StartedAt)
+	}
+}
+
+// waitForStatus รอจน job ใน repo มีสถานะตามที่ต้องการ (หรือ fail เมื่อเกิน 2 วินาที)
+func waitForStatus(t *testing.T, repo job.Repository, id string, want job.Status) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if j, err := repo.Get(context.Background(), id); err == nil && j.Status == want {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("job %s never reached status %q", id, want)
+}
+
+// TestPool_ShutdownWaitsForRunningJobs ทดสอบว่า Shutdown รอ job ที่กำลังรันให้จบก่อน return
+func TestPool_ShutdownWaitsForRunningJobs(t *testing.T) {
+	repo := memory.NewJobRepository()
+	pool := worker.NewPool(1, 5*time.Second, repo, memlogger.New())
+	pool.Register(&stubBot{delay: 100 * time.Millisecond})
+
+	j := &job.Job{ID: "graceful", BotName: "stub", Status: job.StatusPending, CreatedAt: time.Now()}
+	if err := repo.Create(context.Background(), j); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := pool.Submit(j); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := pool.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	got, _ := repo.Get(context.Background(), "graceful")
+	if got.Status != job.StatusSucceeded {
+		t.Errorf("status after Shutdown = %q, want succeeded", got.Status)
+	}
+}
+
+// TestPool_ShutdownCancelsJobsWhenDeadlinePasses ทดสอบว่าถ้า ctx ของ Shutdown หมดเวลาก่อน
+// job จะจบ pool ต้องยกเลิก job ที่ค้างอยู่ทั้งหมด และรอจน goroutine ทุกตัวจบจริงก่อน return
+func TestPool_ShutdownCancelsJobsWhenDeadlinePasses(t *testing.T) {
+	repo := memory.NewJobRepository()
+	pool := worker.NewPool(1, 10*time.Second, repo, memlogger.New())
+	pool.Register(&stubBot{delay: 10 * time.Second})
+
+	j := &job.Job{ID: "slow", BotName: "stub", Status: job.StatusPending, CreatedAt: time.Now()}
+	if err := repo.Create(context.Background(), j); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := pool.Submit(j); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	waitForStatus(t, repo, "slow", job.StatusRunning)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := pool.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Shutdown err = %v, want context.DeadlineExceeded", err)
+	}
+
+	got, _ := repo.Get(context.Background(), "slow")
+	if got.Status != job.StatusCancelled || got.Error != "cancelled: worker pool shutting down" {
+		t.Errorf("got status=%q error=%q, want cancelled by shutdown", got.Status, got.Error)
+	}
+}
+
+// TestPool_SubmitAfterShutdownFails ทดสอบว่า pool ที่ปิดแล้วไม่รับ job ใหม่
+func TestPool_SubmitAfterShutdownFails(t *testing.T) {
+	repo := memory.NewJobRepository()
+	pool := worker.NewPool(1, time.Second, repo, memlogger.New())
+	pool.Register(&stubBot{delay: time.Millisecond})
+
+	if err := pool.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	j := &job.Job{ID: "late", BotName: "stub", Status: job.StatusPending, CreatedAt: time.Now()}
+	if err := pool.Submit(j); !errors.Is(err, worker.ErrPoolClosed) {
+		t.Errorf("Submit err = %v, want ErrPoolClosed", err)
+	}
+	if _, err := pool.SubmitAndWait(context.Background(), j); !errors.Is(err, worker.ErrPoolClosed) {
+		t.Errorf("SubmitAndWait err = %v, want ErrPoolClosed", err)
 	}
 }

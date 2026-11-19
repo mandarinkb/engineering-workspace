@@ -11,7 +11,12 @@
 // Execute อ่านแทนที่จะออกแบบ type ใหม่ทั้งหมด (Open Question ข้อ 1 ในเอกสารนั้น)
 package workflow
 
-import "bop/internal/domain/bot"
+import (
+	"maps"
+	"slices"
+
+	"bop/internal/domain/bot"
+)
 
 // Step คือขั้นตอนหนึ่งใน workflow — สั่งรัน bot ตัวหนึ่งด้วย config ที่กำหนด — json tag
 // เป็น snake_case เพราะตอนนี้ type นี้ถูกใช้เป็น request/response body ตรงๆ ของ
@@ -74,6 +79,20 @@ type K8sJobSpec struct {
 	// namespace ไว้ในนี้ตรงๆ เพราะอยากให้ต่าง environment (dev/staging/prod) ตั้งค่า
 	// namespace default ต่างกันได้โดยไม่ต้องแก้ workflow.Step ทุกจุดที่เรียกใช้)
 	Namespace string `json:"namespace,omitempty"`
+}
+
+// Clone คืนสำเนาแบบลึกของ step: Config, K8sJob และ slice/map ข้างใน K8sJob ถูกคัดลอกใหม่
+// ทั้งหมด ผู้ถือสำเนาแก้ค่าได้โดยไม่กระทบต้นฉบับ
+func (s Step) Clone() Step {
+	s.Config = maps.Clone(s.Config)
+	if s.K8sJob != nil {
+		k := *s.K8sJob
+		k.Command = slices.Clone(k.Command)
+		k.Args = slices.Clone(k.Args)
+		k.Env = maps.Clone(k.Env)
+		s.K8sJob = &k
+	}
+	return s
 }
 
 // Workflow คือลำดับของ Step ที่ต้องรันเรียงกันตามลำดับ (step แรกสุดในลิสต์รันก่อนเสมอ)

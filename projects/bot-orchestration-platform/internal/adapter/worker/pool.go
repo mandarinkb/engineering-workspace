@@ -5,6 +5,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -15,6 +16,9 @@ import (
 	"bop/internal/domain/logger"
 )
 
+// ErrPoolClosed คือ error ที่ Submit/SubmitAndWait คืน เมื่อ pool ถูกสั่ง Shutdown ไปแล้ว
+var ErrPoolClosed = errors.New("worker: pool is shut down")
+
 // Pool รัน job หลายตัวพร้อมกันได้ แต่จำกัดจำนวนสูงสุดที่รันพร้อมกันได้จริง (concurrency)
 type Pool struct {
 	bots    map[string]bot.Bot // bot ที่ register ไว้แล้ว (ชื่อ -> implementation)
@@ -23,15 +27,25 @@ type Pool struct {
 	sem     chan struct{}      // "semaphore" จำกัดจำนวน goroutine ที่ทำงานพร้อมกัน (อธิบายด้านล่าง)
 	timeout time.Duration      // เวลาสูงสุดที่ยอมให้แต่ละ job รันได้ก่อนถูกตัดจบอัตโนมัติ
 
-	mu      sync.Mutex                    // ป้องกัน cancels ด้านล่างจากการเข้าถึงพร้อมกัน
+	mu      sync.Mutex                    // ป้องกัน cancels และ closed ด้านล่างจากการเข้าถึงพร้อมกัน
 	cancels map[string]context.CancelFunc // job ID -> ฟังก์ชันสำหรับยกเลิก job นั้น (ถ้ากำลังรันอยู่)
+	closed  bool                          // true หลัง Shutdown: ไม่รับ job ใหม่อีก
+
+	// baseCtx คือ parent ของ context ทุก job — Shutdown สั่ง stop() เพื่อยกเลิก job ที่ยัง
+	// ค้างอยู่ทั้งหมดในครั้งเดียว ส่วน wg นับ goroutine ของ job ที่ยังไม่จบ ให้ Shutdown รอได้
+	baseCtx context.Context
+	stop    context.CancelFunc
+	wg      sync.WaitGroup
 }
 
 // NewPool สร้าง pool ใหม่
 //   - concurrency: จำนวน job สูงสุดที่ยอมให้รันพร้อมกันได้จริงในเวลาเดียวกัน
 //   - jobTimeout: เวลาสูงสุดต่อ 1 job ก่อนจะถูกยกเลิกอัตโนมัติ (กัน bot ที่ค้างไม่รู้จบ)
 func NewPool(concurrency int, jobTimeout time.Duration, repo job.Repository, log logger.Logger) *Pool {
+	baseCtx, stop := context.WithCancel(context.Background())
 	return &Pool{
+		baseCtx: baseCtx,
+		stop:    stop,
 		bots:    make(map[string]bot.Bot),
 		repo:    repo,
 		log:     log,
@@ -79,9 +93,8 @@ func (p *Pool) Submit(j *job.Job) error {
 	if !ok {
 		return fmt.Errorf("worker: unknown bot %q", j.BotName)
 	}
-	jobCopy := *j // คัดลอกค่าทั้งหมดออกมาเป็น value ใหม่ ไม่ใช่แค่คัดลอก pointer
-	p.startRun(b, jobCopy)
-	return nil
+	_, err := p.startRun(b, *j.Clone()) // คัดลอกแบบลึกเป็น value ใหม่ รวม Config map ไม่ใช่แค่คัดลอก pointer
+	return err
 }
 
 // SubmitAndWait เหมือน Submit ทุกประการ แต่จะ "รอ" จนกว่า job จะทำงานจบจริงๆ ก่อนจะ
@@ -98,8 +111,10 @@ func (p *Pool) SubmitAndWait(ctx context.Context, j *job.Job) (*job.Job, error) 
 	if !ok {
 		return nil, fmt.Errorf("worker: unknown bot %q", j.BotName)
 	}
-	jobCopy := *j
-	done := p.startRun(b, jobCopy)
+	done, err := p.startRun(b, *j.Clone())
+	if err != nil {
+		return nil, err
+	}
 
 	select {
 	case final := <-done:
@@ -116,10 +131,45 @@ func (p *Pool) SubmitAndWait(ctx context.Context, j *job.Job) (*job.Job, error) 
 // channel มี buffer ขนาด 1 เสมอ เพื่อให้ p.run() ส่งค่าเข้าไปได้ทันทีโดยไม่ต้องรอใครมารับ
 // — กันกรณี SubmitAndWait ยกเลิกการรอไปแล้วเพราะ ctx หมดเวลา แต่ job ยังทำงานต่อจนจบอยู่ดี
 // ถ้า channel ไม่มี buffer, p.run() จะค้างรอส่งค่าตลอดไปเพราะไม่มีใครมารับอีกแล้ว (goroutine leak)
-func (p *Pool) startRun(b bot.Bot, j job.Job) <-chan *job.Job {
+//
+// เช็ค closed และ wg.Add ภายใต้ lock เดียวกับที่ Shutdown ใช้ตั้ง closed เพื่อไม่ให้มี job
+// แทรกเข้ามาหลังจาก Shutdown เริ่มรอ wg แล้ว (wg.Add หลัง wg.Wait เริ่มเป็นการใช้ผิดวิธี)
+func (p *Pool) startRun(b bot.Bot, j job.Job) (<-chan *job.Job, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil, ErrPoolClosed
+	}
+	p.wg.Add(1)
 	done := make(chan *job.Job, 1)
 	go p.run(b, j, done)
-	return done
+	return done, nil
+}
+
+// Shutdown หยุดรับ job ใหม่ แล้วรอ job ทุกตัวที่ส่งเข้ามาแล้ว (ทั้งที่กำลังรันและที่รอคิวอยู่)
+// ให้จบก่อน return nil — ถ้า ctx หมดก่อน จะยกเลิก job ที่เหลือทั้งหมดผ่าน baseCtx (สถานะเป็น
+// cancelled) แล้วยังรอจน goroutine ทุกตัวจบจริงก่อน return ctx.Err() เพื่อให้สถานะสุดท้าย
+// ถูกบันทึกครบ — ขั้นตอนหลังยกเลิกจะเร็วก็ต่อเมื่อ bot เคารพ ctx.Done() ตามที่ bot.Bot กำหนด
+func (p *Pool) Shutdown(ctx context.Context) error {
+	p.mu.Lock()
+	p.closed = true
+	p.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		p.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		p.stop()
+		return nil
+	case <-ctx.Done():
+		p.stop()
+		<-done
+		return ctx.Err()
+	}
 }
 
 // Cancel สั่งยกเลิก job ที่กำลังรันอยู่ (ถ้ามี) — คืนค่า false ถ้าหา job นั้นไม่เจอในรายการ
@@ -143,6 +193,8 @@ func (p *Pool) Cancel(jobID string) bool {
 // ไม่มีจุดไหนเลยที่ struct เดียวกันถูกแก้ไขจากสอง goroutine พร้อมกัน เมื่อทำงานจบแล้ว
 // จะส่งค่าสุดท้ายเข้า done เสมอ ไม่ว่าจะจบแบบไหน (สำเร็จ/ล้มเหลว/ถูกยกเลิก)
 func (p *Pool) run(b bot.Bot, j job.Job, done chan<- *job.Job) {
+	defer p.wg.Done() // บอก Shutdown ว่า job นี้จบแล้ว (ไม่ว่าจะจบแบบไหน)
+
 	// ขั้นตอนที่ 1: รอจนกว่าจะมี worker slot ว่าง (ถ้า pool เต็มอยู่แล้ว จะค้างรอตรงนี้)
 	// กลไกนี้เรียกว่า "semaphore pattern": p.sem คือ buffered channel ขนาดเท่ากับ
 	// concurrency ที่ตั้งไว้ การส่งค่าเข้า channel (p.sem <- struct{}{}) จะสำเร็จทันที
@@ -161,7 +213,7 @@ func (p *Pool) run(b bot.Bot, j job.Job, done chan<- *job.Job) {
 	if j.TimeoutSeconds > 0 {
 		timeout = time.Duration(j.TimeoutSeconds) * time.Second
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(p.baseCtx, timeout) // ผูกกับ baseCtx ให้ Shutdown ยกเลิกได้
 	p.mu.Lock()
 	p.cancels[j.ID] = cancel
 	p.mu.Unlock()
@@ -200,7 +252,12 @@ func (p *Pool) run(b bot.Bot, j job.Job, done chan<- *job.Job) {
 		// ctx.Err() == context.Canceled หมายความว่า error ที่ bot คืนมาเกิดจากการที่
 		// เราสั่งยกเลิกเอง (ผ่าน Cancel()) ไม่ใช่ bot ทำงานผิดพลาดเอง จึงแยกสถานะเป็น
 		// "cancelled" ไม่ใช่ "failed" เพื่อให้ dashboard แสดงผลถูกต้องตามความเป็นจริง
-		_ = j.Cancel("cancelled by user", end)
+		// ถ้า baseCtx ถูกยกเลิกด้วย แปลว่ามาจาก Shutdown ไม่ใช่ผู้ใช้สั่ง
+		reason := "cancelled by user"
+		if p.baseCtx.Err() != nil {
+			reason = "cancelled: worker pool shutting down"
+		}
+		_ = j.Cancel(reason, end)
 		p.log.Log(context.Background(), j.ID, logger.LevelWarn, "job cancelled")
 	case err != nil:
 		_ = j.Fail(err.Error(), end)

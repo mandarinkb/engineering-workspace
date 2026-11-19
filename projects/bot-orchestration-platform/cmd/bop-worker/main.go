@@ -15,6 +15,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -48,7 +49,18 @@ var k8sJobDefaultNamespace = getenv("K8S_JOB_DEFAULT_NAMESPACE", "bop-jobs")
 // เพราะทำงานแค่ poll Temporal task queue แต่ K8s ต้องมีทางเช็คว่า process ยัง alive อยู่ไหม
 const workerHealthAddr = ":9090"
 
+// healthShutdownTimeout คือเวลาที่รอให้ health server ปิดตัวหลัง worker หยุดแล้ว
+const healthShutdownTimeout = 5 * time.Second
+
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run ประกอบและเปิด Temporal Worker จนกว่าจะได้รับ interrupt signal — คืน error แทนการเรียก
+// log.Fatal เอง เพื่อให้ main เป็นจุดเดียวที่ exit และ defer ทุกตัวในนี้ได้ทำงานเสมอ
+func run() error {
 	// ขั้นตอนที่ 1: ต่อ Temporal client เข้ากับ Temporal server (ดู docker-compose.yml
 	// ที่ root ของโปรเจกต์ — ต้อง `docker compose up -d` ให้ server พร้อมก่อนรัน process นี้)
 	// อ่านจาก env var TEMPORAL_HOST_PORT ก่อนเสมอ fallback เป็น "localhost:7233" (gRPC
@@ -59,23 +71,17 @@ func main() {
 		Namespace: temporal.Namespace,
 	})
 	if err != nil {
-		log.Fatalf("connect to temporal: %v", err)
+		return fmt.Errorf("connect to temporal: %w", err)
 	}
 	defer c.Close()
 
 	// ขั้นตอนที่ 1.5: เปิด HTTP server เล็กๆ แยกต่างหากใน goroutine คู่ขนาน มีไว้ตอบ
 	// K8s liveness probe เท่านั้น (ดู workerHealthAddr ด้านบน) — รันแยกจาก w.Run() ด้านล่าง
 	// เพราะ w.Run() เป็น blocking call ที่ค้างอยู่จนกว่าโปรแกรมจะถูกปิด ถ้าเปิด HTTP server
-	// แบบ blocking (ไม่ใช้ goroutine) โค้ดจะไม่มีทางไปถึงบรรทัด w.Run() เลย
-	go func() {
-		mux := http.NewServeMux()
-		mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-		if err := http.ListenAndServe(workerHealthAddr, mux); err != nil {
-			log.Printf("worker health server stopped: %v", err)
-		}
-	}()
+	// แบบ blocking (ไม่ใช้ goroutine) โค้ดจะไม่มีทางไปถึงบรรทัด w.Run() เลย — ถูกปิดและรอ
+	// จนจบจริงด้วย stopHealth ตอน run return (ดู startHealthServer)
+	stopHealth := startHealthServer()
+	defer stopHealth()
 
 	// ขั้นตอนที่ 2: เตรียม Activities — เป็น registry ของ bot ที่ workflow เรียกใช้ได้
 	// (คนละ registry กับ worker.Pool ใน cmd/bop เพราะเป็นคนละ process กัน ดูหมายเหตุยาว
@@ -97,7 +103,7 @@ func main() {
 	w.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: temporal.ActivityName})
 
 	// ขั้นตอนที่ 3.5: register K8s Job hybrid execution (workflow.Step.K8sJob) แบบ
-	// "best-effort" — ต่างจาก activities.Register ด้านบนที่ fail แล้ว log.Fatalf ได้เลย
+	// "best-effort" — ต่างจากการต่อ Temporal ด้านบนที่ fail แล้วหยุด process ได้เลย
 	// (เพราะ Temporal connection คือ dependency ที่ต้องมีเสมอ) แต่ rest.InClusterConfig()
 	// ใช้ไม่ได้เลยตอนรัน cmd/bop-worker บนเครื่อง dev ธรรมดา (ยังไม่ได้ containerize เข้า
 	// K8s ตาม Phase 2.1 — ดู K8S-JOB-HYBRID-EXECUTION-TODO.md) เพราะฟังก์ชันนี้ใช้ได้เฉพาะ
@@ -105,7 +111,7 @@ func main() {
 	// K8s mount ให้อัตโนมัติ) — ถ้า error แค่ log คำเตือนแล้วข้ามไป ปล่อยให้ worker เริ่ม
 	// ทำงานต่อได้ปกติ (bot local + remote task queue ยังใช้งานได้เต็มที่ แค่ step ที่มี
 	// K8sJob จะ fail ตอนถูกเรียกจริงเพราะไม่มี activity ไหน register ไว้รับ) แทนที่จะ
-	// log.Fatalf ปิด process ทั้งตัวเพราะฟีเจอร์ที่ยังไม่มี cluster ให้ใช้เลย
+	// หยุด process ทั้งตัวเพราะฟีเจอร์ที่ยังไม่มี cluster ให้ใช้เลย
 	if cfg, err := rest.InClusterConfig(); err != nil {
 		log.Printf("k8s in-cluster config unavailable, skipping K8s Job hybrid execution: %v", err)
 	} else if clientset, err := kubernetes.NewForConfig(cfg); err != nil {
@@ -120,12 +126,43 @@ func main() {
 	// scheduler.Interval{Every: time.Minute} ในเวอร์ชันก่อน Temporal) — เรียกตอน startup
 	// ทุกครั้ง แต่ idempotent: ถ้า Schedule ID นี้มีอยู่แล้ว (เช่น worker ถูก restart)
 	// Temporal จะคืน ErrScheduleAlreadyRunning ซึ่งไม่ใช่ปัญหา ข้ามไปเฉยๆ ได้เลย
-	ensureExampleSchedule(context.Background(), c)
+	if err := ensureExampleSchedule(context.Background(), c); err != nil {
+		return err
+	}
 
 	// ขั้นตอนที่ 5: รัน Worker ค้างอยู่ (poll งานเรื่อยๆ) จนกว่าจะได้รับ interrupt signal
 	// (Ctrl+C) — worker.InterruptCh() คือ helper ของ SDK เอง ดักจับ signal มาตรฐานให้แล้ว
 	if err := w.Run(worker.InterruptCh()); err != nil {
-		log.Fatalf("worker stopped with error: %v", err)
+		return fmt.Errorf("worker stopped with error: %w", err)
+	}
+	return nil
+}
+
+// startHealthServer เปิด HTTP server ตอบ GET /healthz ใน goroutine แยก แล้วคืนฟังก์ชันที่
+// ปิด server แบบ graceful และรอจน goroutine นั้นจบจริง — ถ้าเปิด port ไม่สำเร็จ (เช่นถูกใช้
+// อยู่) แค่ log ไว้ ไม่หยุด worker เพราะ health probe ไม่ใช่งานหลักของ process นี้
+func startHealthServer() (stop func()) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := &http.Server{Addr: workerHealthAddr, Handler: mux}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("worker health server stopped: %v", err)
+		}
+	}()
+
+	return func() {
+		ctx, cancel := context.WithTimeout(context.Background(), healthShutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("shutdown worker health server: %v", err)
+		}
+		<-done
 	}
 }
 
@@ -142,7 +179,7 @@ func main() {
 // spec/สถานะถูกต้องปกติ (มาจาก Temporal ตรงๆ) แต่ field "steps" จะว่างเปล่า เพราะ BOP
 // ไม่มี bookkeeping ของ workflow definition ตัวนี้เก็บไว้เลย — ไม่ใช่ bug เป็นผลตามมาที่
 // รู้อยู่แล้วจากการมี 2 ช่องทางสร้าง schedule (โค้ดตรงนี้ + HTTP API)
-func ensureExampleSchedule(ctx context.Context, c client.Client) {
+func ensureExampleSchedule(ctx context.Context, c client.Client) error {
 	wf := workflow.Workflow{
 		Name: "check-example-com",
 		Steps: []workflow.Step{
@@ -165,11 +202,12 @@ func ensureExampleSchedule(ctx context.Context, c client.Client) {
 	if err != nil {
 		if errors.Is(err, sdktemporal.ErrScheduleAlreadyRunning) {
 			log.Println("schedule check-example-com-schedule already exists, skipping creation")
-			return
+			return nil
 		}
-		log.Fatalf("create schedule: %v", err)
+		return fmt.Errorf("create schedule: %w", err)
 	}
 	log.Println("created schedule check-example-com-schedule")
+	return nil
 }
 
 // getenv คืนค่า environment variable ชื่อ key ถ้าตั้งไว้ (และไม่ใช่ค่าว่าง) ไม่งั้นคืนค่า

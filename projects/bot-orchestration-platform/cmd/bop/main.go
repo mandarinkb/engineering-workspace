@@ -13,11 +13,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"go.temporal.io/sdk/client"
@@ -36,7 +40,23 @@ import (
 	workflowrunuc "bop/internal/usecase/workflowrun"
 )
 
+// shutdownTimeout คือเวลาที่ยอมรอให้ HTTP request และ job ที่ค้างอยู่จบเองตอนปิดโปรแกรม
+// ก่อนจะยกเลิกทิ้ง (เท่ากับ job timeout กลางของ pool ด้านล่าง)
+const shutdownTimeout = 30 * time.Second
+
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run ประกอบ dependency ทั้งหมดแล้วเริ่มทำงานจนกว่าจะได้รับ SIGINT/SIGTERM — คืน error
+// แทนการเรียก log.Fatal เอง เพื่อให้ main เป็นจุดเดียวที่ exit และ defer ทุกตัวในนี้
+// (เช่นปิด Temporal client) ได้ทำงานเสมอ
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// ขั้นตอนที่ 1: สร้าง dependency พื้นฐานทั้งหมด — ตอนนี้ใช้ in-memory implementation
 	// ทั้งคู่ (repository และ logger) เพราะยังไม่ได้ทำ PostgreSQL/OpenSearch จริง
 	// (ดู roadmap Phase 0.4 และ Phase 2.2) การสลับไปใช้ implementation จริงในอนาคต
@@ -67,7 +87,7 @@ func main() {
 		Namespace: temporal.Namespace,
 	})
 	if err != nil {
-		log.Fatalf("connect to temporal: %v", err)
+		return fmt.Errorf("connect to temporal: %w", err)
 	}
 	defer temporalClient.Close()
 
@@ -79,8 +99,7 @@ func main() {
 	// ขั้นตอนที่ 6: เช็คว่าถูกเรียกแบบ CLI mode หรือไม่ (มี argument แรกเป็นคำว่า "run")
 	// ถ้าใช่ ให้ทำงานแบบ CLI แล้วจบโปรแกรมทันทีหลังจากนั้น ไม่เปิด HTTP server ต่อ
 	if len(os.Args) > 1 && os.Args[1] == "run" {
-		runCLI(repo, pool, os.Args[2:])
-		return
+		return runCLI(ctx, repo, pool, os.Args[2:])
 	}
 
 	// ขั้นตอนที่ 7: ประกอบ usecase จาก port ทั้งหมด (clean architecture: HTTP adapter รู้จัก
@@ -100,7 +119,18 @@ func main() {
 	)
 
 	// ถ้าไม่ใช่ CLI mode ให้เปิด HTTP API server ตามปกติ (ค่า default ของโปรแกรมนี้)
-	serve(apihttp.NewServer(jobs, runs, schedules, auth))
+	if err := serve(ctx, apihttp.NewServer(jobs, runs, schedules, auth)); err != nil {
+		return err
+	}
+
+	// HTTP server ปิดแล้วจึงไม่มี job ใหม่เข้ามาอีก — รอ job ที่ค้างอยู่ให้จบ ถ้าเกิน
+	// shutdownTimeout pool จะยกเลิก job ที่เหลือและบันทึกสถานะเป็น cancelled ให้
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := pool.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown worker pool: %w", err)
+	}
+	return nil
 }
 
 // runCLI คือโหมดสำหรับทดสอบ engine โดยไม่ต้องเปิด server หรือมี UI เลย ใช้แบบนี้:
@@ -116,14 +146,21 @@ func main() {
 //     pending/running อีกต่อไป (คือ job จบแล้วไม่ว่าจะสำเร็จ/ล้มเหลว/ถูกยกเลิก) แล้ว
 //     print ผลลัพธ์สุดท้ายออกมาก่อนจบโปรแกรม — เหตุผลที่ต้อง poll แบบนี้เพราะ
 //     pool.Submit ทำงานแบบ asynchronous (ไม่รอผล) จึงต้องมีวิธีรอผลลัพธ์เอาเองฝั่ง CLI
-func runCLI(repo job.Repository, pool *worker.Pool, args []string) {
-	fs := flag.NewFlagSet("run", flag.ExitOnError)
+//
+// ถ้ากด Ctrl+C ระหว่างรอ (ctx ถูกยกเลิก) จะเลิกรอแล้วคืน ctx.Err()
+func runCLI(ctx context.Context, repo job.Repository, pool *worker.Pool, args []string) error {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	botName := fs.String("bot", "", "bot name to run")
 	url := fs.String("url", "", "url config value passed to the bot")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil // ผู้ใช้ขอดู -h: flag พิมพ์ usage ให้แล้ว ไม่ใช่ error
+		}
+		return err
+	}
 
 	if *botName == "" {
-		log.Fatal("usage: bop run --bot=<name> --url=<url>")
+		return errors.New("usage: bop run --bot=<name> --url=<url>")
 	}
 
 	j := &job.Job{
@@ -133,38 +170,70 @@ func runCLI(repo job.Repository, pool *worker.Pool, args []string) {
 		Status:    job.StatusPending,
 		CreatedAt: time.Now(),
 	}
-	if err := repo.Create(context.Background(), j); err != nil {
-		log.Fatal(err)
+	if err := repo.Create(ctx, j); err != nil {
+		return fmt.Errorf("create job: %w", err)
 	}
 	if err := pool.Submit(j); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("submit job: %w", err)
 	}
 
 	// รอจน job จบด้วยการเช็คสถานะซ้ำๆ (polling) — วิธีนี้ง่ายที่สุดสำหรับ CLI เล็กๆ
 	// ถ้าเป็นระบบจริงจังกว่านี้อาจใช้ channel หรือ logger.Subscribe แทนการ poll ตรงๆ
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
 	for {
-		time.Sleep(200 * time.Millisecond)
-		current, err := repo.Get(context.Background(), j.ID)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+		current, err := repo.Get(ctx, j.ID)
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("get job: %w", err)
 		}
 		if current.Status.IsFinal() {
 			fmt.Printf("job %s finished: status=%s summary=%q error=%q\n",
 				current.ID, current.Status, current.Summary, current.Error)
-			return
+			return nil
 		}
 	}
 }
 
-// serve เปิด HTTP API server แล้วปล่อยให้ http.ListenAndServe รับ request เข้ามาเรื่อยๆ
-// จนกว่าโปรแกรมจะถูกปิด (Ctrl+C หรือ signal อื่น) — addr อ่านจาก env var BOP_HTTP_ADDR
-// ก่อนเสมอ fallback เป็น ":8080" เดิมถ้าไม่ได้ตั้ง (local dev)
-func serve(srv http.Handler) {
-	addr := getenv("BOP_HTTP_ADDR", ":8080")
-	fmt.Printf("bop api listening on %s\n", addr)
-	if err := http.ListenAndServe(addr, srv); err != nil {
-		log.Fatal(err)
+// serve เปิด HTTP API server จนกว่า ctx จะถูกยกเลิก (Ctrl+C หรือ SIGTERM) แล้วปิดแบบ
+// graceful: หยุดรับ connection ใหม่และรอ request ที่ค้างอยู่ภายใน shutdownTimeout —
+// addr อ่านจาก env var BOP_HTTP_ADDR ก่อนเสมอ fallback เป็น ":8080" (local dev)
+//
+// BaseContext ผูก context ของทุก request เข้ากับ ctx เพราะ SSE stream (GET
+// /jobs/{id}/logs/stream) เปิดค้างไว้จนกว่า r.Context() จะถูกยกเลิก ถ้าไม่ผูกไว้
+// srv.Shutdown จะรอ stream ที่เปิดอยู่จนหมด shutdownTimeout ทุกครั้งที่มีคนเปิดหน้า live log
+func serve(ctx context.Context, handler http.Handler) error {
+	srv := &http.Server{
+		Addr:        getenv("BOP_HTTP_ADDR", ":8080"),
+		Handler:     handler,
+		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		fmt.Printf("bop api listening on %s\n", srv.Addr)
+		errCh <- srv.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("http server: %w", err) // เปิดไม่สำเร็จตั้งแต่ต้น เช่น port ถูกใช้อยู่
+	case <-ctx.Done():
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown http server: %w", err)
+	}
+	if err := <-errCh; !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("http server: %w", err)
+	}
+	return nil
 }
 
 // getenv คืนค่า environment variable ชื่อ key ถ้าตั้งไว้ (และไม่ใช่ค่าว่าง) ไม่งั้นคืนค่า

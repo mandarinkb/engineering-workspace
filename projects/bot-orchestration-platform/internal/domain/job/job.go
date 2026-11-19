@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"bop/internal/domain/bot"
@@ -55,6 +56,23 @@ type Job struct {
 // ErrInvalidTransition คือ error ที่ method เปลี่ยนสถานะด้านล่างคืน เมื่อสถานะปัจจุบัน
 // ของ job ไม่อนุญาตให้เปลี่ยนไปเป็นสถานะที่ขอ (เช่นสั่ง Start job ที่จบไปแล้ว)
 var ErrInvalidTransition = errors.New("job: invalid status transition")
+
+// Clone คืนสำเนาแบบลึกของ job: Config (map) และเวลาที่เป็น pointer ถูกคัดลอกใหม่ทั้งหมด
+// ใช้ทุกครั้งที่ job ข้ามขอบเขตระหว่าง goroutine หรือเข้า-ออก repository เพราะ `cp := *j`
+// คัดลอกแค่ตัว map header ผู้ถือสำเนาทั้งสองฝั่งจะยังแก้ Config ก้อนเดียวกันอยู่
+func (j *Job) Clone() *Job {
+	cp := *j
+	cp.Config = maps.Clone(j.Config)
+	if j.StartedAt != nil {
+		t := *j.StartedAt
+		cp.StartedAt = &t
+	}
+	if j.EndedAt != nil {
+		t := *j.EndedAt
+		cp.EndedAt = &t
+	}
+	return &cp
+}
 
 // IsFinal บอกว่าสถานะนี้คือสถานะจบแล้ว (succeeded/failed/cancelled) ที่จะไม่เปลี่ยนอีก
 func (s Status) IsFinal() bool {

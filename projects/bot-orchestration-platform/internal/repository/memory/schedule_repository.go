@@ -74,12 +74,17 @@ func (r *ScheduleRepository) List(_ context.Context) ([]*schedule.Definition, er
 	return out, nil
 }
 
-// cloneDefinition คัดลอก Definition แบบลึกพอที่จะไม่แชร์ backing array ของ slice Steps
-// กับต้นฉบับ — เหตุผลเดียวกับ cloneRun เดิมใน run_repository.go (ที่ถูกลบไปแล้วตอนย้าย
+// cloneDefinition คัดลอก Definition แบบลึก ทั้ง slice Steps และ map/pointer ในแต่ละ step
+// (ผ่าน workflow.Step.Clone) เพื่อไม่ให้แชร์ข้อมูลใดๆ กับต้นฉบับ — เหตุผลเดียวกับ cloneRun เดิมใน run_repository.go (ที่ถูกลบไปแล้วตอนย้าย
 // ไป Temporal): ผู้เรียก Get/List ไม่ควรมีทาง mutate ข้อมูลที่ repository เก็บไว้ภายใน
 // โดยไม่ตั้งใจผ่าน slice ที่ยังชี้ไป backing array เดิม
 func cloneDefinition(d *schedule.Definition) *schedule.Definition {
 	cp := *d
-	cp.Steps = append([]workflow.Step(nil), d.Steps...)
+	if d.Steps != nil {
+		cp.Steps = make([]workflow.Step, len(d.Steps))
+		for i, s := range d.Steps {
+			cp.Steps[i] = s.Clone()
+		}
+	}
 	return &cp
 }

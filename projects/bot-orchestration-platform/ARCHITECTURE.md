@@ -93,6 +93,8 @@ internal/
 
 - `Pool` implement `job.Executor` ด้วย goroutine pool ใน process เดียวกับ HTTP server (จำกัด concurrency, timeout ต่อ job, ยกเลิกกลางทาง)
 - เปลี่ยนสถานะ job ผ่าน method ของ entity (`Start`, `Succeed`, `Fail`, `Cancel`) เท่านั้น ห้ามตั้ง `Status` เอง เพราะกฎการเปลี่ยนสถานะอยู่ใน `domain/job`
+- `Pool.Shutdown(ctx)` หยุดรับ job ใหม่แล้วรอ job ที่ค้างอยู่ให้จบ ถ้า ctx หมดก่อนจะยกเลิก job ที่เหลือ (สถานะ cancelled) `cmd/bop` เรียกหลังปิด HTTP server ตอนได้รับ SIGINT/SIGTERM
+- copy job ด้วย `job.Job.Clone()` ทุกครั้งที่ส่งข้าม goroutine เพราะ `*j` ไม่ได้ copy map `Config`
 
 ### `external`
 

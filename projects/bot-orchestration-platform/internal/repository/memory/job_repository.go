@@ -41,8 +41,7 @@ func (r *JobRepository) Create(_ context.Context, j *job.Job) error {
 	if _, exists := r.jobs[j.ID]; exists {
 		return fmt.Errorf("memory: job %s already exists", j.ID)
 	}
-	cp := *j // copy ค่าทั้งหมดของ struct (ไม่ใช่แค่ copy pointer)
-	r.jobs[j.ID] = &cp
+	r.jobs[j.ID] = j.Clone() // copy แบบลึก รวม Config map (ไม่ใช่แค่ copy pointer)
 	return nil
 }
 
@@ -51,8 +50,7 @@ func (r *JobRepository) Create(_ context.Context, j *job.Job) error {
 func (r *JobRepository) Update(_ context.Context, j *job.Job) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	cp := *j
-	r.jobs[j.ID] = &cp
+	r.jobs[j.ID] = j.Clone()
 	return nil
 }
 
@@ -64,8 +62,7 @@ func (r *JobRepository) Get(_ context.Context, id string) (*job.Job, error) {
 	if !ok {
 		return nil, fmt.Errorf("memory: job %s not found", id)
 	}
-	cp := *j
-	return &cp, nil
+	return j.Clone(), nil
 }
 
 // List คืนรายการ job ทั้งหมด เรียงจากล่าสุด (สร้างล่าสุด) ไปเก่าสุด — เหมาะกับการเอาไป
@@ -75,8 +72,7 @@ func (r *JobRepository) List(_ context.Context) ([]*job.Job, error) {
 	defer r.mu.RUnlock()
 	out := make([]*job.Job, 0, len(r.jobs))
 	for _, j := range r.jobs {
-		cp := *j
-		out = append(out, &cp)
+		out = append(out, j.Clone())
 	}
 	sort.Slice(out, func(i, k int) bool { return out[i].CreatedAt.After(out[k].CreatedAt) })
 	return out, nil
