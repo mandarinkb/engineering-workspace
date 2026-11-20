@@ -43,7 +43,7 @@ src/
     schedule-detail, schedule-edit, workflow-runs, workflow-run-detail
 
   widgets/
-    nav-bar                   เมนู + user ที่ login + logout + theme
+    nav-bar                   sidebar ซ้ายมือ: เมนู + user ที่ login + logout + theme
     bot-list                  รายการ bot + ฟอร์มสั่งรัน job
     job-table, job-stats      ตาราง job + การ์ดสรุป
     job-log-viewer            log แบบ real-time (SSE) + เฝ้าดูสถานะ job
