@@ -122,6 +122,7 @@ services:
       # ตอน build ไม่ใช่ตอน container start — ดู comment ใน Dockerfile ของ dashboard)
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8080
+        NEXT_PUBLIC_TEMPORAL_UI_URL: http://localhost:8233
     depends_on:
       - bop-api
     ports:

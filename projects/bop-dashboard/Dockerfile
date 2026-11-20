@@ -14,6 +14,9 @@ COPY . .
 # อะไรเลย** — ต้องส่งผ่าน --build-arg ตอน `docker build` หรือ `build.args` ใน compose เท่านั้น
 ARG NEXT_PUBLIC_API_URL=http://localhost:8080
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# ลิงก์ไป Temporal Web UI (sidebar และหน้ารายละเอียด workflow run) — inline ตอน build เหมือนกัน
+ARG NEXT_PUBLIC_TEMPORAL_UI_URL=http://localhost:8233
+ENV NEXT_PUBLIC_TEMPORAL_UI_URL=$NEXT_PUBLIC_TEMPORAL_UI_URL
 RUN npm run build
 
 FROM node:22-alpine AS runner

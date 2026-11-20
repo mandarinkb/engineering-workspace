@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { temporalWorkflowUrl } from "@/shared/config";
+
 import { useWorkflowRun, StepPipelineView, StepResultList, WorkflowStatusBadge } from "@/entities/workflow-run";
 
 interface WorkflowRunDetailProps {
@@ -38,6 +40,14 @@ export function WorkflowRunDetail({ workflowId }: WorkflowRunDetailProps) {
           <span className="text-sm text-gray-500 dark:text-gray-400">
             เริ่มเมื่อ {new Date(run.started_at).toLocaleString()}
           </span>
+          <a
+            href={temporalWorkflowUrl(run.workflow_id, run.run_id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            เปิดใน Temporal ↗
+          </a>
         </div>
         <div className="flex gap-1 text-xs">
           <button

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { TEMPORAL_UI_URL } from "@/shared/config";
 import { useTheme } from "@/shared/lib/theme";
 import { useLogout } from "@/features/auth";
 import { useAuth } from "@/entities/user";
@@ -106,6 +107,19 @@ export function NavBar({ initialCollapsed = false }: { initialCollapsed?: boolea
             </Link>
           );
         })}
+
+        {/* ลิงก์ออกนอกแอป (เปิดแท็บใหม่) — แยกด้วยเส้นคั่นให้รู้ว่าไม่ใช่หน้าของ dashboard เอง */}
+        <div className="my-2 border-t border-gray-800" />
+        <a
+          href={TEMPORAL_UI_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={collapsed ? "Temporal UI (เปิดแท็บใหม่)" : undefined}
+          className={`${ITEM} ${ITEM_IDLE}`}
+        >
+          <Icon d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
+          {label("Temporal UI")}
+        </a>
       </nav>
 
       <div className="space-y-2 border-t border-gray-800 px-3 py-4">
