@@ -21,10 +21,10 @@ export function middleware(request: NextRequest) {
   const hasSession = request.cookies.has(COOKIE_NAME);
 
   if (PUBLIC_PATHS.includes(pathname)) {
-    // login อยู่แล้วแต่พยายามเข้าหน้า /login ซ้ำ พาไปหน้า /jobs แทน — ไม่มีเหตุผลให้เห็น
+    // login อยู่แล้วแต่พยายามเข้าหน้า /login ซ้ำ พาไปหน้า /overview แทน — ไม่มีเหตุผลให้เห็น
     // form login อีกครั้งทั้งที่ login ค้างอยู่แล้ว
     if (hasSession) {
-      return NextResponse.redirect(new URL("/jobs", request.url));
+      return NextResponse.redirect(new URL("/overview", request.url));
     }
     return NextResponse.next();
   }

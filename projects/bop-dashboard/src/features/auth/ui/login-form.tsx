@@ -42,7 +42,7 @@ export function LoginForm() {
   const onSubmit = handleSubmit((values) => {
     login.mutate(values, {
       onSuccess: () => {
-        router.push("/jobs"); // login สำเร็จ พาไปหน้าแรกของ dashboard ที่ต้อง login ก่อน
+        router.push("/overview"); // login สำเร็จ พาไปหน้าแรกของ dashboard ที่ต้อง login ก่อน
       },
     });
   });

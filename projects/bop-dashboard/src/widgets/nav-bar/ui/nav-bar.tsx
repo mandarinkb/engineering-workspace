@@ -30,6 +30,8 @@ function Icon({ d }: { d: string }) {
 }
 
 const NAV_LINKS = [
+  // grid 4 ช่อง: หน้าภาพรวม
+  { href: "/overview", label: "Overview", icon: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" },
   // หุ่นยนต์: หัว + เสาอากาศ + ตา
   { href: "/bots", label: "Bots", icon: "M12 4v3M7 7h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM9.5 12h.01M14.5 12h.01M9 16h6" },
   // รายการ: บรรทัดพร้อม bullet
