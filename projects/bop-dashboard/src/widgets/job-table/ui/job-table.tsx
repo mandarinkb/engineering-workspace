@@ -51,10 +51,10 @@ export function JobTable() {
     return <p className="text-red-600">โหลด job history ไม่สำเร็จ: {error.message}</p>;
   }
 
-  const botFilter = searchParams.get("bot")?.toLowerCase() ?? "";
-  const statusFilter = (searchParams.get("status") as JobStatus | "" | null) ?? "";
-  const fromFilter = searchParams.get("from") ?? "";
-  const toFilter = searchParams.get("to") ?? "";
+  const botFilter = searchParams?.get("bot")?.toLowerCase() ?? "";
+  const statusFilter = (searchParams?.get("status") as JobStatus | "" | null) ?? "";
+  const fromFilter = searchParams?.get("from") ?? "";
+  const toFilter = searchParams?.get("to") ?? "";
 
   const filtered = (jobs ?? []).filter((job) => {
     if (botFilter && !job.bot_name.toLowerCase().includes(botFilter)) return false;

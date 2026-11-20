@@ -15,13 +15,13 @@ export function JobFilter() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const bot = searchParams.get("bot") ?? "";
-  const status = searchParams.get("status") ?? "";
-  const from = searchParams.get("from") ?? "";
-  const to = searchParams.get("to") ?? "";
+  const bot = searchParams?.get("bot") ?? "";
+  const status = searchParams?.get("status") ?? "";
+  const from = searchParams?.get("from") ?? "";
+  const to = searchParams?.get("to") ?? "";
 
   function updateParam(key: string, value: string) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     if (value) {
       params.set(key, value);
     } else {

@@ -37,7 +37,7 @@ export function NavBar() {
             key={link.href}
             href={link.href}
             className={
-              pathname.startsWith(link.href)
+              pathname?.startsWith(link.href)
                 ? "font-medium text-blue-600 dark:text-blue-400"
                 : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
             }
