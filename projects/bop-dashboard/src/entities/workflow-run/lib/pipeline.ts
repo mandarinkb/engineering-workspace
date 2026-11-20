@@ -1,4 +1,5 @@
 import type { StepResult } from "../model/types";
+import { normalizeRunStatus } from "./run-status";
 
 // ข้อจำกัดสำคัญที่ต้องรู้ก่อนอ่านไฟล์นี้: StepResult (mirror จาก internal/workflow/
 // workflow.go ฝั่ง Go) ไม่มี field สถานะของตัวเอง มีแค่ step_index/bot_name/summary?/
@@ -19,11 +20,6 @@ export interface PipelineNodeData {
   error?: string;
 }
 
-// ค่า status string ดิบของ Temporal ที่แปลว่า "ยังรันอยู่" — ตรงกับ enum
-// WORKFLOW_EXECUTION_STATUS_RUNNING ที่ workflow-status-badge.tsx ใช้ map เป็น badge สี
-// เหลืองอยู่แล้ว (ใช้ค่าเดียวกัน ไม่ import จากไฟล์นั้นตรงๆ เพราะไม่ได้ export เป็น
-// constant แยกไว้ — ประกาศซ้ำที่นี่สั้นกว่าการ refactor ไฟล์นั้นเพื่อ export เพิ่ม)
-const RUNNING_STATUS_VALUE = "WORKFLOW_EXECUTION_STATUS_RUNNING";
 
 export function buildPipelineNodes(steps: StepResult[], runStatus: string): PipelineNodeData[] {
   const nodes: PipelineNodeData[] = steps.map((step) => ({
@@ -34,7 +30,7 @@ export function buildPipelineNodes(steps: StepResult[], runStatus: string): Pipe
     error: step.error,
   }));
 
-  if (runStatus === RUNNING_STATUS_VALUE) {
+  if (normalizeRunStatus(runStatus) === "running") {
     nodes.push({
       stepIndex: steps.length,
       botName: "กำลังทำงาน...",

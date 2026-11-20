@@ -1,6 +1,7 @@
 export * from "./api/use-workflow-run";
 export * from "./api/use-workflow-runs";
 export * from "./lib/pipeline";
+export * from "./lib/run-status";
 export * from "./model/types";
 export * from "./ui/pipeline-node";
 export * from "./ui/step-pipeline-view";

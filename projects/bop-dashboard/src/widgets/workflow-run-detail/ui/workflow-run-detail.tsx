@@ -65,9 +65,9 @@ export function WorkflowRunDetail({ workflowId }: WorkflowRunDetailProps) {
         </div>
       </div>
       {view === "pipeline" ? (
-        <StepPipelineView steps={run.steps} runStatus={run.status} />
+        <StepPipelineView steps={run.steps ?? []} runStatus={run.status} />
       ) : (
-        <StepResultList steps={run.steps} />
+        <StepResultList steps={run.steps ?? []} />
       )}
     </div>
   );

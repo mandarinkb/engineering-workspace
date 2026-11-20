@@ -36,4 +36,9 @@ describe("buildPipelineNodes", () => {
     expect(nodes).toHaveLength(1);
     expect(nodes[0].status).toBe("running");
   });
+
+  it("เติม node running เมื่อ status เป็นชื่อสั้นแบบที่ backend ส่งจริง (\"Running\")", () => {
+    const nodes = buildPipelineNodes(STEPS, "Running");
+    expect(nodes.at(-1)?.status).toBe("running");
+  });
 });
