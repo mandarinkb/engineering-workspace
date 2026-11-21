@@ -24,8 +24,15 @@ func (s *Server) handleGetWorkflowRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// engine คืน Steps เป็น nil ได้ (ยังไม่มี Step ไหนจบ หรือ query ผลลัพธ์ไม่ได้) ซึ่ง JSON
+	// จะออกมาเป็น null — แปลงเป็น slice ว่างตรงนี้เพื่อให้ API client วนอ่าน steps ได้เสมอ
+	steps := run.Steps
+	if steps == nil {
+		steps = []workflow.StepResult{}
+	}
+
 	writeJSON(w, http.StatusOK, workflowRunDetail{
 		workflowRunSummary: toRunSummary(run.RunSummary),
-		Steps:              run.Steps,
+		Steps:              steps,
 	})
 }
