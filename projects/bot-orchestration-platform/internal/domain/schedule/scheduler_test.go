@@ -3,6 +3,7 @@
 package schedule_test
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -54,6 +55,7 @@ func TestParseCatchupWindow(t *testing.T) {
 		{"not set uses 1 hour default", nil, time.Hour},
 		{"explicit value", seconds(120), 2 * time.Minute},
 		{"minimum 10 seconds", seconds(10), 10 * time.Second},
+		{"maximum 1 year", seconds(31_536_000), 31_536_000 * time.Second},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,6 +72,15 @@ func TestParseCatchupWindow(t *testing.T) {
 
 func TestParseCatchupWindow_RejectsShorterThan10Seconds(t *testing.T) {
 	for _, give := range []int64{9, 5, 0, -1} {
+		if _, err := schedule.ParseCatchupWindow(&give); err == nil {
+			t.Errorf("ParseCatchupWindow(%d): expected error", give)
+		}
+	}
+}
+
+func TestParseCatchupWindow_RejectsLongerThanOneYear(t *testing.T) {
+	// MaxInt64 วินาทีคูณ time.Second แล้ว overflow กลายเป็นค่าลบหรือค่าเล็ก จึงต้องเช็คก่อนคูณ
+	for _, give := range []int64{31_536_001, 9_300_000_000, math.MaxInt64} {
 		if _, err := schedule.ParseCatchupWindow(&give); err == nil {
 			t.Errorf("ParseCatchupWindow(%d): expected error", give)
 		}

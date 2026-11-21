@@ -29,6 +29,7 @@ func TestScheduleValidation_RejectsBadRequestsBeforeTouchingTemporal(t *testing.
 		{"max_attempts negative", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{},"max_attempts":-2}],"spec":{"interval_seconds":60}}`},
 		{"bad overlap policy", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60},"overlap":"not-a-policy"}`},
 		{"catch-up window shorter than 10 seconds", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60},"catchup_window_seconds":5}`},
+		{"catch-up window longer than 1 year", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60},"catchup_window_seconds":31536001}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

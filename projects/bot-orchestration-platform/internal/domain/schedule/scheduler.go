@@ -86,10 +86,13 @@ const (
 	DefaultCatchupWindow = time.Hour
 	// MinCatchupWindow คือค่าต่ำสุดที่ Temporal ยอมรับ ต่ำกว่านี้ Temporal ปฏิเสธ Schedule
 	MinCatchupWindow = 10 * time.Second
+	// MaxCatchupWindow คือ 1 ปี (ค่า default ของ Temporal เอง) — ต้องมีเพดาน เพราะวินาทีที่ใหญ่มาก
+	// คูณ time.Second แล้ว int64 overflow กลายเป็น Duration ติดลบหรือเล็กจนหลุด validation
+	MaxCatchupWindow = 365 * 24 * time.Hour
 )
 
 // ParseCatchupWindow แปลงจำนวนวินาทีที่ client ส่งมาเป็น Catch-up Window — nil (ไม่ระบุ)
-// ได้ DefaultCatchupWindow ส่วนค่าที่สั้นกว่า MinCatchupWindow ถูกปฏิเสธตั้งแต่ต้น แทนที่จะ
+// ได้ DefaultCatchupWindow ส่วนค่าที่สั้นกว่า MinCatchupWindow หรือยาวกว่า MaxCatchupWindow ถูกปฏิเสธตั้งแต่ต้น แทนที่จะ
 // ปล่อยให้ Temporal ปฏิเสธทีหลังด้วยข้อความที่ operator อ่านไม่เข้าใจ
 func ParseCatchupWindow(seconds *int64) (time.Duration, error) {
 	if seconds == nil {
@@ -97,6 +100,10 @@ func ParseCatchupWindow(seconds *int64) (time.Duration, error) {
 	}
 	if *seconds < int64(MinCatchupWindow/time.Second) {
 		return 0, errors.New("catchup_window_seconds ต้องไม่น้อยกว่า 10 วินาที")
+	}
+	// เช็คเพดานกับวินาทีดิบก่อนคูณ ไม่งั้น overflow ไปแล้วเช็คไม่ทัน
+	if *seconds > int64(MaxCatchupWindow/time.Second) {
+		return 0, errors.New("catchup_window_seconds ต้องไม่เกิน 31536000 วินาที (1 ปี)")
 	}
 	return time.Duration(*seconds) * time.Second, nil
 }

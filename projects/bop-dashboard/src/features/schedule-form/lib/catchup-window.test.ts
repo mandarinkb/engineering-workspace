@@ -23,7 +23,14 @@ describe("validateCatchupWindow", () => {
   });
 
   it("ปฏิเสธค่าที่น้อยกว่า 10 วินาที", () => {
-    expect(validateCatchupWindow("5")).toBe("Catch-up Window ต้องเป็นจำนวนเต็มอย่างน้อย 10 วินาที");
+    expect(validateCatchupWindow("5")).toBe(
+      "Catch-up Window ต้องเป็นจำนวนเต็ม 10 ถึง 31536000 วินาที",
+    );
+  });
+
+  it("ยอมรับ 1 ปีพอดี และปฏิเสธค่าที่เกิน", () => {
+    expect(validateCatchupWindow("31536000")).toBeNull();
+    expect(validateCatchupWindow("31536001")).not.toBeNull();
   });
 
   it("ปฏิเสธค่าว่างและค่าที่ไม่ใช่จำนวนเต็ม", () => {
