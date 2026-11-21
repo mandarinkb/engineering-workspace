@@ -1,0 +1,24 @@
+meta {
+  name: Drop the cookie jar (logout)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/logout
+  body: none
+  auth: none
+}
+
+docs {
+  Bruno CLI เก็บ cookie bop_session จาก login ไว้ใน cookie jar แล้วแนบให้ทุก request
+  ต่อจากนั้น แม้ request นั้นจะตั้ง header Cookie เองหรือเว้นว่างไว้ — request ที่เหลือใน
+  โฟลเดอร์นี้ต้องการ "ไม่มี session" จึงต้องล้าง jar ก่อน: logout ทำให้ server สั่งลบ
+  cookie และ jar ทิ้งไป (ตัวแปร session ใน collection ไม่ถูกแตะ request อื่นยังใช้ต่อได้)
+}
+
+tests {
+  test("logout ตอบ 204 เพื่อให้ cookie jar ทิ้ง bop_session", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

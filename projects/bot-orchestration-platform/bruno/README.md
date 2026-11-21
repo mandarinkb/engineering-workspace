@@ -33,6 +33,7 @@ RESTART_CMD="ssh minipc 'cd <โฟลเดอร์ที่ deploy> && /usr/l
 
 - รันตามลำดับโฟลเดอร์ request หลังใช้ค่าที่ request ก่อนหน้าเก็บไว้ (`session`, `jobId`, `workflowId`, `scheduleId`)
 - `01-auth/02 Login` เก็บ cookie `bop_session` ไว้ แล้ว header ของ collection ส่งต่อให้ทุก request
+- Bruno CLI เก็บ cookie จาก login ไว้ใน cookie jar แล้วแนบให้ทุก request แม้ request นั้นตั้ง header `Cookie` เองหรือเว้นว่าง — `06-require-session` (ทดสอบกรณีไม่มี session) จึงเริ่มด้วย logout เพื่อล้าง jar ก่อน; ถ้าเขียน request ใหม่ที่ต้องไม่ส่ง cookie เลย ให้วางไว้หลัง logout หรือรันด้วย `--disable-cookies`
 - `06-require-session` ทับ header `Cookie` เป็นค่าว่างทีละ request เพื่อเช็คว่าทุก endpoint ข้อมูลตอบ 401 เมื่อไม่มี session — endpoint ข้อมูลใหม่ให้เพิ่ม request ในโฟลเดอร์นี้ด้วย
 - ข้อมูลที่สร้างขึ้นต้นด้วย `bruno-` Schedule ถูกลบเองตอนจบ ส่วน Job และ Workflow Run ลบผ่าน API ไม่ได้ จึงสะสมบน stack ที่ใช้รัน
 - request ที่ต้องรอให้งาน async จบใช้ `bru.sleep()` ใน pre-request script
