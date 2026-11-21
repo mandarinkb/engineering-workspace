@@ -16,6 +16,17 @@ bru run --env local      # stack บนเครื่องตัวเอง (
 bru run 05-schedules --env minipc   # เฉพาะโฟลเดอร์เดียว (ต้อง login ก่อน: รัน 01-auth คู่กัน)
 ```
 
+### ทดสอบว่า Job อยู่รอดหลัง restart
+
+Bruno สั่ง restart container เองไม่ได้ `run-with-restart.sh` จึงรันชุดหลัก → recreate bop-api ด้วยคำสั่งใน `RESTART_CMD` → รันโฟลเดอร์ `after-restart` โดยส่ง `runMarker` เดียวกันให้ทั้งสองรอบ (`after-restart` หา Job จากรอบก่อนด้วย `bruno-run=<runMarker>` ใน url ของ config)
+
+```bash
+RESTART_CMD="ssh minipc 'cd <โฟลเดอร์ที่ deploy> && /usr/libexec/docker/cli-plugins/docker-compose up -d --force-recreate --no-deps bop-api'" \
+  ./run-with-restart.sh minipc
+```
+
+`bru run` ทั้งชุดตามปกติก็รัน `after-restart` ด้วย (ต่อท้ายชุดหลักโดยไม่มี restart คั่น) และผ่านเหมือนกัน — การพิสูจน์ persistence จริงต้องใช้สคริปต์นี้
+
 ## หลักการ
 
 - รันตามลำดับโฟลเดอร์ request หลังใช้ค่าที่ request ก่อนหน้าเก็บไว้ (`session`, `jobId`, `workflowId`, `scheduleId`)

@@ -11,7 +11,7 @@ post {
 }
 
 body:json {
-  {"url": "http://bop-api:8080/healthz"}
+  {"url": "http://bop-api:8080/healthz?bruno-run={{runMarker}}"}
 }
 
 script:post-response {
@@ -24,4 +24,9 @@ tests {
     expect(res.getBody().bot_name).to.equal("http-status-checker");
     expect(["pending", "running", "succeeded"]).to.include(res.getBody().status);
   });
+}
+
+docs {
+  `bruno-run=<runMarker>` ใน url ของ config ให้โฟลเดอร์ `after-restart` หา Job ตัวนี้เจอหลัง recreate bop-api
+  (`run-with-restart.sh` ส่ง runMarker เดียวกันให้ทั้งสองรอบ) — `/healthz` ไม่สนใจ query string
 }

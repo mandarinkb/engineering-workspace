@@ -52,6 +52,7 @@ internal/
 
   repository/              ขาออก: implement Repository port (storage)
     memory/                job + schedule repository แบบ in-memory
+    postgres/              job repository บน PostgreSQL + Connect/Migrate (migration ฝังใน binary)
 
   pkg/                     library ที่ใช้ร่วมกัน
     jwt/                   JWT HS256 เขียนเอง (ไม่รู้จัก domain)
@@ -69,7 +70,7 @@ internal/
 
 | Port | ประกาศที่ | Implementation ปัจจุบัน |
 |---|---|---|
-| `job.Repository` | `domain/job` | `repository/memory.JobRepository` |
+| `job.Repository` | `domain/job` | `repository/memory.JobRepository`, `repository/postgres.JobRepository` (เลือกตาม `BOP_DATABASE_URL` ใน `cmd/bop`) |
 | `job.Executor` | `domain/job` | `adapter/worker.Pool` |
 | `logger.Logger` | `domain/logger` | `pkg/logger.Logger` |
 | `schedule.Repository` | `domain/schedule` | `repository/memory.ScheduleRepository` |
@@ -106,7 +107,8 @@ internal/
 
 - implement `Repository` port ของ domain ทุกตัวที่เกี่ยวกับการเก็บข้อมูล
 - implementation ทุกตัวต้อง copy ค่าเข้า-ออกเสมอ ห้ามคืน pointer ที่ map ภายในถืออยู่ (ดูเหตุผลใน `repository/memory/job_repository.go`)
-- PostgreSQL implementation (roadmap Phase 0.4) ให้สร้างที่ `repository/postgres/` แล้วสลับในขั้นประกอบ dependency ของ `cmd/bop/main.go`
+- PostgreSQL implementation อยู่ที่ `repository/postgres/` (`Connect` เปิด pool ที่ทุก repository/logger ใช้ร่วมกัน, `Migrate` รันเฉพาะใน bop-api) แล้วสลับในขั้นประกอบ dependency ของ `cmd/bop/main.go`
+- contract test ของ `job.Repository` อยู่ที่ `repository/job_repository_test.go` รันชุดเดียวกันกับทุก implementation (ส่วน PostgreSQL รันเมื่อตั้ง `BOP_TEST_DATABASE_URL`)
 
 ### `pkg`
 
