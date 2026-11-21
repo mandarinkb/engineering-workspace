@@ -6,16 +6,16 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] Step มี field `max_attempts` (optional, ≥ 1) ทั้งใน Schedule และ ad-hoc Workflow Run; ค่าที่ไม่ถูกต้องตอบ 400
-- [ ] seam B: Step ที่ error ทุกครั้งกลายเป็น Failed Step หลังครบ 3 Attempt เมื่อไม่ตั้งค่า และหลังครบ `max_attempts` เมื่อตั้ง
-- [ ] seam B: error ชนิด ConfigError/UnknownBot ล้มเหลวใน Attempt แรกเสมอ
-- [ ] seam B: Step ถัดจาก Failed Step ไม่ถูกรัน และ Workflow Run ล้มเหลว
-- [ ] ใช้กับ activity ของ Bot ปกติและของ Kubernetes Job
-- [ ] `StepsEditor` ใน dashboard มีช่อง "จำนวนครั้งที่ลองสูงสุด" (ว่าง = ค่าเริ่มต้น) ใช้ได้ทั้งฟอร์ม Schedule และ Run workflow
+- [x] Step มี field `max_attempts` (optional, ≥ 1) ทั้งใน Schedule และ ad-hoc Workflow Run; ค่าที่ไม่ถูกต้องตอบ 400
+- [x] seam B: Step ที่ error ทุกครั้งกลายเป็น Failed Step หลังครบ 3 Attempt เมื่อไม่ตั้งค่า และหลังครบ `max_attempts` เมื่อตั้ง
+- [x] seam B: error ชนิด ConfigError/UnknownBot ล้มเหลวใน Attempt แรกเสมอ
+- [x] seam B: Step ถัดจาก Failed Step ไม่ถูกรัน และ Workflow Run ล้มเหลว
+- [x] ใช้กับ activity ของ Bot ปกติและของ Kubernetes Job
+- [x] `StepsEditor` ใน dashboard มีช่อง "จำนวนครั้งที่ลองสูงสุด" (ว่าง = ค่าเริ่มต้น) ใช้ได้ทั้งฟอร์ม Schedule และ Run workflow
 - [ ] deploy ขึ้น Mini PC: Workflow Run ที่ยิง URL ที่ไม่มีอยู่จริงกลายเป็น failed และขึ้นในกล่อง "ล้มเหลวล่าสุด" ของ Overview
-- [ ] golangci-lint, vitest และ eslint ผ่าน
+- [x] golangci-lint, vitest และ eslint ผ่าน
 - [ ] Bruno: สั่ง Workflow Run ที่ยิง URL ที่ไม่มีอยู่ แล้วรอจนได้ `Failed` (กำหนดเวลารอให้พอดีกับ 3 Attempt + backoff ไม่ให้ชุด test ช้าเกินจำเป็น), `max_attempts: 0` ได้ 400
-- [ ] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
+- [x] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
 - [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

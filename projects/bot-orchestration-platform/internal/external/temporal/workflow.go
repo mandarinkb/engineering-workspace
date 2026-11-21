@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"math"
 	"time"
 
 	sdktemporal "go.temporal.io/sdk/temporal"
@@ -56,6 +57,36 @@ var nonRetryableErrorTypes = []string{"ConfigError", "UnknownBot"}
 // พฤติกรรมเดิมไว้ให้ step ที่ไม่ได้ตั้งค่าอะไรเพิ่ม
 const defaultActivityTimeout = 30 * time.Second
 
+// ค่าของ RetryPolicy ที่ใช้กับทุก Step (ทั้ง activity ของ Bot และของ Kubernetes Job) — ก่อนหน้านี้
+// ไม่ได้ตั้ง MaximumAttempts ไว้ ซึ่ง Temporal ตีความเป็น "ลองใหม่ไม่จำกัด" ทำให้ Step ที่พังจริง
+// (เช่นยิง URL ที่ไม่มีอยู่) ไม่เคยกลายเป็น Failed Step และ Workflow Run ค้าง running ตลอดไป
+// backoff เริ่ม 1 วินาที คูณ 2 ทุกครั้ง สูงสุด 1 นาที ให้ error ชั่วคราวมีโอกาสหายเองโดยไม่ยิง
+// ปลายทางถี่เกินไป
+const (
+	defaultMaxAttempts      = 3
+	retryInitialInterval    = time.Second
+	retryBackoffCoefficient = 2.0
+	retryMaximumInterval    = time.Minute
+)
+
+// stepRetryPolicy สร้าง RetryPolicy ของ step หนึ่ง: ใช้ step.MaxAttempts ถ้าระบุมา มิฉะนั้นใช้
+// ค่าเริ่มต้น 3 — error ใน nonRetryableErrorTypes ยังล้มเหลวใน Attempt แรกเสมอไม่ว่าจะตั้งเท่าไร
+// ค่าที่เกิน int32 ถูกปัดลงเป็น math.MaxInt32 เพราะถ้าแปลงตรงๆ จะล้นกลายเป็นค่าติดลบ ซึ่ง
+// Temporal ตีความเป็น "ลองใหม่ไม่จำกัด" อีก
+func stepRetryPolicy(step wfdomain.Step) *sdktemporal.RetryPolicy {
+	maxAttempts := int32(defaultMaxAttempts)
+	if step.MaxAttempts != nil {
+		maxAttempts = int32(min(*step.MaxAttempts, math.MaxInt32))
+	}
+	return &sdktemporal.RetryPolicy{
+		InitialInterval:        retryInitialInterval,
+		BackoffCoefficient:     retryBackoffCoefficient,
+		MaximumInterval:        retryMaximumInterval,
+		MaximumAttempts:        maxAttempts,
+		NonRetryableErrorTypes: nonRetryableErrorTypes,
+	}
+}
+
 // Execute คือ Temporal workflow function ของ BOP — แทนที่ Runner.Trigger เวอร์ชันก่อน
 // Temporal ทั้งหมด รับ Workflow (ลำดับของ Step) มาเป็น input แล้ววน ExecuteActivity
 // ทีละ step ตามลำดับเหมือน Runner เดิมทุกประการ (step ถัดไปเริ่มได้ก็ต่อเมื่อ step ก่อน
@@ -107,9 +138,7 @@ func Execute(ctx workflow.Context, wf wfdomain.Workflow) ([]wfdomain.StepResult,
 		stepCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 			StartToCloseTimeout: timeout,
 			TaskQueue:           step.TaskQueue,
-			RetryPolicy: &sdktemporal.RetryPolicy{
-				NonRetryableErrorTypes: nonRetryableErrorTypes,
-			},
+			RetryPolicy:         stepRetryPolicy(step),
 		})
 
 		// step.K8sJob ไม่เป็น nil หมายความว่า step นี้ไม่ผ่าน bot.Bot registry เลย (ทั้ง local

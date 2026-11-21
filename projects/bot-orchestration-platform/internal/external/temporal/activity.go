@@ -68,9 +68,9 @@ func (a *Activities) Register(b bot.Bot) {
 //     temporal.NewApplicationErrorWithCause พร้อมตั้ง Type เป็น "ConfigError" ให้ตรงกับ
 //     nonRetryableErrorTypes ใน workflow.go เป๊ะ — Temporal เช็ค Type นี้เพื่อตัดสินใจว่า
 //     จะ retry activity นี้ต่อไหม ถ้าไม่ห่อแบบนี้ Temporal จะมองเป็น error ทั่วไปแล้ว retry
-//     ตาม RetryPolicy default (ซึ่งจะ retry ซ้ำไปเรื่อยๆ ทั้งที่ config ผิดเหมือนเดิมทุกครั้ง
-//     — เสียเวลาและ resource ไปฟรีๆ) ส่วน error ชนิดอื่นปล่อยเป็น error ธรรมดา ให้ Temporal
-//     retry ตาม RetryPolicy default ไป (เผื่อเป็นปัญหาชั่วคราว เช่น network timeout)
+//     จนครบจำนวน Attempt สูงสุด (ทั้งที่ config ผิดเหมือนเดิมทุกครั้ง — เสียเวลาไปฟรีๆ) ส่วน
+//     error ชนิดอื่นปล่อยเป็น error ธรรมดา ให้ Temporal retry ตาม stepRetryPolicy ใน
+//     workflow.go (เผื่อเป็นปัญหาชั่วคราว เช่น network timeout)
 //
 // หมายเหตุเรื่อง log ID (สำคัญ — อ่านก่อนแก้): เวอร์ชันก่อน Temporal (Runner เดิม) สร้าง
 // job.Job จริงลง job.Repository ให้ทุก step (ID รูปแบบ "<runID>-step<N>") ทำให้

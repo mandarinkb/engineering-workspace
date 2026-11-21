@@ -44,6 +44,9 @@ func (in Input) validate() (schedule.Policy, error) {
 	if len(in.Steps) == 0 {
 		return schedule.Policy{}, apperr.Invalid("steps must not be empty")
 	}
+	if err := workflow.ValidateSteps(in.Steps); err != nil {
+		return "", apperr.WrapInvalid(err)
+	}
 	if err := in.Spec.Validate(); err != nil {
 		return schedule.Policy{}, apperr.WrapInvalid(err)
 	}

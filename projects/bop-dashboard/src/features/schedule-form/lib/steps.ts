@@ -39,6 +39,11 @@ export function validateSteps(steps: ScheduleStep[], bots: Bot[] | undefined): s
     if (step.k8s_job && !step.k8s_job.image.trim()) {
       return `step ที่ใช้ bot "${step.bot_name}" (Kubernetes Job) ต้องกรอก "image"`;
     }
+    // max_attempts ว่างได้ (= ค่าเริ่มต้น 3 ฝั่ง backend) แต่ถ้ากรอกต้องเป็นจำนวนเต็ม ≥ 1 ตรงกับ
+    // workflow.ValidateSteps ฝั่ง Go — 0 หรือติดลบ Temporal จะตีความเป็นลองใหม่ไม่จำกัด
+    if (step.max_attempts !== undefined && (!Number.isInteger(step.max_attempts) || step.max_attempts < 1)) {
+      return `step ที่ใช้ bot "${step.bot_name}" ต้องตั้ง "จำนวนครั้งที่ลองสูงสุด" เป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป`;
+    }
   }
   return null;
 }
