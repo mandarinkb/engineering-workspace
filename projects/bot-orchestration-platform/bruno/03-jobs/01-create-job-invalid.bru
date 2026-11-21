@@ -1,0 +1,27 @@
+meta {
+  name: Create job missing required config
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/bots/http-status-checker/jobs
+  body: json
+  auth: none
+}
+
+body:json {
+  {}
+}
+
+script:post-response {
+  bru.setVar("badJobId", res.getBody().id);
+}
+
+tests {
+  // พฤติกรรมปัจจุบัน: API ไม่ตรวจ config ตอนรับ request — รับไว้ (202) แล้ว Job ล้มเหลว
+  // ตอนรัน ดู request ถัดไป ถ้าวันหนึ่งเปลี่ยนให้ตอบ 400 ทันที ต้องแก้ test คู่นี้
+  test("ตอบ 202 (ยังไม่ตรวจ config ตอนรับ request)", function () {
+    expect(res.getStatus()).to.equal(202);
+  });
+}

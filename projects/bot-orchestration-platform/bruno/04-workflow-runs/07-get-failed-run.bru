@@ -1,0 +1,28 @@
+meta {
+  name: Get failed workflow run (wait for 3 attempts)
+  type: http
+  seq: 17
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/{{failedWorkflowId}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  // 3 Attempt ตามค่าเริ่มต้น โดย backoff ระหว่าง Attempt คือ 1 วินาทีแล้ว 2 วินาที รวมราว 3 วินาที
+  // บวกเวลาที่ Temporal ใช้เริ่ม Workflow Run และ DNS lookup ที่ล้มเหลว จึงเผื่อเป็น 8 วินาที
+  await bru.sleep(8000);
+}
+
+tests {
+  test("Workflow Run จบด้วย Failed และ Step ที่ 2 ไม่ถูกรัน", function () {
+    expect(res.getStatus()).to.equal(200);
+    const run = res.getBody();
+    expect(run.status).to.equal("Failed");
+    expect(run.steps).to.have.lengthOf(1);
+    expect(run.steps[0].step_index).to.equal(0);
+    expect(run.steps[0].error, "step error").to.be.a("string").and.not.empty;
+  });
+}

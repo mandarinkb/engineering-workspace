@@ -1,0 +1,28 @@
+meta {
+  name: Create schedule duplicate id
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/schedules
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "id": "{{scheduleId}}",
+    "workflow_name": "bruno-schedule",
+    "steps": [
+      {"bot_name": "http-status-checker", "config": {"url": "http://bop-api:8080/healthz"}}
+    ],
+    "spec": {"interval_seconds": 3600}
+  }
+}
+
+tests {
+  test("ตอบ 409 เมื่อ ID ซ้ำ", function () {
+    expect(res.getStatus()).to.equal(409);
+  });
+}

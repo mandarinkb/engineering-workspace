@@ -129,12 +129,10 @@ func (j *Job) finish(to Status, now time.Time) error {
 	return nil
 }
 
-// Repository คือ interface สำหรับเก็บและค้นหา Job — ตอนนี้มี implementation เดียวคือ
-// in-memory (internal/repository/memory) ซึ่งข้อมูลจะหายไปทุกครั้งที่ restart โปรแกรม
-// เมื่อไหร่ที่ต้องการให้ job history อยู่ถาวรข้าม restart (ดู roadmap Phase 0.4)
-// ก็แค่เขียน implementation ใหม่ที่ implement interface นี้ (เช่นต่อ PostgreSQL จริง)
-// แล้วสลับตอนประกอบ dependency ใน cmd/bop/main.go — โค้ดส่วนอื่นทั้งหมดไม่ต้องแก้เลย
-// เพราะทุกที่อ้างอิงผ่าน interface นี้ ไม่เคยอ้างอิง concrete implementation ตรงๆ
+// Repository คือ interface สำหรับเก็บและค้นหา Job — มี 2 implementation: in-memory
+// (internal/repository/memory ข้อมูลหายเมื่อ restart) และ PostgreSQL
+// (internal/repository/postgres อยู่รอดข้าม restart) cmd/bop/main.go เลือกตาม
+// BOP_DATABASE_URL — โค้ดส่วนอื่นอ้างอิงผ่าน interface นี้เท่านั้น จึงไม่รู้ว่าใช้ตัวไหน
 type Repository interface {
 	// Create สร้าง job ใหม่ในระบบ ต้อง error ถ้ามี ID นี้อยู่แล้ว
 	Create(ctx context.Context, j *Job) error

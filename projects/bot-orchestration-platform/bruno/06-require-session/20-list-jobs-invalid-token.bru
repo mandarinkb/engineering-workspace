@@ -1,0 +1,21 @@
+meta {
+  name: List jobs with invalid token
+  type: http
+  seq: 21
+}
+
+get {
+  url: {{baseUrl}}/jobs
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: bop_session=not-a-valid-token
+}
+
+tests {
+  test("ตอบ 401 เมื่อ token ไม่ถูกต้อง", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

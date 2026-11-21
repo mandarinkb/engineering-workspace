@@ -20,6 +20,9 @@ export interface ScheduleStep {
   config: Record<string, string>;
   task_queue?: string;
   k8s_job?: K8sJobSpec;
+  // max_attempts คือจำนวน Attempt สูงสุดของ step (mirror จาก workflow.Step.MaxAttempts) —
+  // ไม่ส่งมา = backend ใช้ค่าเริ่มต้น 3, ส่งค่าน้อยกว่า 1 backend ตอบ 400
+  max_attempts?: number;
 }
 
 // K8sJobSpec มี field ชื่อตรงกับ JSON tag ของ workflow.K8sJobSpec ฝั่ง Go เป๊ะ — image
@@ -71,6 +74,9 @@ export interface ScheduleAction {
 // internal/schedule/schedule.go ฝั่ง backend
 export interface ScheduleDetail extends ScheduleSummary {
   overlap: OverlapPolicy;
+  // catchup_window_seconds คือ Catch-up Window ที่ตั้งอยู่จริงใน Temporal Schedule — 0 =
+  // Schedule เดิมที่ไม่เคยตั้ง (จะได้ค่าเริ่มต้น 3600 เมื่อถูกแก้ไขครั้งถัดไป)
+  catchup_window_seconds: number;
   steps?: ScheduleStep[];
   recent_actions?: ScheduleAction[];
   created_at?: string;

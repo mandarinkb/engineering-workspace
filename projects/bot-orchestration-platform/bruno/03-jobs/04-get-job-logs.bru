@@ -1,0 +1,20 @@
+meta {
+  name: Get job logs
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/jobs/{{jobId}}/logs
+  body: none
+  auth: none
+}
+
+tests {
+  test("ได้ log อย่างน้อย 1 บรรทัดที่ผูกกับ Job นี้", function () {
+    expect(res.getStatus()).to.equal(200);
+    const lines = res.getBody();
+    expect(lines).to.be.an("array").that.is.not.empty;
+    expect(lines[0].job_id).to.equal(bru.getVar("jobId"));
+  });
+}

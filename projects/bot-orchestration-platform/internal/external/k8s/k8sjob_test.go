@@ -75,7 +75,7 @@ func TestRunKubernetesJob_MissingImage(t *testing.T) {
 	activities := NewJobActivities(clientset, "default", memlogger.New())
 	env := newK8sTestEnv(t, activities.RunKubernetesJob)
 
-	_, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{})
+	_, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{}, 0)
 	if err == nil {
 		t.Fatal("expected error for missing image")
 	}
@@ -99,7 +99,7 @@ func TestRunKubernetesJob_Success(t *testing.T) {
 
 	go markFirstJobAs(t, clientset, "default", true)
 
-	val, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{Image: "example.com/report-job:v1"})
+	val, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{Image: "example.com/report-job:v1"}, 0)
 	if err != nil {
 		t.Fatalf("ExecuteActivity: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestRunKubernetesJob_Failure(t *testing.T) {
 
 	go markFirstJobAs(t, clientset, "default", false)
 
-	_, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{Image: "example.com/report-job:v1"})
+	_, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{Image: "example.com/report-job:v1"}, 0)
 	if err == nil {
 		t.Fatal("expected error for failed job")
 	}
@@ -160,7 +160,7 @@ func TestRunKubernetesJob_DefaultNamespace(t *testing.T) {
 
 	go markFirstJobAs(t, clientset, "bop-jobs", true)
 
-	if _, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{Image: "example.com/report-job:v1"}); err != nil {
+	if _, err := env.ExecuteActivity(activities.RunKubernetesJob, workflow.K8sJobSpec{Image: "example.com/report-job:v1"}, 0); err != nil {
 		t.Fatalf("ExecuteActivity: %v", err)
 	}
 

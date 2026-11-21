@@ -1,16 +1,21 @@
 // package temporal (ไม่ใช่ temporal_test) เพราะ test ไฟล์นี้ทดสอบ unexported function
-// (toScheduleSpec, fromScheduleSpec, overlapPolicyByName/overlapPolicyName) ตรงๆ โดยไม่
+// (toScheduleSpec, fromScheduleSpec, overlapPolicyByName/overlapPolicyName, scheduledSteps) ตรงๆ โดยไม่
 // ต้องพึ่ง Temporal client จริง — ย้ายมาจาก internal/api/http/schedule_internal_test.go เดิม
 // ส่วนที่ทดสอบการ validate spec/overlap ย้ายไปอยู่ที่ internal/domain/schedule แล้ว
 package temporal
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
 	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
 
+	"bop/internal/domain/bot"
 	"bop/internal/domain/schedule"
+	wfdomain "bop/internal/domain/workflow"
 )
 
 func TestToScheduleSpec_Interval(t *testing.T) {
@@ -77,5 +82,107 @@ func TestOverlapPolicyName_CoversAllKnownValues(t *testing.T) {
 		if _, ok := overlapPolicyName[policy]; !ok {
 			t.Errorf("overlapPolicyName missing entry for policy %v (name %q)", policy, name)
 		}
+	}
+}
+
+func TestReplaceSchedule_NilStateAndPolicy(t *testing.T) {
+	// schedule ที่ Temporal ส่งมาอาจไม่มี State/Policy — ผลลัพธ์ต้องมีทั้งคู่เสมอ เพราะ SDK
+	// อ่าน State.Note ตรงๆ (เดิม PUT /schedules panic ด้วยเหตุนี้)
+	policy := schedule.Policy{Overlap: schedule.OverlapSkip, CatchupWindow: time.Hour}
+	got := replaceSchedule(client.Schedule{}, client.ScheduleSpec{}, policy, &client.ScheduleWorkflowAction{ID: "wf"})
+	if got.State == nil {
+		t.Fatal("expected non-nil State")
+	}
+	if got.Policy == nil || got.Policy.Overlap != enumspb.SCHEDULE_OVERLAP_POLICY_SKIP {
+		t.Fatalf("expected Policy with overlap SKIP, got %+v", got.Policy)
+	}
+	if got.Policy.CatchupWindow != time.Hour {
+		t.Errorf("expected catch-up window 1h, got %v", got.Policy.CatchupWindow)
+	}
+}
+
+func TestReplaceSchedule_KeepsUntouchedFields(t *testing.T) {
+	current := client.Schedule{
+		Action: &client.ScheduleWorkflowAction{ID: "old"},
+		Spec:   &client.ScheduleSpec{CronExpressions: []string{"0 9 * * *"}},
+		Policy: &client.SchedulePolicies{
+			Overlap:        enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
+			CatchupWindow:  time.Hour,
+			PauseOnFailure: true,
+		},
+		State: &client.ScheduleState{Paused: true, Note: "maintenance"},
+	}
+	spec := client.ScheduleSpec{Intervals: []client.ScheduleIntervalSpec{{Every: 2 * time.Hour}}}
+
+	policy := schedule.Policy{Overlap: schedule.OverlapBufferOne, CatchupWindow: 2 * time.Minute}
+	got := replaceSchedule(current, spec, policy, &client.ScheduleWorkflowAction{ID: "new"})
+
+	if action, ok := got.Action.(*client.ScheduleWorkflowAction); !ok || action.ID != "new" {
+		t.Errorf("expected new action, got %+v", got.Action)
+	}
+	if len(got.Spec.Intervals) != 1 || len(got.Spec.CronExpressions) != 0 {
+		t.Errorf("expected spec replaced by the 2h interval, got %+v", got.Spec)
+	}
+	if got.Policy.Overlap != enumspb.SCHEDULE_OVERLAP_POLICY_BUFFER_ONE {
+		t.Errorf("expected overlap BUFFER_ONE, got %v", got.Policy.Overlap)
+	}
+	if got.Policy.CatchupWindow != 2*time.Minute {
+		t.Errorf("expected catch-up window replaced by 2m, got %v", got.Policy.CatchupWindow)
+	}
+	if !got.Policy.PauseOnFailure {
+		t.Error("expected PauseOnFailure kept")
+	}
+	if !got.State.Paused || got.State.Note != "maintenance" {
+		t.Errorf("expected paused state and note kept, got %+v", got.State)
+	}
+	if current.Policy.Overlap != enumspb.SCHEDULE_OVERLAP_POLICY_SKIP {
+		t.Error("expected the current schedule's policy not to be mutated")
+	}
+}
+
+// scheduledAction สร้าง action แบบที่ Describe คืนมา: Workflow เป็นชื่อ workflow type และ
+// Args เป็น *commonpb.Payload ที่ encode ด้วย DataConverter ตัวเดียวกับตอนสร้าง Schedule
+func scheduledAction(t *testing.T, workflowType string, args ...interface{}) *client.ScheduleWorkflowAction {
+	t.Helper()
+	payloads := make([]interface{}, 0, len(args))
+	for _, arg := range args {
+		p, err := converter.GetDefaultDataConverter().ToPayload(arg)
+		if err != nil {
+			t.Fatalf("encode arg: %v", err)
+		}
+		payloads = append(payloads, p)
+	}
+	return &client.ScheduleWorkflowAction{ID: "wf", Workflow: workflowType, Args: payloads}
+}
+
+func TestScheduledSteps_DecodesStepsFromActionArgs(t *testing.T) {
+	want := []wfdomain.Step{
+		{BotName: "http-status-checker", Config: bot.Config{"url": "https://example.com"}, TimeoutSeconds: 5},
+		{K8sJob: &wfdomain.K8sJobSpec{Image: "busybox", Args: []string{"echo", "hi"}}},
+	}
+	action := scheduledAction(t, "Execute", wfdomain.Workflow{Name: "check", Steps: want})
+
+	got, err := scheduledSteps(action)
+	if err != nil {
+		t.Fatalf("scheduledSteps: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("steps = %+v, want %+v", got, want)
+	}
+}
+
+func TestScheduledSteps_EmptyForOtherWorkflowTypes(t *testing.T) {
+	got, err := scheduledSteps(scheduledAction(t, "SomeoneElsesWorkflow", "not a bop workflow"))
+	if err != nil {
+		t.Fatalf("scheduledSteps: %v", err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Errorf("steps = %#v, want empty non-nil list", got)
+	}
+}
+
+func TestScheduledSteps_ErrorWhenArgsCannotBeDecoded(t *testing.T) {
+	if _, err := scheduledSteps(scheduledAction(t, "Execute", "not a workflow")); err == nil {
+		t.Error("expected an error for an Execute action whose args are not a workflow")
 	}
 }

@@ -1,0 +1,33 @@
+meta {
+  name: List jobs still has job from previous run
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/jobs
+  body: none
+  auth: none
+}
+
+script:post-response {
+  // หา Job ที่ 03-jobs/02-create-job สร้างในรอบก่อน restart ด้วย runMarker เดียวกัน
+  const marker = "bruno-run=" + bru.getEnvVar("runMarker");
+  const body = res.getBody();
+  const jobs = Array.isArray(body) ? body : [];
+  const found = jobs.find((j) => j.config && String(j.config.url).endsWith(marker));
+  bru.setVar("previousJobId", found ? found.id : "");
+}
+
+tests {
+  // ถ้าเก็บ Job ใน memory รายการจะว่างหลัง recreate container — ผ่านได้เมื่อเก็บใน PostgreSQL เท่านั้น
+  test("รายการยังมี Job จากรอบก่อน restart", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(bru.getVar("previousJobId")).to.be.a("string").and.not.empty;
+  });
+}
+
+docs {
+  รันหลัง recreate container bop-api ผ่าน `run-with-restart.sh` (Bruno สั่ง restart เองไม่ได้)
+  ตอน `bru run` ทั้งชุดตามปกติ โฟลเดอร์นี้รันต่อจากชุดหลักโดยไม่มี restart คั่น จึงผ่านเหมือนกัน
+}

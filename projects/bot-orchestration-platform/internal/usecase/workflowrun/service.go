@@ -7,18 +7,21 @@ import (
 	"fmt"
 
 	"bop/internal/domain/apperr"
+	"bop/internal/domain/logger"
 	"bop/internal/domain/workflow"
 	"bop/internal/pkg/idgen"
 )
 
 // Service รวม use case ทั้งหมดของ workflow run
 type Service struct {
-	engine workflow.Engine
+	engine   workflow.Engine
+	stepLogs logger.StepLogger
 }
 
-// NewService ผูก use case เข้ากับ engine ที่ส่งเข้ามา (ประกอบใน cmd/bop/main.go)
-func NewService(engine workflow.Engine) *Service {
-	return &Service{engine: engine}
+// NewService ผูก use case เข้ากับ engine และที่เก็บ log ของ Step (ประกอบใน cmd/bop/main.go —
+// ต้องเป็น storage เดียวกับที่ bop-worker เขียน ไม่งั้นจะอ่าน log ของ Step ไม่เจอ)
+func NewService(engine workflow.Engine, stepLogs logger.StepLogger) *Service {
+	return &Service{engine: engine, stepLogs: stepLogs}
 }
 
 // StartResult คือผลของการสั่งรัน — มีแค่ ID ที่พอเอาไป poll สถานะต่อผ่าน Get
@@ -42,6 +45,9 @@ func (s *Service) Start(ctx context.Context, workflowName string, steps []workfl
 	if len(steps) == 0 {
 		return nil, apperr.Invalid("steps must not be empty")
 	}
+	if err := workflow.ValidateSteps(steps); err != nil {
+		return nil, apperr.WrapInvalid(err)
+	}
 
 	workflowID := fmt.Sprintf("%s-%s", workflowName, idgen.New())
 	runID, err := s.engine.Start(ctx, workflowID, workflow.Workflow{Name: workflowName, Steps: steps})
@@ -51,9 +57,42 @@ func (s *Service) Start(ctx context.Context, workflowName string, steps []workfl
 	return &StartResult{WorkflowID: workflowID, RunID: runID}, nil
 }
 
-// List คืน workflow run ทั้งหมด (ทั้งที่กำลังรันอยู่และจบไปแล้ว)
-func (s *Service) List(ctx context.Context) ([]workflow.RunSummary, error) {
-	return s.engine.ListRuns(ctx)
+// ขนาดหน้าของรายการ Workflow Run — schedule รายนาทีสร้าง run วันละ 1,440 ตัว จึงต้อง
+// แบ่งหน้าเสมอ ขอเกิน maxPageSize ถูกปัดลงแทนที่จะ error เพื่อให้ client ขอก้อนใหญ่ได้
+// โดยไม่ต้องรู้เพดาน
+const (
+	defaultPageSize = 50
+	maxPageSize     = 200
+)
+
+// errInvalidStatus ใช้ร่วมกันระหว่าง List และ Count ให้ข้อความ error ของ status ตรงกัน
+var errInvalidStatus = apperr.Invalid("status must be one of running, completed, failed, canceled")
+
+// List คืน Workflow Run หนึ่งหน้า (ทั้งที่กำลังรันอยู่และจบไปแล้ว) — PageSize 0 แปลว่า
+// ไม่ได้ระบุ ใช้ค่าเริ่มต้น 50, ติดลบหรือสถานะที่ไม่รู้จักเป็น apperr.ErrInvalid
+func (s *Service) List(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
+	if err := validateFilter(q.Filter); err != nil {
+		return workflow.RunPage{}, err
+	}
+	switch {
+	case q.PageSize < 0:
+		return workflow.RunPage{}, apperr.Invalid("page_size must be a positive integer")
+	case q.PageSize == 0:
+		q.PageSize = defaultPageSize
+	case q.PageSize > maxPageSize:
+		q.PageSize = maxPageSize
+	}
+	return s.engine.ListRuns(ctx, q)
+}
+
+// Count นับ Workflow Run ที่ตรงกับ filter (status และ schedule_id ค่าว่าง = ไม่กรอง) —
+// Overview ใช้ตัวเลขนี้แทนการนับจากหน้าแรกของ List ซึ่งผิดทันทีที่มี run มากกว่าหนึ่งหน้า
+// filter เดียวกับ List และสถานะที่ไม่รู้จักเป็น apperr.ErrInvalid เหมือน List
+func (s *Service) Count(ctx context.Context, filter workflow.RunFilter) (int64, error) {
+	if err := validateFilter(filter); err != nil {
+		return 0, err
+	}
+	return s.engine.CountRuns(ctx, filter)
 }
 
 // Get คืนรายละเอียด run เดียวรวมผลลัพธ์ทีละ step — id คือ workflow ID
@@ -61,7 +100,31 @@ func (s *Service) Get(ctx context.Context, id string) (*workflow.RunDetail, erro
 	return s.engine.GetRun(ctx, id)
 }
 
+// StepLogs คืน log ทุก Attempt ของ Step ลำดับที่ stepIndex (เริ่มที่ 0) ของ run นั้นเรียงตามเวลา —
+// ลำดับ Step ที่ไม่มีใน Workflow ของ run คืน apperr.ErrNotFound ส่วน Step ที่มีจริงแต่ยังไม่ได้รัน
+// (เช่น Step หลัง Failed Step) คืน slice ว่าง
+func (s *Service) StepLogs(ctx context.Context, id string, stepIndex int) ([]logger.StepLine, error) {
+	wf, err := s.engine.GetRunWorkflow(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if stepIndex < 0 || stepIndex >= len(wf.Steps) {
+		return nil, apperr.WrapNotFound(fmt.Errorf(
+			"workflow run %s has no step %d (it has %d steps)", id, stepIndex, len(wf.Steps)))
+	}
+	return s.stepLogs.StepHistory(ctx, id, stepIndex)
+}
+
 // Ready คืน error ถ้าต่อ engine ไม่ได้ (ใช้กับ readiness probe)
 func (s *Service) Ready(ctx context.Context) error {
 	return s.engine.CheckHealth(ctx)
+}
+
+// validateFilter ตรวจเงื่อนไขกรองที่ใช้ร่วมกันทุก use case ที่อ่านรายการ Workflow Run —
+// ScheduleID รับได้ทุกค่าเพราะ Schedule ID ไม่มีรูปแบบบังคับ (engine เป็นคน escape เอง)
+func validateFilter(f workflow.RunFilter) error {
+	if !f.Status.Valid() {
+		return errInvalidStatus
+	}
+	return nil
 }

@@ -1,0 +1,26 @@
+meta {
+  name: Get workflow run (wait until completed)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/{{workflowId}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  await bru.sleep(4000);
+}
+
+tests {
+  test("Workflow Run จบด้วย Completed และมีผลของ 1 Step", function () {
+    expect(res.getStatus()).to.equal(200);
+    const run = res.getBody();
+    expect(run.status).to.equal("Completed");
+    expect(run.steps).to.have.lengthOf(1);
+    expect(run.steps[0].bot_name).to.equal("http-status-checker");
+    expect(run.steps[0].error, "step error").to.not.exist;
+  });
+}

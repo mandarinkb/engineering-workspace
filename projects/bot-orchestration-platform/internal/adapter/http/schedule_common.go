@@ -2,7 +2,7 @@
 // คนละไฟล์: create_schedule.go, list_schedules.go, ...)
 //
 // handler ของ schedule ทำแค่แปลง JSON <-> schedule usecase (internal/usecase/schedule) — การ
-// validate, ลำดับการเรียก scheduler กับ repository, และ compensation อยู่ที่ usecase ส่วน
+// validate และลำดับการเรียก scheduler อยู่ที่ usecase ส่วน
 // การเรียก Temporal Schedules จริงอยู่ที่ internal/external/temporal/scheduler.go
 
 package http
@@ -40,14 +40,16 @@ type scheduleSummary struct {
 }
 
 // scheduleDetail ต่อยอดจาก scheduleSummary เพิ่มรายละเอียดที่ต้อง describe เท่านั้นถึง
-// จะได้ (overlap policy, ประวัติการรันล่าสุด, เวลาสร้าง) บวกกับ Steps ที่มาจาก
-// schedule.Repository ของ BOP เอง (อาจว่างเปล่าได้ ดูหมายเหตุที่ scheduleuc.Service.Get)
+// จะได้ (overlap policy, ประวัติการรันล่าสุด, เวลาสร้าง) และ Steps ที่ถอดรหัสจาก Temporal
+// Schedule — ส่ง steps เสมอ (รายการว่างถ้า Schedule ไม่ได้สั่งรัน Workflow ของ BOP)
+// CatchupWindowSeconds คือ Catch-up Window ที่ตั้งอยู่จริงใน Temporal Schedule
 type scheduleDetail struct {
 	scheduleSummary
-	Overlap       string           `json:"overlap"`
-	Steps         []workflow.Step  `json:"steps,omitempty"`
-	RecentActions []scheduleAction `json:"recent_actions,omitempty"`
-	CreatedAt     time.Time        `json:"created_at,omitempty"`
+	Overlap              string           `json:"overlap"`
+	CatchupWindowSeconds int64            `json:"catchup_window_seconds"`
+	Steps                []workflow.Step  `json:"steps"`
+	RecentActions        []scheduleAction `json:"recent_actions,omitempty"`
+	CreatedAt            time.Time        `json:"created_at,omitempty"`
 }
 
 type scheduleAction struct {
@@ -74,11 +76,12 @@ func toScheduleDetail(d *schedule.Detail) *scheduleDetail {
 		actions = append(actions, scheduleAction{ScheduleTime: a.ScheduleTime, ActualTime: a.ActualTime, WorkflowID: a.WorkflowID})
 	}
 	return &scheduleDetail{
-		scheduleSummary: toScheduleSummary(d.Summary),
-		Overlap:         string(d.Overlap),
-		Steps:           d.Steps,
-		RecentActions:   actions,
-		CreatedAt:       d.CreatedAt,
+		scheduleSummary:      toScheduleSummary(d.Summary),
+		Overlap:              string(d.Overlap),
+		CatchupWindowSeconds: int64(d.CatchupWindow / time.Second),
+		Steps:                d.Steps,
+		RecentActions:        actions,
+		CreatedAt:            d.CreatedAt,
 	}
 }
 

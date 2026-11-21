@@ -15,18 +15,61 @@ import (
 //   - logs: เก็บ log ทั้งหมดของแต่ละ job แบบ append-only list (ไว้ตอบ History)
 //   - subs: เก็บรายชื่อ channel ของทุกคนที่กำลัง "ฟัง" log ของแต่ละ job อยู่แบบ real-time
 //     (ไว้ตอบ Subscribe และกระจายข้อความใหม่ให้ทุกคนที่ฟังอยู่พร้อมกัน)
+//
+// และ log ของ Step แยกอีกส่วน (stepLogs) — ใน memory อ่านได้เฉพาะ process ที่เขียนเท่านั้น
+// bop-worker ที่ไม่ได้ตั้ง BOP_DATABASE_URL จึงเห็น log ของ Step แค่ใน process ตัวเอง
 type Logger struct {
-	mu   sync.Mutex                    // ป้องกัน logs และ subs ด้านล่างจากการเข้าถึงพร้อมกัน
-	logs map[string][]logger.Line      // job ID -> log ทั้งหมดของ job นั้น (เรียงตามเวลา)
-	subs map[string][]chan logger.Line // job ID -> รายการ channel ของคนที่กำลังฟัง log ของ job นั้นแบบสด
+	mu       sync.Mutex                    // ป้องกัน logs, subs และ stepLogs ด้านล่างจากการเข้าถึงพร้อมกัน
+	logs     map[string][]logger.Line      // job ID -> log ทั้งหมดของ job นั้น (เรียงตามเวลา)
+	subs     map[string][]chan logger.Line // job ID -> รายการ channel ของคนที่กำลังฟัง log ของ job นั้นแบบสด
+	stepLogs map[stepKey][]logger.StepLine // Step -> log ทุก Attempt ของ Step นั้น (เรียงตามเวลา)
 }
+
+// stepKey คือ Step หนึ่งใน Workflow Run (ทุก Attempt ใช้ key เดียวกัน)
+type stepKey struct {
+	workflowID string
+	stepIndex  int
+}
+
+var (
+	_ logger.Logger     = (*Logger)(nil)
+	_ logger.StepLogger = (*Logger)(nil)
+)
 
 // New สร้าง logger เปล่าๆ พร้อมใช้งาน
 func New() *Logger {
 	return &Logger{
-		logs: make(map[string][]logger.Line),
-		subs: make(map[string][]chan logger.Line),
+		logs:     make(map[string][]logger.Line),
+		subs:     make(map[string][]chan logger.Line),
+		stepLogs: make(map[stepKey][]logger.StepLine),
 	}
+}
+
+// LogStep บันทึก log หนึ่งบรรทัดของ Attempt หนึ่งของ Step
+func (l *Logger) LogStep(_ context.Context, owner logger.StepAttempt, level logger.Level, message string) {
+	line := logger.StepLine{
+		WorkflowID: owner.WorkflowID,
+		StepIndex:  owner.StepIndex,
+		Attempt:    owner.Attempt,
+		Time:       time.Now(),
+		Level:      level,
+		Message:    message,
+	}
+	key := stepKey{workflowID: owner.WorkflowID, stepIndex: owner.StepIndex}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.stepLogs[key] = append(l.stepLogs[key], line)
+}
+
+// StepHistory คืน log ทุก Attempt ของ Step นั้น (copy ออกมาก่อนคืนเหมือน History)
+func (l *Logger) StepHistory(_ context.Context, workflowID string, stepIndex int) ([]logger.StepLine, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	lines := l.stepLogs[stepKey{workflowID: workflowID, stepIndex: stepIndex}]
+	out := make([]logger.StepLine, len(lines))
+	copy(out, lines)
+	return out, nil
 }
 
 // Log บันทึก log หนึ่งบรรทัด แล้วส่งต่อให้ทุก subscriber ของ job นั้นทันที

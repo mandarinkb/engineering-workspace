@@ -1,0 +1,46 @@
+meta {
+  name: Count completed workflow runs of a schedule
+  type: http
+  seq: 25
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/count?schedule_id=check-example-com-schedule&status=completed
+  body: none
+  auth: none
+}
+
+params:query {
+  schedule_id: check-example-com-schedule
+  status: completed
+}
+
+script:post-response {
+  // Schedule ตัวอย่างรันทุกนาที จำนวน completed จึงเพิ่มระหว่างรัน — เทียบเท่ากันตรงๆ ไม่ได้
+  // เดินหน้า GET /workflow-runs ด้วย filter เดียวกัน (page_size 200) อย่างมาก 2 หน้า แล้วเช็คว่า
+  // count ไม่น้อยกว่าจำนวนที่เดินได้ (run ใหม่มีแต่ทำให้ count เพิ่ม ไม่ลด)
+  // bru.sendRequest ไม่ได้ header ของ collection จึงแนบ cookie เอง
+  const headers = { Cookie: `bop_session=${bru.getVar("session")}` };
+  const base = `${bru.getEnvVar("baseUrl")}/workflow-runs?schedule_id=check-example-com-schedule&status=completed&page_size=200`;
+  let walked = 0;
+  let token = "";
+  for (let page = 0; page < 2; page += 1) {
+    const url = token ? `${base}&page_token=${encodeURIComponent(token)}` : base;
+    const resp = await bru.sendRequest({ method: "GET", url, headers });
+    walked += resp.data.runs.length;
+    token = resp.data.next_page_token;
+    if (!token) break;
+  }
+  bru.setVar("scheduleCompletedWalked", walked);
+}
+
+tests {
+  test("ตอบ { count } เป็นจำนวนเต็ม", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().count).to.be.a("number");
+  });
+
+  test("count ไม่น้อยกว่าจำนวนที่เดินหน้าด้วย filter เดียวกัน", function () {
+    expect(res.getBody().count).to.be.at.least(bru.getVar("scheduleCompletedWalked"));
+  });
+}

@@ -1,0 +1,17 @@
+meta {
+  name: Get logs of a step position that does not exist
+  type: http
+  seq: 21
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/{{failedWorkflowId}}/steps/2/logs
+  body: none
+  auth: none
+}
+
+tests {
+  test("ลำดับ Step ที่ไม่มีจริงตอบ 404", function () {
+    expect(res.getStatus()).to.equal(404);
+  });
+}

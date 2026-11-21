@@ -1,0 +1,19 @@
+meta {
+  name: Count all workflow runs
+  type: http
+  seq: 23
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/count
+  body: none
+  auth: none
+}
+
+tests {
+  test("ไม่ส่ง status นับทุกสถานะ จึงไม่น้อยกว่าจำนวนที่ล้มเหลว", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().count).to.be.a("number");
+    expect(res.getBody().count).to.be.at.least(bru.getVar("failedRunsCount"));
+  });
+}

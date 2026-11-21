@@ -1,0 +1,25 @@
+meta {
+  name: Create schedule without session
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/schedules
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: 
+}
+
+body:json {
+  {}
+}
+
+tests {
+  test("ตอบ 401 เมื่อไม่มี session", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

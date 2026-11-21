@@ -49,7 +49,7 @@ const jobTTLSecondsAfterFinished = int32(300)
 type JobActivities struct {
 	clientset        kubernetes.Interface
 	defaultNamespace string
-	log              logger.Logger
+	log              logger.StepLogger
 	pollInterval     time.Duration
 }
 
@@ -58,7 +58,7 @@ type JobActivities struct {
 // construction เพราะ local dev ยังไม่มี cluster) defaultNamespace คือ namespace ที่ Job
 // จะถูกสร้างถ้า Step.K8sJob.Namespace ไม่ได้ระบุมา (แนะนำใช้ namespace แยกจาก BOP เอง
 // เช่น "bop-jobs" ดู K8S-JOB-HYBRID-EXECUTION-TODO.md Open Question ข้อ 3)
-func NewJobActivities(clientset kubernetes.Interface, defaultNamespace string, log logger.Logger) *JobActivities {
+func NewJobActivities(clientset kubernetes.Interface, defaultNamespace string, log logger.StepLogger) *JobActivities {
 	return &JobActivities{
 		clientset:        clientset,
 		defaultNamespace: defaultNamespace,
@@ -86,7 +86,10 @@ func NewJobActivities(clientset kubernetes.Interface, defaultNamespace string, l
 // return — หลักการเดียวกับที่ externaljob ต้อง kill ทั้ง process group ตอน cancel ไม่ใช่
 // ปล่อย orphan ทิ้งไว้ (ที่นี่ "orphan" คือ Job/Pod ที่ยังรันต่อใน cluster ทั้งที่ Temporal
 // ถือว่า activity นี้จบไปแล้ว)
-func (a *JobActivities) RunKubernetesJob(ctx context.Context, spec workflow.K8sJobSpec) (string, error) {
+//
+// stepIndex คือลำดับ Step ที่ Execute ส่งมา ใช้ผูก log กับ workflow ID + ลำดับ Step + Attempt
+// เหมือน Activities.RunStep เพื่อให้อ่านผ่าน GET /workflow-runs/{id}/steps/{index}/logs ได้
+func (a *JobActivities) RunKubernetesJob(ctx context.Context, spec workflow.K8sJobSpec, stepIndex int) (string, error) {
 	if spec.Image == "" {
 		err := fmt.Errorf("k8sjob: missing required field %q", "image")
 		return "", sdktemporal.NewApplicationErrorWithCause(err.Error(), "ConfigError", err)
@@ -99,8 +102,12 @@ func (a *JobActivities) RunKubernetesJob(ctx context.Context, spec workflow.K8sJ
 
 	info := activity.GetInfo(ctx)
 	name := k8sJobName(info)
-	logID := fmt.Sprintf("%s-%s", info.WorkflowExecution.ID, info.ActivityID)
-	log := func(msg string) { a.log.Log(ctx, logID, logger.LevelInfo, msg) }
+	owner := logger.StepAttempt{
+		WorkflowID: info.WorkflowExecution.ID,
+		StepIndex:  stepIndex,
+		Attempt:    int(info.Attempt),
+	}
+	log := func(msg string) { a.log.LogStep(ctx, owner, logger.LevelInfo, msg) }
 
 	job := buildJobObject(name, ns, spec)
 	if _, err := a.clientset.BatchV1().Jobs(ns).Create(ctx, job, metav1.CreateOptions{}); err != nil {
@@ -125,7 +132,7 @@ func (a *JobActivities) RunKubernetesJob(ctx context.Context, spec workflow.K8sJ
 // buildJobObject สร้าง batchv1.Job object จาก workflow.K8sJobSpec — RestartPolicyNever คู่กับ
 // BackoffLimit=0 (ไม่ใช่ OnFailure) เพราะไม่ต้องการให้ K8s พยายามรัน container ซ้ำเองเลย
 // แม้แต่ครั้งเดียวถ้า fail — retry decision ทั้งหมดเป็นหน้าที่ของ Temporal RetryPolicy
-// (nonRetryableErrorTypes ด้านบนไฟล์ internal/external/temporal/workflow.go) แต่ผู้เดียว ถ้าปล่อยให้ K8s Job มี
+// (stepRetryPolicy ใน internal/external/temporal/workflow.go) แต่ผู้เดียว ถ้าปล่อยให้ K8s Job มี
 // BackoffLimit>0 ด้วย จะเกิด retry ซ้อนกัน 2 ชั้น (K8s retry ข้างในหนึ่ง Activity attempt,
 // Temporal retry ทั้ง Activity อีกชั้น) ซึ่ง debug ยากมากว่า "ทำไม job นี้รันไปแล้วกี่รอบ"
 func buildJobObject(name, namespace string, spec workflow.K8sJobSpec) *batchv1.Job {

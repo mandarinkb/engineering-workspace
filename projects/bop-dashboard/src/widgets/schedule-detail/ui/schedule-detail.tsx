@@ -59,6 +59,9 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
         <ScheduleStatusBadge paused={schedule.paused} />
         <span className="text-sm text-gray-500">Workflow: {schedule.workflow_name}</span>
         <span className="text-sm text-gray-500">Overlap: {schedule.overlap}</span>
+        <span className="text-sm text-gray-500">
+          Catch-up Window: {schedule.catchup_window_seconds > 0 ? `${schedule.catchup_window_seconds} วินาที` : "ไม่ได้ตั้ง"}
+        </span>
       </div>
 
       <div className="flex flex-wrap gap-2">

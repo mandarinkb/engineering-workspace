@@ -1,0 +1,23 @@
+meta {
+  name: Get job (wait until finished)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/jobs/{{jobId}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  // Job รันแบบ async — รอให้จบก่อนค่อยอ่าน
+  await bru.sleep(3000);
+}
+
+tests {
+  test("Job จบด้วยสถานะ succeeded", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().status).to.equal("succeeded");
+  });
+}

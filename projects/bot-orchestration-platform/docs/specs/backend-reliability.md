@@ -133,7 +133,7 @@
 - `GET /workflow-runs` รับ `page_size` (default 50, สูงสุด 200 ปัดลง), `page_token` (opaque จาก Temporal), `status` (running | completed | failed | canceled; failed รวม terminated และ timed out), `schedule_id`
 - response เปลี่ยนจาก array เป็น object: `{ "runs": [...], "next_page_token": "..." }` (ไม่มีหน้าถัดไป = ว่าง) — breaking change, dashboard แก้ในรอบเดียวกัน
 - แต่ละ run มี `schedule_id` (มาจาก search attribute `TemporalScheduledById`; ว่างสำหรับ run ที่สั่งเอง)
-- endpoint ใหม่ `GET /workflow-runs/count?status=` ใช้ CountWorkflowExecutions คืน `{ "count": n }`
+- endpoint ใหม่ `GET /workflow-runs/count?status=` ใช้ CountWorkflowExecutions คืน `{ "count": n }` — รับ `schedule_id` ด้วย (filter เดียวกับ list)
 - ตามไป Temporal ด้วย `NextPageToken` จริง ไม่ใช่เรียกหน้าเดียวแบบเดิม
 
 ### steps เป็นรายการว่าง
@@ -149,7 +149,7 @@
 ## Testing Decisions
 
 - test ที่ดีตรวจพฤติกรรมที่มองเห็นจากภายนอก (HTTP response, สถานะ Workflow Run, สิ่งที่อ่านได้หลัง restart) ไม่ตรวจรายละเอียดภายใน เช่นชื่อ column หรือลำดับการเรียก method
-- **Seam A (ใหม่) — HTTP API กับ stack จริง**: Temporal dev server + PostgreSQL ใน container รันบน Mini PC (Mac ไม่มี Docker) ครอบคลุม Catch-up Window ที่ตั้งผ่าน API แล้วอ่านกลับจาก Temporal ได้, steps ของ Schedule จาก Temporal รวม Schedule ที่สร้างนอก API, การแบ่งหน้า/filter/count ของ Workflow Run, log ของ Step รวมหลาย Attempt, Job และ log ยังอยู่หลัง restart API, `steps: []`
+- **Seam A (ใหม่) — Bruno collection ยิง HTTP API แบบ black-box กับ stack ที่รันอยู่จริง** (`bru run --env minipc`) ครอบคลุม Catch-up Window ที่ตั้งผ่าน API แล้วอ่านกลับได้, steps ของ Schedule จาก Temporal, การแบ่งหน้า/filter/count ของ Workflow Run, log ของ Step รวมหลาย Attempt, `steps: []` — Step ที่ต้องล้มเหลวใช้ Bot จริงยิง URL ที่ไม่มีอยู่ (ใส่ stub Bot แบบ in-process ไม่ได้) และกรณี "อยู่รอดหลัง restart" ใช้การ recreate container `bop-api` คั่นระหว่างการรัน collection
 - **Seam B (มีอยู่แล้ว) — Temporal workflow testsuite** ของ `Execute`: Step ล้มเหลวหลังครบ `max_attempts`, ค่าเริ่มต้น 3, error ที่ retry ไม่ได้ล้มเหลวใน Attempt แรก, Step ถัดไปไม่รัน — prior art คือ `TestExecute_StopsAtFirstFailedStep`
 - **Seam C (มีอยู่แล้ว) — dashboard**: vitest สำหรับ logic ล้วน (prior art: filter ของ workflow run, `validateSteps`) และ Playwright กับ stack บน Mini PC สำหรับฟอร์ม, "โหลดเพิ่ม", dropdown Schedule และตัวเลข Overview
 - HTTP test เดิมที่สร้าง server ด้วย Temporal client เป็น nil ยังใช้ทดสอบส่วนที่ไม่แตะ Temporal ต่อไป (เช่น validation ของ input) — prior art คือ `newTestServer`

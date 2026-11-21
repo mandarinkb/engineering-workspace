@@ -1,0 +1,40 @@
+meta {
+  name: Get logs of the failed step (all 3 attempts)
+  type: http
+  seq: 19
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/{{failedWorkflowId}}/steps/0/logs
+  body: none
+  auth: none
+}
+
+tests {
+  test("ตอบ 200 พร้อม log ของ Step ที่ล้มเหลวครบ 3 Attempt", function () {
+    expect(res.getStatus()).to.equal(200);
+    const lines = res.getBody();
+    expect(lines).to.be.an("array").that.is.not.empty;
+    const attempts = [...new Set(lines.map((l) => l.attempt))];
+    expect(attempts).to.deep.equal([1, 2, 3]);
+  });
+
+  test("ทุกบรรทัดเป็นของ Step นี้ และเรียงตามเวลา", function () {
+    const lines = res.getBody();
+    for (const l of lines) {
+      expect(l.workflow_id).to.equal(bru.getVar("failedWorkflowId"));
+      expect(l.step_index).to.equal(0);
+      expect(l.message).to.be.a("string");
+    }
+    const times = lines.map((l) => Date.parse(l.time));
+    expect(times).to.deep.equal([...times].sort((a, b) => a - b));
+  });
+
+  test("ทุก Attempt มีบรรทัด error บอกสาเหตุที่ล้มเหลว", function () {
+    const lines = res.getBody();
+    for (const attempt of [1, 2, 3]) {
+      const errors = lines.filter((l) => l.attempt === attempt && l.level === "error");
+      expect(errors, "error line of attempt " + attempt).to.have.lengthOf(1);
+    }
+  });
+}

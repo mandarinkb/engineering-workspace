@@ -3,57 +3,53 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { useWorkflowRuns, WorkflowStatusBadge } from "@/entities/workflow-run";
+import { useSchedules } from "@/entities/schedule";
+import {
+  flattenRunPages,
+  useWorkflowRunPages,
+  WorkflowStatusBadge,
+  type RunStatusFilter,
+} from "@/entities/workflow-run";
 
-import { filterRuns, RUN_STATUS_FILTER_LABELS, type RunStatusFilter } from "../lib/filter-runs";
-
-const PAGE_SIZE = 20;
+import { RUN_STATUS_FILTER_LABELS } from "../lib/filter-runs";
 
 // WorkflowRunTable แสดง workflow_id (ไม่ใช่ workflow_name ซึ่งเป็นชื่อ workflow type "Execute"
-// เหมือนกันทุกแถว) พร้อม filter สถานะ/ค้นหา และแบ่งหน้าฝั่ง client เหมือน job-table — schedule
-// ที่รันทุกนาทีสร้าง run วันละ 1,440 ตัว ตารางที่ไม่แบ่งหน้าจะยาวไม่จบ
+// เหมือนกันทุกแถว) โหลดทีละหน้าจาก backend ด้วยปุ่ม "โหลดเพิ่ม" — schedule ที่รันทุกนาทีสร้าง
+// run วันละ 1,440 ตัว โหลดทั้งหมดมาแบ่งหน้าฝั่ง client แบบเดิมไม่ไหว ทั้ง filter สถานะและ
+// Schedule ส่งไปกรองฝั่ง server — dropdown Schedule แทนช่องค้นหา prefix ของ workflow ID เดิม
+// เพราะ prefix ชนกันได้ (Schedule "check" ติด run ของ "check-example-com" มาด้วย) และกรองได้
+// แค่แถวที่โหลดมาแล้ว
 export function WorkflowRunTable() {
-  const { data: runs, isLoading, isError, error } = useWorkflowRuns();
   const [status, setStatus] = useState<RunStatusFilter>("");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const [scheduleId, setScheduleId] = useState("");
+  const schedules = useSchedules();
+  const { data, isLoading, isError, error, hasNextPage, fetchNextPage, isFetchingNextPage } = useWorkflowRunPages({
+    status,
+    scheduleId,
+  });
 
-  if (isLoading) {
-    return <p className="text-gray-500">กำลังโหลด workflow run...</p>;
-  }
-  if (isError) {
-    return <p className="text-red-600">โหลด workflow run ไม่สำเร็จ: {error.message}</p>;
-  }
-  if (!runs || runs.length === 0) {
-    return <p className="text-gray-500">ยังไม่มี workflow run เลย</p>;
-  }
-
-  const filtered = filterRuns(runs, { status, search });
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  // ข้อมูล refetch ทุก 10 วินาที จำนวนหน้าอาจลดลงได้ — clamp ไว้ไม่ให้ค้างอยู่หน้าที่ไม่มีแล้ว
-  const currentPage = Math.min(page, totalPages);
-  const rows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const rows = flattenRunPages(data?.pages ?? []);
+  const filtered = status !== "" || scheduleId !== "";
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setPage(1);
-          }}
-          placeholder="ค้นหา workflow ID / ชื่อ schedule..."
-          aria-label="ค้นหา workflow ID"
-          className="w-72 rounded border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-transparent"
-        />
+        <select
+          value={scheduleId}
+          onChange={(event) => setScheduleId(event.target.value)}
+          aria-label="กรองตาม Schedule"
+          className="max-w-72 rounded border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-transparent"
+        >
+          <option value="">ทุก Schedule (รวมที่สั่งเอง)</option>
+          {(schedules.data ?? []).map((schedule) => (
+            <option key={schedule.id} value={schedule.id}>
+              {schedule.id}
+            </option>
+          ))}
+        </select>
         <select
           value={status}
-          onChange={(event) => {
-            setStatus(event.target.value as RunStatusFilter);
-            setPage(1);
-          }}
+          onChange={(event) => setStatus(event.target.value as RunStatusFilter)}
           aria-label="กรองตามสถานะ"
           className="rounded border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-transparent"
         >
@@ -64,12 +60,20 @@ export function WorkflowRunTable() {
             </option>
           ))}
         </select>
-        <span className="text-sm text-gray-500 dark:text-gray-400">
-          {filtered.length} จาก {runs.length} run
-        </span>
+        {data && (
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {rows.length} run ที่โหลดแล้ว{hasNextPage ? "" : " (ครบแล้ว)"}
+          </span>
+        )}
       </div>
 
-      {rows.length === 0 ? (
+      {isLoading ? (
+        <p className="text-gray-500">กำลังโหลด workflow run...</p>
+      ) : isError ? (
+        <p className="text-red-600">โหลด workflow run ไม่สำเร็จ: {error.message}</p>
+      ) : rows.length === 0 && !filtered ? (
+        <p className="text-gray-500">ยังไม่มี workflow run เลย</p>
+      ) : rows.length === 0 ? (
         <p className="text-gray-500">ไม่มี workflow run ที่ตรงกับตัวกรอง</p>
       ) : (
         <table className="w-full border-collapse text-left text-sm">
@@ -77,6 +81,8 @@ export function WorkflowRunTable() {
             <tr className="border-b border-gray-200 text-gray-500 dark:border-gray-700">
               {/* กว้าง 60% ให้ ID เต็มของ run จาก schedule (ราว 40 ตัวอักษร) ไม่โดนตัดตรงส่วนเวลา ซึ่งเป็นส่วนที่แยกแต่ละ run */}
               <th className="w-3/5 py-2 pr-4">Workflow ID</th>
+              {/* ว่าง = run ที่สั่งเอง แสดงไว้ให้แยก run จาก Schedule กับที่สั่งเองได้ในตารางที่ไม่ได้กรอง */}
+              <th className="w-1/5 py-2 pr-4">Schedule</th>
               <th className="py-2 pr-4">Status</th>
               <th className="py-2 pr-4">เริ่มเมื่อ</th>
             </tr>
@@ -96,6 +102,9 @@ export function WorkflowRunTable() {
                     {run.workflow_id}
                   </Link>
                 </td>
+                <td className="max-w-0 truncate py-2 pr-4 text-gray-500 dark:text-gray-400" title={run.schedule_id}>
+                  {run.schedule_id || "สั่งเอง"}
+                </td>
                 <td className="py-2 pr-4">
                   <WorkflowStatusBadge status={run.status} />
                 </td>
@@ -108,26 +117,15 @@ export function WorkflowRunTable() {
         </table>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex items-center gap-3 text-sm">
+      {hasNextPage && (
+        <div className="text-sm">
           <button
             type="button"
-            disabled={currentPage <= 1}
-            onClick={() => setPage(currentPage - 1)}
+            disabled={isFetchingNextPage}
+            onClick={() => fetchNextPage()}
             className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
           >
-            ก่อนหน้า
-          </button>
-          <span className="text-gray-500 dark:text-gray-400">
-            หน้า {currentPage} / {totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={currentPage >= totalPages}
-            onClick={() => setPage(currentPage + 1)}
-            className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
-          >
-            ถัดไป
+            {isFetchingNextPage ? "กำลังโหลด..." : "โหลดเพิ่ม"}
           </button>
         </div>
       )}

@@ -1,0 +1,33 @@
+meta {
+  name: Update schedule
+  type: http
+  seq: 10
+}
+
+put {
+  url: {{baseUrl}}/schedules/{{scheduleId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "workflow_name": "bruno-schedule",
+    "steps": [
+      {"bot_name": "http-status-checker", "config": {"url": "http://bop-api:8080/readyz"}}
+    ],
+    "spec": {"interval_seconds": 7200},
+    "catchup_window_seconds": 120
+  }
+}
+
+tests {
+  test("ตอบ 200 พร้อมค่าใหม่ และกลับมา active", function () {
+    expect(res.getStatus()).to.equal(200);
+    const s = res.getBody();
+    expect(s.interval_seconds).to.equal(7200);
+    expect(s.paused).to.equal(false);
+    expect(s.steps[0].config.url).to.equal("http://bop-api:8080/readyz");
+    expect(s.catchup_window_seconds).to.equal(120);
+  });
+}

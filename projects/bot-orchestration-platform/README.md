@@ -16,7 +16,7 @@ Phase 0 (`Golang: สร้าง Bot Execution Engine`) ทำแล้ว: `Bo
 
 - [ ] Bot ตัวที่สองที่ใช้ `chromedp` (headless browser) พิสูจน์ว่า interface รองรับ implementation ที่ซับซ้อนกว่า HTTP GET ธรรมดา
 - [ ] แยก error type retryable/non-retryable ด้วย `errors.Is`/`errors.As` (ตอนนี้ error จาก bot แค่ถูกเก็บเป็น string ธรรมดา)
-- [ ] PostgreSQL implementation ของ `job.Repository` (ตอนนี้มีแค่ in-memory)
+- [x] PostgreSQL implementation ของ `job.Repository` (`internal/repository/postgres` — ดูหัวข้อ "PostgreSQL ของ BOP")
 - [ ] Table-driven test ของ logic parse ข้อมูล + `httptest.Server` mock (มี test ของ worker pool/workflow runner/scheduler แล้ว แต่ยังไม่มีของ logic parse ข้อมูลจริงจัง เพราะยังไม่มี bot ที่ parse อะไรซับซ้อน)
 
 ## สถาปัตยกรรม
@@ -34,12 +34,12 @@ cmd/bop-worker/main.go   composition root ของ Temporal Worker process — 
    │   ├── job          Job entity + Repository + Executor port (json tag snake_case)
    │   ├── logger       Logger interface (persist + live-subscribe ในตัวเดียว)
    │   ├── workflow     Workflow/Step/StepResult (input schema ของ Temporal workflow) + Engine port
-   │   ├── schedule     Definition + Repository + Spec/Overlap (กฎ validate) + Scheduler port
+   │   ├── schedule     Spec/Overlap/Policy (กฎ validate) + Scheduler port
    │   └── apperr       ประเภท error กลาง (Invalid/NotFound/Conflict) ที่ HTTP แปลงเป็น status code
    │
    ├── internal/usecase               application logic — รู้จักแค่ port ใน domain
    │   ├── job          สร้าง/ดู/ยกเลิก job เดี่ยว + log (POST /bots/{name}/jobs, /jobs/...)
-   │   ├── workflowrun  สั่งรัน workflow แบบ ad-hoc + ดูสถานะ run (/workflow-runs, /readyz)
+   │   ├── workflowrun  สั่งรัน workflow แบบ ad-hoc + ดูสถานะ run (/workflow-runs) + readiness (/readyz: เช็ค Temporal และ PostgreSQL ถ้าตั้ง BOP_DATABASE_URL)
    │   ├── schedule     validate + ลำดับ "scheduler ก่อน repository" + compensation (/schedules/...)
    │   └── auth         ตรวจ credential + ออก/ตรวจ token (/login, /me)
    │
@@ -93,6 +93,28 @@ go run ./cmd/bop-worker   # Temporal Worker — รัน workflow/activity จ�
 go run ./cmd/bop          # HTTP API ที่ :8080 — ให้ dashboard เรียก, อ่านสถานะ workflow ผ่าน Temporal
 ```
 
+### PostgreSQL ของ BOP (Job และ log อยู่รอดข้าม restart)
+
+ตั้ง `BOP_DATABASE_URL` แล้ว bop-api เก็บ Job และ log ของ Job ใน PostgreSQL และรัน migration เองตอน start (bop-worker ไม่รัน migration) ไม่ตั้ง = เก็บใน memory แบบเดิม ข้อมูลหายเมื่อ restart และ log เตือนตอน start — bop-worker ใช้ค่าเดียวกันเขียน log ของ Step ลง database เดียวกัน (ไม่ตั้ง = log ของ Step อยู่ใน memory ของ bop-worker และอ่านผ่าน `GET /workflow-runs/{id}/steps/{index}/logs` ไม่ได้)
+
+bop-api ลบ log line ที่เก่ากว่า 30 วันทันทีตอน start แล้ววันละครั้ง (Job ไม่ถูกลบ ยังเห็นสถานะและ summary)
+
+BOP ใช้ PostgreSQL ตัวเดียวกับ Temporal แต่แยก database `bop` และ user `bop` — compose ที่ root ตั้ง `BOP_DATABASE_URL=postgres://bop:bop@postgresql:5432/bop?sslmode=disable` ให้ทั้ง bop-api และ bop-worker (**รหัสผ่าน `bop` เป็นค่า dev ห้ามใช้ใน production**)
+
+- **volume ใหม่**: init script [`db/init/01-create-bop-database.sql`](db/init/01-create-bop-database.sql) สร้าง database/user ให้เองตอน `compose up` ครั้งแรก
+- **volume เดิม** (มีข้อมูล Temporal อยู่แล้ว init script ไม่รันซ้ำ): รันคำสั่งนี้ครั้งเดียวจาก root ของ repo ก่อน start bop-api เวอร์ชันนี้ ไม่งั้น bop-api start ไม่ได้เพราะไม่มี database `bop`
+
+```bash
+docker compose up -d postgresql
+docker compose exec -T postgresql psql -v ON_ERROR_STOP=1 -U temporal -d postgres \
+  < projects/bot-orchestration-platform/db/init/01-create-bop-database.sql
+docker compose up -d bop-api bop-worker
+```
+
+บน Mini PC ใช้ compose ของระบบ `/usr/libexec/docker/cli-plugins/docker-compose` แทน `docker compose` (ตัวที่ shadow อยู่เป็นเวอร์ชันเก่า) และขออนุญาตเจ้าของเครื่องก่อนรัน เพราะเป็นการแก้ PostgreSQL ที่ใช้ร่วมกับ Temporal
+
+ตอน `go run ./cmd/bop` บนเครื่อง ชี้ไปที่ PostgreSQL ที่มี database `bop` อยู่แล้ว เช่น `BOP_DATABASE_URL=postgres://bop:bop@localhost:5432/bop?sslmode=disable go run ./cmd/bop` (`docker-compose.yml` ในโฟลเดอร์นี้ไม่ได้เปิด port 5432 ออกมา)
+
 ตัวอย่างเรียก API ด้วย curl (response ทั้งหมดเป็น JSON แบบ snake_case สม่ำเสมอกันทั้ง API):
 
 ```bash
@@ -107,6 +129,7 @@ curl -X DELETE localhost:8080/jobs/<id>           # cancel ถ้า job ยั�
 
 curl localhost:8080/workflow-runs                # ดูว่า scheduled workflow รันไปแล้วกี่รอบ (query ตรงจาก Temporal)
 curl localhost:8080/workflow-runs/<workflow-id>   # ดูผลลัพธ์ทีละ step ของ run เดียว (workflow-id ดูได้จาก Temporal UI หรือ response ของ list ด้านบน)
+curl localhost:8080/workflow-runs/<workflow-id>/steps/0/logs   # log ทุก Attempt ของ Step แรก (ลำดับ Step เริ่มที่ 0, แต่ละบรรทัดมี attempt)
 
 curl -c cookies.txt -X POST localhost:8080/login -d '{"username":"admin","password":"changeme"}'  # ได้ httpOnly cookie กลับมา (เปลี่ยน credential ก่อน deploy จริงเสมอ)
 curl -b cookies.txt localhost:8080/me             # เช็คว่า session ยัง valid อยู่ไหม
@@ -182,7 +205,7 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 
 ## จัดการ Schedule (CRUD + manual trigger — เทียบเท่า Control-M job management)
 
-`internal/external/temporal/scheduler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK (เปิดเป็น HTTP endpoint ผ่าน `internal/usecase/schedule` และ `internal/adapter/http/*_schedule.go`) — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) BOP เก็บเพิ่มแค่ "workflow definition" (ชื่อ + steps) ไว้ใน `schedule.Repository` (`internal/domain/schedule`, implementation in-memory ที่ `internal/repository/memory`, เหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ อยู่ใน comment ของไฟล์นั้น)
+`internal/external/temporal/scheduler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK (เปิดเป็น HTTP endpoint ผ่าน `internal/usecase/schedule` และ `internal/adapter/http/*_schedule.go`) — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) และ BOP ไม่เก็บข้อมูล Schedule ซ้ำเอง: steps ของ Schedule ถอดรหัสจาก action args ของ Temporal Schedule ทุกครั้ง ([ADR 0001](docs/adr/0001-temporal-is-source-of-truth-for-schedules.md))
 
 | Endpoint | เทียบ Control-M | หมายเหตุ |
 |---|---|---|
@@ -240,7 +263,7 @@ wf := workflow.Workflow{
 สิ่งที่ทำเสร็จแล้วสรุปสั้นๆ (รายละเอียดเต็มดู [FEATURES.md](FEATURES.md)): Phase 0 core engine, Phase 2.5 Temporal migration, Phase 1 backend prerequisite + dashboard, Schedule CRUD เต็มชุด, 3 ทางเลือกรัน external job (`externaljob`/remote task queue/K8s Job hybrid), `POST /workflow-runs` (ad-hoc run), per-job/per-step timeout — ดูหัวข้อต่างๆ ด้านบนของไฟล์นี้สำหรับรายละเอียดแต่ละอัน
 
 **ช่องว่างที่สำคัญที่สุดตอนนี้ (เรียงตาม priority ใน [FEATURES.md](FEATURES.md))**:
-1. **PostgreSQL persistence** — `job.Repository`/`schedule.Repository` ยังเป็น in-memory ทั้งคู่ (Phase 0.4) เป็น prerequisite ของแทบทุกอย่างถัดจากนี้ รวมถึง Phase 3 enterprise feature ด้านล่าง
+1. **PostgreSQL persistence** — `job.Repository` ยังเป็น in-memory (Phase 0.4) เป็น prerequisite ของแทบทุกอย่างถัดจากนี้ รวมถึง Phase 3 enterprise feature ด้านล่าง
 2. **Job Dependency (DAG)** และ **Observability พื้นฐาน** (Phase 2.2) — ยังไม่มีเลยทั้งคู่
 3. **Temporal server จริง verify แล้ว** (แก้ปัญหา Docker permission ได้แล้ว — เพิ่ม user เข้า `docker` group) ครอบคลุม: job เดี่ยว + SSE log stream, auth เต็ม flow, cancel job, Schedule CRUD เต็ม lifecycle, `POST /workflow-runs` (รวมเจอ+เห็น retry ของ transient network error จริง) — **ที่ยังไม่ verify**: route ข้าม task queue จริง (ต้องมี worker ตัวที่สอง), และ **K8s cluster ยังไม่มีเลย** (K8s Job hybrid execution ยังผ่านแค่ unit test ด้วย fake clientset — ดู [KUBERNETES-DEPLOYMENT-TODO.md](../../KUBERNETES-DEPLOYMENT-TODO.md))
 

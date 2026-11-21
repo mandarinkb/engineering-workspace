@@ -1,0 +1,25 @@
+meta {
+  name: Create job without session
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/bots/http-status-checker/jobs
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: 
+}
+
+body:json {
+  {}
+}
+
+tests {
+  test("ตอบ 401 เมื่อไม่มี session", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

@@ -24,18 +24,22 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.temporal.io/sdk/client"
 
 	apihttp "bop/internal/adapter/http" // ตั้งชื่อ alias เพราะ package นี้ก็ชื่อ "http" เหมือน net/http
 	"bop/internal/adapter/worker"
 	"bop/internal/domain/job"
+	"bop/internal/domain/logger"
 	"bop/internal/external/bots/externaljob"
 	"bop/internal/external/bots/httpstatus"
 	"bop/internal/external/temporal"
 	memlogger "bop/internal/pkg/logger"
 	"bop/internal/repository/memory"
+	"bop/internal/repository/postgres"
 	authuc "bop/internal/usecase/auth"
 	jobuc "bop/internal/usecase/job"
+	"bop/internal/usecase/logretention"
 	scheduleuc "bop/internal/usecase/schedule"
 	workflowrunuc "bop/internal/usecase/workflowrun"
 )
@@ -57,13 +61,20 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// ขั้นตอนที่ 1: สร้าง dependency พื้นฐานทั้งหมด — ตอนนี้ใช้ in-memory implementation
-	// ทั้งคู่ (repository และ logger) เพราะยังไม่ได้ทำ PostgreSQL/OpenSearch จริง
-	// (ดู roadmap Phase 0.4 และ Phase 2.2) การสลับไปใช้ implementation จริงในอนาคต
-	// จะแก้แค่ 2 บรรทัดนี้เท่านั้น โค้ดส่วนอื่นทั้งหมดไม่ต้องแตะเลย เพราะทุกที่อ้างอิง
-	// ผ่าน interface (job.Repository, logger.Logger) ไม่เคยอ้างอิง concrete type ตรงๆ
-	repo := memory.NewJobRepository()
-	appLogger := memlogger.New()
+	// ขั้นตอนที่ 1: สร้าง dependency พื้นฐานทั้งหมด — ตั้ง BOP_DATABASE_URL = เก็บ Job และ log
+	// ของ Job ใน PostgreSQL (database `bop`) ให้อยู่รอดข้าม restart ไม่ตั้ง = in-memory แบบเดิม
+	// พร้อมคำเตือน (ดู openDatabase) — ทุกที่อ้างอิงผ่าน interface (job.Repository, logger.Logger)
+	// จึงสลับ implementation ได้ที่นี่ที่เดียว
+	db, err := openDatabase(ctx, os.Getenv("BOP_DATABASE_URL"))
+	if err != nil {
+		return err
+	}
+	if db != nil {
+		// defer ตัวนี้รันหลัง pool.Shutdown ด้านล่าง เพราะ job ที่ถูกยกเลิกตอนปิดยังต้องบันทึกสถานะ
+		defer db.Close()
+	}
+	repo := newJobRepository(db)
+	appLogger := newLogger(db)
 
 	// ขั้นตอนที่ 2: สร้าง worker pool — จำกัดให้รันได้พร้อมกันสูงสุด 4 job และแต่ละ job
 	// มีเวลาไม่เกิน 30 วินาที ก่อนจะถูกตัดจบอัตโนมัติ (ป้องกัน bot ที่ค้างไม่รู้จบ)
@@ -91,18 +102,13 @@ func run() error {
 	}
 	defer temporalClient.Close()
 
-	// ขั้นตอนที่ 5: bookkeeping ของ schedule definition (ชื่อ workflow + steps ต่อ
-	// schedule หนึ่งตัว) — ดูเหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ ที่
-	// internal/domain/schedule/schedule.go
-	scheduleRepo := memory.NewScheduleRepository()
-
-	// ขั้นตอนที่ 6: เช็คว่าถูกเรียกแบบ CLI mode หรือไม่ (มี argument แรกเป็นคำว่า "run")
+	// ขั้นตอนที่ 5: เช็คว่าถูกเรียกแบบ CLI mode หรือไม่ (มี argument แรกเป็นคำว่า "run")
 	// ถ้าใช่ ให้ทำงานแบบ CLI แล้วจบโปรแกรมทันทีหลังจากนั้น ไม่เปิด HTTP server ต่อ
 	if len(os.Args) > 1 && os.Args[1] == "run" {
 		return runCLI(ctx, repo, pool, os.Args[2:])
 	}
 
-	// ขั้นตอนที่ 7: ประกอบ usecase จาก port ทั้งหมด (clean architecture: HTTP adapter รู้จัก
+	// ขั้นตอนที่ 6: ประกอบ usecase จาก port ทั้งหมด (clean architecture: HTTP adapter รู้จัก
 	// แค่ usecase, usecase รู้จักแค่ interface ใน internal/domain ส่วน implementation จริง
 	// ทั้งหมดถูกเลือกที่นี่ที่เดียว) — secret/credential ของ auth อ่านจาก env var ที่นี่
 	// **ห้ามใช้ค่า fallback ใน production เด็ดขาด** BOP_JWT_SECRET ต้องสุ่มค่าใหม่ด้วย
@@ -110,16 +116,27 @@ func run() error {
 	// KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 3.4) credential admin เป็นตัวเดียวที่ระบบรู้จัก
 	// ตอนนี้เพราะยังไม่มี user database (BOP เป็น single-operator tool)
 	jobs := jobuc.NewService(repo, pool, appLogger)
-	runs := workflowrunuc.NewService(temporal.NewEngine(temporalClient))
-	schedules := scheduleuc.NewService(temporal.NewScheduler(temporalClient), scheduleRepo)
+	runs := workflowrunuc.NewService(temporal.NewEngine(temporalClient), appLogger)
+	schedules := scheduleuc.NewService(temporal.NewScheduler(temporalClient))
 	auth := authuc.NewService(
 		[]byte(getenv("BOP_JWT_SECRET", "bop-dev-secret-change-me-before-deploying")),
 		getenv("BOP_ADMIN_USERNAME", "admin"),
 		getenv("BOP_ADMIN_PASSWORD", "changeme"),
 	)
 
+	// งานลบ log ที่เก่ากว่า 30 วันรันเฉพาะใน HTTP API server (process ที่อยู่ยาว) และเฉพาะเมื่อ
+	// log อยู่ใน PostgreSQL — stopRetention ต้องรันก่อน db.Close ด้านบน (defer ทำงานย้อนลำดับ)
+	stopRetention := startLogRetention(ctx, appLogger)
+	defer stopRetention()
+
 	// ถ้าไม่ใช่ CLI mode ให้เปิด HTTP API server ตามปกติ (ค่า default ของโปรแกรมนี้)
-	if err := serve(ctx, apihttp.NewServer(jobs, runs, schedules, auth)); err != nil {
+	// db เป็น nil ในโหมด memory — ห้ามส่ง nil pointer เข้า WithDatabase (interface จะไม่เท่ากับ nil)
+	// /readyz จะได้ไม่ ping database ที่ไม่มี
+	var serverOpts []apihttp.ServerOption
+	if db != nil {
+		serverOpts = append(serverOpts, apihttp.WithDatabase(db))
+	}
+	if err := serve(ctx, apihttp.NewServer(jobs, runs, schedules, auth, serverOpts...)); err != nil {
 		return err
 	}
 
@@ -131,6 +148,71 @@ func run() error {
 		return fmt.Errorf("shutdown worker pool: %w", err)
 	}
 	return nil
+}
+
+// openDatabase เตรียม PostgreSQL ของ BOP ตอน start: รัน migration ก่อน (bop-api เป็น process
+// เดียวที่รัน migration — bop-worker แค่ postgres.Connect เพื่อไม่ให้สอง process แข่งกันแก้
+// schema) แล้วเปิด connection pool ที่ repository/logger ทุกตัวใช้ร่วมกัน
+//
+// databaseURL ว่าง = คืน pool เป็น nil พร้อม log เตือน ให้ `go run` แบบไม่มี database ยังใช้ได้
+// (ข้อมูลหายเมื่อ restart) ผู้เรียกต้อง Close pool ที่ได้เอง
+func openDatabase(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	if databaseURL == "" {
+		log.Printf("warning: BOP_DATABASE_URL not set, using in-memory storage (jobs and logs are lost on restart)")
+		return nil, nil
+	}
+	if err := postgres.Migrate(databaseURL); err != nil {
+		return nil, err
+	}
+	db, err := postgres.Connect(ctx, databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("using PostgreSQL job and log storage")
+	return db, nil
+}
+
+// newJobRepository เลือก implementation ของ job.Repository ตาม pool ที่ openDatabase คืนมา
+func newJobRepository(db *pgxpool.Pool) job.Repository {
+	if db == nil {
+		return memory.NewJobRepository()
+	}
+	return postgres.NewJobRepository(db)
+}
+
+// apiLogger คือ logger ที่ bop-api ใช้ทั้งสองหน้าที่: log ของ Job (worker pool เขียน, handler อ่าน)
+// และอ่าน log ของ Step ที่ bop-worker เขียนไว้ — ทั้ง memory และ PostgreSQL implement ครบทั้งคู่
+type apiLogger interface {
+	logger.Logger
+	logger.StepLogger
+}
+
+// newLogger เลือก implementation ของ logger ตาม pool ที่ openDatabase คืนมา (แบบ memory อ่าน log
+// ของ Step จาก bop-worker ไม่ได้เพราะอยู่คนละ process จึงได้ [] เสมอ)
+func newLogger(db *pgxpool.Pool) apiLogger {
+	if db == nil {
+		return memlogger.New()
+	}
+	return postgres.NewLogger(db)
+}
+
+// startLogRetention เริ่มงานลบ log ตามอายุใน goroutine ถ้า l ลบ log ได้ (PostgreSQL) แล้วคืน
+// ฟังก์ชันที่หยุดงานและรอจน goroutine จบ — logger แบบ memory ไม่มีอะไรให้ลบ คืน no-op
+func startLogRetention(ctx context.Context, l logger.Logger) (stop func()) {
+	pruner, ok := l.(logger.Pruner)
+	if !ok {
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		logretention.NewService(pruner).Run(ctx)
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 // runCLI คือโหมดสำหรับทดสอบ engine โดยไม่ต้องเปิด server หรือมี UI เลย ใช้แบบนี้:

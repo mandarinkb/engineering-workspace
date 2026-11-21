@@ -1,0 +1,21 @@
+meta {
+  name: Create workflow run without steps
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/workflow-runs
+  body: json
+  auth: none
+}
+
+body:json {
+  {"workflow_name": "bruno-invalid", "steps": []}
+}
+
+tests {
+  test("ตอบ 400 เมื่อไม่มี Step", function () {
+    expect(res.getStatus()).to.equal(400);
+  });
+}

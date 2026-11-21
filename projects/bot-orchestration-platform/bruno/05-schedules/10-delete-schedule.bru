@@ -1,0 +1,17 @@
+meta {
+  name: Delete schedule
+  type: http
+  seq: 13
+}
+
+delete {
+  url: {{baseUrl}}/schedules/{{scheduleId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("ตอบ 204", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

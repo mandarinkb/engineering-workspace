@@ -1,0 +1,30 @@
+meta {
+  name: Create schedule with catch-up window over 1 year
+  type: http
+  seq: 20
+}
+
+post {
+  url: {{baseUrl}}/schedules
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "id": "{{scheduleId}}-too-long",
+    "workflow_name": "bruno-schedule",
+    "steps": [
+      {"bot_name": "http-status-checker", "config": {"url": "http://bop-api:8080/healthz"}}
+    ],
+    "spec": {"interval_seconds": 3600},
+    "catchup_window_seconds": 31536001
+  }
+}
+
+tests {
+  test("ตอบ 400 พร้อมข้อความที่บอกชื่อ field", function () {
+    expect(res.getStatus()).to.equal(400);
+    expect(res.getBody()).to.include("catchup_window_seconds");
+  });
+}

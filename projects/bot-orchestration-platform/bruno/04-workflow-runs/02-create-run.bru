@@ -1,0 +1,32 @@
+meta {
+  name: Create workflow run
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/workflow-runs
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "workflow_name": "bruno-adhoc",
+    "steps": [
+      {"bot_name": "http-status-checker", "config": {"url": "http://bop-api:8080/healthz"}}
+    ]
+  }
+}
+
+script:post-response {
+  bru.setVar("workflowId", res.getBody().workflow_id);
+}
+
+tests {
+  test("ตอบ 202 พร้อม workflow_id ที่ขึ้นต้นด้วยชื่อ workflow และ run_id", function () {
+    expect(res.getStatus()).to.equal(202);
+    expect(res.getBody().workflow_id).to.match(/^bruno-adhoc-/);
+    expect(res.getBody().run_id).to.be.a("string").and.not.empty;
+  });
+}

@@ -50,3 +50,44 @@ type Logger interface {
 	// roadmap Phase 1.5
 	Subscribe(jobID string) (lines <-chan Line, unsubscribe func())
 }
+
+// Pruner คือ port ของ storage ที่ลบ log เก่าได้ — แยกจาก Logger เพราะ worker pool และ handler
+// ไม่เคยลบ log มีแค่งานลบ log ตามอายุ (usecase/logretention) ใน bop-api ที่ใช้ ส่วน logger แบบ
+// memory ไม่ implement เพราะข้อมูลหายเองทุกครั้งที่ restart อยู่แล้ว
+type Pruner interface {
+	// DeleteBefore ลบ log line ทุกบรรทัดที่เวลาเก่ากว่า cutoff (ไม่แตะ Job เจ้าของ log)
+	// แล้วคืนจำนวนบรรทัดที่ลบ
+	DeleteBefore(ctx context.Context, cutoff time.Time) (int64, error)
+}
+
+// StepAttempt คือเจ้าของ log ของ Step: Attempt หนึ่งของ Step ในตำแหน่งหนึ่งของ Workflow Run —
+// ใช้ workflow ID + ลำดับ Step (เริ่มที่ 0 เท่ากับ step_index ของ Workflow Run detail) แทน
+// Activity ID ของ Temporal เพื่อให้ operator อ่าน log ได้โดยไม่ต้องรู้กลไกข้างใน
+type StepAttempt struct {
+	WorkflowID string
+	StepIndex  int
+	Attempt    int // เริ่มที่ 1
+}
+
+// StepLine คือ log หนึ่งบรรทัดของ Step — มี attempt ทุกบรรทัดเพื่อให้เห็นว่า Attempt ก่อนหน้า
+// ล้มเหลวเพราะอะไร (json tag คือ wire format ของ GET /workflow-runs/{id}/steps/{index}/logs)
+type StepLine struct {
+	WorkflowID string    `json:"workflow_id"`
+	StepIndex  int       `json:"step_index"`
+	Attempt    int       `json:"attempt"`
+	Time       time.Time `json:"time"`
+	Level      Level     `json:"level"`
+	Message    string    `json:"message"`
+}
+
+// StepLogger คือ port ที่ activity ใน bop-worker ใช้เขียน log ของ Step และ bop-api ใช้อ่านกลับ —
+// แยกจาก Logger เพราะเจ้าของ log คนละแบบ และ log ของ Step ไม่มี real-time stream (bop-worker
+// กับ bop-api เป็นคนละ process จึงต้องอ่านผ่าน storage ที่แชร์กันเท่านั้น)
+type StepLogger interface {
+	// LogStep บันทึก log หนึ่งบรรทัดของ Attempt นั้น — คืน error ไม่ได้เหมือน Logger.Log เพราะ
+	// ถูกเรียกระหว่างที่ Bot กำลังรัน ปัญหาของ storage ต้องไม่ทำให้ Step ล้มเหลว
+	LogStep(ctx context.Context, owner StepAttempt, level Level, message string)
+
+	// StepHistory คืน log ทุก Attempt ของ Step นั้นเรียงตามเวลา (ไม่มี log = slice ว่าง ไม่ใช่ nil)
+	StepHistory(ctx context.Context, workflowID string, stepIndex int) ([]StepLine, error)
+}

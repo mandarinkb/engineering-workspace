@@ -1,0 +1,51 @@
+meta {
+  name: Count failed workflow runs matches paging through them
+  type: http
+  seq: 22
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/count?status=failed
+  body: none
+  auth: none
+}
+
+params:query {
+  status: failed
+}
+
+script:post-response {
+  // เดินหน้า GET /workflow-runs?status=failed ด้วย page_size 2 จนหมดแล้วนับรวม — ใช้ failed
+  // เพราะจำนวนน้อยและไม่เปลี่ยนระหว่างรัน (Workflow Run ที่ล้มเหลวของชุดนี้จบไปแล้วตั้งแต่
+  // request ก่อนหน้า) page_size เล็กเพื่อให้ count ต้องตรงกับผลรวมหลายหน้าจริง ไม่ใช่แค่หน้าแรก
+  // bru.sendRequest ไม่ได้ header ของ collection จึงแนบ cookie เอง
+  const headers = { Cookie: `bop_session=${bru.getVar("session")}` };
+  const base = `${bru.getEnvVar("baseUrl")}/workflow-runs?status=failed&page_size=2`;
+  let walked = 0;
+  let pages = 0;
+  let token = "";
+  do {
+    const url = token ? `${base}&page_token=${encodeURIComponent(token)}` : base;
+    const page = await bru.sendRequest({ method: "GET", url, headers });
+    walked += page.data.runs.length;
+    token = page.data.next_page_token;
+    pages += 1;
+  } while (token && pages < 500);
+  bru.setVar("failedRunsWalked", walked);
+  bru.setVar("failedRunsCount", res.getBody().count);
+}
+
+tests {
+  test("ตอบ { count } เป็นจำนวนเต็ม", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().count).to.be.a("number");
+  });
+
+  test("count เท่ากับจำนวนที่ได้จากการเดินหน้าด้วย filter เดียวกันจนหมด", function () {
+    expect(res.getBody().count).to.equal(bru.getVar("failedRunsWalked"));
+  });
+
+  test("มี Workflow Run ที่ล้มเหลวอย่างน้อยหนึ่งตัว (จาก request ก่อนหน้า)", function () {
+    expect(res.getBody().count).to.be.at.least(1);
+  });
+}

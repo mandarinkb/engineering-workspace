@@ -1,0 +1,18 @@
+meta {
+  name: List schedules
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/schedules
+  body: none
+  auth: none
+}
+
+tests {
+  test("รายการมี Schedule ที่เพิ่งสร้าง", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().map((s) => s.id)).to.include(bru.getVar("scheduleId"));
+  });
+}

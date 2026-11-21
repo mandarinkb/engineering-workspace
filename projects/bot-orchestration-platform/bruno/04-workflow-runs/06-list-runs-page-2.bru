@@ -1,0 +1,26 @@
+meta {
+  name: List workflow runs page 2 (page_token)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?page_size=2&page_token={{runsPageToken}}
+  body: none
+  auth: none
+}
+
+params:query {
+  page_size: 2
+  page_token: {{runsPageToken}}
+}
+
+tests {
+  test("หน้า 2 ได้ 2 ตัวที่ไม่ซ้ำกับหน้า 1", function () {
+    expect(res.getStatus()).to.equal(200);
+    const page1 = bru.getVar("runsPage1Ids");
+    const page2 = res.getBody().runs.map((r) => `${r.workflow_id}/${r.run_id}`);
+    expect(page2).to.have.lengthOf(2);
+    page2.forEach((id) => expect(page1).to.not.include(id));
+  });
+}

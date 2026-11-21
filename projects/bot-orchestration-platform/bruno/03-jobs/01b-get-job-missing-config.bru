@@ -1,0 +1,23 @@
+meta {
+  name: Get job missing required config
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/jobs/{{badJobId}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  await bru.sleep(2000);
+}
+
+tests {
+  test("Job ล้มเหลวพร้อมบอกว่าขาด config url", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().status).to.equal("failed");
+    expect(res.getBody().error).to.include('missing required config key "url"');
+  });
+}

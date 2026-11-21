@@ -1,0 +1,18 @@
+meta {
+  name: Get paused schedule
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/schedules/{{scheduleId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("paused เป็น true พร้อม note", function () {
+    expect(res.getBody().paused).to.equal(true);
+    expect(res.getBody().note).to.equal("paused by bruno");
+  });
+}

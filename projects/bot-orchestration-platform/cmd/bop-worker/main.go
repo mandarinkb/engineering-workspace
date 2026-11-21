@@ -29,12 +29,15 @@ import (
 	"k8s.io/client-go/rest"
 
 	"bop/internal/domain/bot"
+	"bop/internal/domain/logger"
+	"bop/internal/domain/schedule"
 	"bop/internal/domain/workflow"
 	"bop/internal/external/bots/externaljob"
 	"bop/internal/external/bots/httpstatus"
 	"bop/internal/external/k8s"
 	"bop/internal/external/temporal"
 	memlogger "bop/internal/pkg/logger"
+	"bop/internal/repository/postgres"
 )
 
 // k8sJobDefaultNamespace คือ namespace ที่ K8s Job hybrid execution (ดู
@@ -87,7 +90,14 @@ func run() error {
 	// (คนละ registry กับ worker.Pool ใน cmd/bop เพราะเป็นคนละ process กัน ดูหมายเหตุยาว
 	// ที่ internal/external/temporal/activity.go เรื่อง logger แยก process) เพิ่ม bot ชนิดใหม่ต้อง
 	// register ที่นี่ด้วยเสมอ ไม่งั้น workflow ที่อ้างถึง bot นั้นจะ fail ด้วย "unknown bot"
-	appLogger := memlogger.New()
+	//
+	// log ของ Step ลง PostgreSQL ตัวเดียวกับ bop-api เมื่อตั้ง BOP_DATABASE_URL เพื่อให้
+	// GET /workflow-runs/{id}/steps/{index}/logs ของ bop-api อ่านได้
+	appLogger, closeDB, err := newStepLogger(context.Background(), os.Getenv("BOP_DATABASE_URL"))
+	if err != nil {
+		return err
+	}
+	defer closeDB()
 	activities := temporal.NewActivities(appLogger)
 	activities.Register(httpstatus.New())
 	activities.Register(externaljob.New())
@@ -138,6 +148,23 @@ func run() error {
 	return nil
 }
 
+// newStepLogger เลือกที่เก็บ log ของ Step — ไม่ตั้ง databaseURL = memory พร้อมคำเตือน (log อ่านผ่าน
+// API ไม่ได้เพราะอยู่คนละ process กับ bop-api) worker ไม่รัน migration เพราะเป็นหน้าที่ของ bop-api
+// ฝ่ายเดียว กันสอง process แย่งกันแก้ schema — closeDB ต้องเรียกตอน worker หยุด
+func newStepLogger(ctx context.Context, databaseURL string) (l logger.StepLogger, closeDB func(), err error) {
+	if databaseURL == "" {
+		log.Printf("warning: BOP_DATABASE_URL not set, Step logs stay in bop-worker memory" +
+			" and cannot be read through the API")
+		return memlogger.New(), func() {}, nil
+	}
+	db, err := postgres.Connect(ctx, databaseURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	log.Printf("using PostgreSQL Step log storage")
+	return postgres.NewLogger(db), db.Close, nil
+}
+
 // startHealthServer เปิด HTTP server ตอบ GET /healthz ใน goroutine แยก แล้วคืนฟังก์ชันที่
 // ปิด server แบบ graceful และรอจน goroutine นั้นจบจริง — ถ้าเปิด port ไม่สำเร็จ (เช่นถูกใช้
 // อยู่) แค่ log ไว้ ไม่หยุด worker เพราะ health probe ไม่ใช่งานหลักของ process นี้
@@ -172,13 +199,10 @@ func startHealthServer() (stop func()) {
 // ในโค้ด ตอนนี้ย้ายมาไว้ที่นี่เพราะ cmd/bop-worker คือ process ที่ "เป็นเจ้าของ" workflow
 // ที่รันอัตโนมัติตามตาราง ส่วน cmd/bop มีหน้าที่แค่ตอบ HTTP request เท่านั้น
 //
-// หมายเหตุ (หลังเพิ่ม schedule CRUD API ใน internal/adapter/http/*_schedule.go):
-// schedule ตัวนี้สร้างตรงผ่าน Temporal SDK ในนี้ ไม่ได้ผ่าน POST /schedules เลย จึงไม่มี
-// entry คู่กันใน schedule.Repository ของ cmd/bop (คนละ process กัน ดู
-// internal/domain/schedule/schedule.go) — GET /schedules/check-example-com-schedule จะเห็น
-// spec/สถานะถูกต้องปกติ (มาจาก Temporal ตรงๆ) แต่ field "steps" จะว่างเปล่า เพราะ BOP
-// ไม่มี bookkeeping ของ workflow definition ตัวนี้เก็บไว้เลย — ไม่ใช่ bug เป็นผลตามมาที่
-// รู้อยู่แล้วจากการมี 2 ช่องทางสร้าง schedule (โค้ดตรงนี้ + HTTP API)
+// schedule ตัวนี้สร้างตรงผ่าน Temporal SDK ไม่ได้ผ่าน POST /schedules แต่
+// GET /schedules/check-example-com-schedule ยังเห็น steps ครบ เพราะ cmd/bop ถอดรหัส steps
+// จาก action args ของ Temporal Schedule ตรงๆ (ADR 0001) — Args ต้องเป็น workflow.Workflow
+// ตัวเดียวกับที่ API ส่งเสมอ
 func ensureExampleSchedule(ctx context.Context, c client.Client) error {
 	wf := workflow.Workflow{
 		Name: "check-example-com",
@@ -192,6 +216,9 @@ func ensureExampleSchedule(ctx context.Context, c client.Client) error {
 		Spec: client.ScheduleSpec{
 			Intervals: []client.ScheduleIntervalSpec{{Every: time.Minute}},
 		},
+		// Catch-up Window เดียวกับ Schedule ที่สร้างผ่าน API — เดิมไม่ได้ตั้ง หลังระบบหยุด 3
+		// เดือน Temporal ไล่รัน Missed Run รายนาทีย้อนหลังจน "Buffer too large" แล้ว Schedule ค้าง
+		CatchupWindow: schedule.DefaultCatchupWindow,
 		Action: &client.ScheduleWorkflowAction{
 			ID:        "check-example-com",
 			Workflow:  temporal.Execute,

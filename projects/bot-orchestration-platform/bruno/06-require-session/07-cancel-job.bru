@@ -1,0 +1,21 @@
+meta {
+  name: Cancel job without session
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{baseUrl}}/jobs/bruno-missing
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: 
+}
+
+tests {
+  test("ตอบ 401 เมื่อไม่มี session", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

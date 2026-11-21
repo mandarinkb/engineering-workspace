@@ -1,0 +1,18 @@
+meta {
+  name: Get logs of the step after the failed step (never ran)
+  type: http
+  seq: 20
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/{{failedWorkflowId}}/steps/1/logs
+  body: none
+  auth: none
+}
+
+tests {
+  test("Step ที่มีจริงแต่ไม่ได้รันตอบ 200 กับรายการว่าง", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody()).to.deep.equal([]);
+  });
+}

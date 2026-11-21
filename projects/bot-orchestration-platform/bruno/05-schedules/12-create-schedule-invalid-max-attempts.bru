@@ -1,0 +1,28 @@
+meta {
+  name: Create schedule with max_attempts 0
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{baseUrl}}/schedules
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "id": "bruno-invalid-max-attempts",
+    "workflow_name": "bruno-schedule",
+    "steps": [
+      {"bot_name": "http-status-checker", "config": {"url": "http://bop-api:8080/healthz"}, "max_attempts": 0}
+    ],
+    "spec": {"interval_seconds": 3600}
+  }
+}
+
+tests {
+  test("ตอบ 400 เมื่อ max_attempts น้อยกว่า 1 และไม่สร้าง Schedule", function () {
+    expect(res.getStatus()).to.equal(400);
+  });
+}

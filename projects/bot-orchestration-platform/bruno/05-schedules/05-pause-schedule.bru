@@ -1,0 +1,21 @@
+meta {
+  name: Pause schedule
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/schedules/{{scheduleId}}/pause
+  body: json
+  auth: none
+}
+
+body:json {
+  {"note": "paused by bruno"}
+}
+
+tests {
+  test("ตอบ 204", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

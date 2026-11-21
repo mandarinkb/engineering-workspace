@@ -1,13 +1,19 @@
 package temporal_test
 
 import (
+	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/client"
+	sdktemporal "go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
+	"bop/internal/domain/bot"
+	"bop/internal/domain/logger"
 	"bop/internal/domain/workflow"
 	"bop/internal/external/temporal"
 	memlogger "bop/internal/pkg/logger"
@@ -38,7 +44,7 @@ func newTestEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 // แทนที่พฤติกรรมของ workflow.RunRepository เดิมที่เก็บ Run.Steps ไว้ให้ query ทีหลังได้)
 func TestExecute_AllStepsSucceed(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity(temporal.ActivityName, mock.Anything, mock.Anything).Return("ok", nil)
+	env.OnActivity(temporal.ActivityName, mock.Anything, mock.Anything, mock.Anything).Return("ok", nil)
 
 	wf := workflow.Workflow{
 		Name: "two-ok-steps",
@@ -88,10 +94,10 @@ func TestExecute_AllStepsSucceed(t *testing.T) {
 // ให้ mock ของ ok-bot ตัวแรก แล้ว testify จะ panic ทันที ไม่ต้องเดาจากจำนวนผลลัพธ์เฉยๆ
 func TestExecute_StopsAtFirstFailedStep(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity(temporal.ActivityName, mock.Anything, workflow.Step{BotName: "ok-bot"}).
+	env.OnActivity(temporal.ActivityName, mock.Anything, workflow.Step{BotName: "ok-bot"}, mock.Anything).
 		Return("ok", nil).Times(1)
-	env.OnActivity(temporal.ActivityName, mock.Anything, workflow.Step{BotName: "fail-bot"}).
-		Return("", errors.New("intentional failure")).Times(1)
+	env.OnActivity(temporal.ActivityName, mock.Anything, workflow.Step{BotName: "fail-bot"}, mock.Anything).
+		Return("", errors.New("intentional failure")).Times(3) // ครบ 3 Attempt ตามค่าเริ่มต้น
 
 	wf := workflow.Workflow{
 		Name: "fail-in-the-middle",
@@ -135,7 +141,7 @@ func TestExecute_StopsAtFirstFailedStep(t *testing.T) {
 // "รัน step ผ่าน remote Temporal worker")
 func TestExecute_StepWithTaskQueueStillExecutes(t *testing.T) {
 	env := newTestEnv(t)
-	env.OnActivity(temporal.ActivityName, mock.Anything, mock.Anything).Return("ok", nil)
+	env.OnActivity(temporal.ActivityName, mock.Anything, mock.Anything, mock.Anything).Return("ok", nil)
 
 	wf := workflow.Workflow{
 		Name: "step-with-remote-task-queue",
@@ -150,5 +156,213 @@ func TestExecute_StepWithTaskQueueStillExecutes(t *testing.T) {
 	}
 	if err := env.GetWorkflowError(); err != nil {
 		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+// TestExecute_FailedStepKeepsLogsOfEveryAttempt รัน Activities.RunStep จริง (ไม่ mock) เพื่อพิสูจน์
+// ว่า log ของ Step ผูกกับลำดับ Step ที่ถูกต้องและแยกตาม Attempt — Step ที่ล้มเหลว 3 Attempt ต้องมี
+// log ของทั้ง 3 Attempt รวมถึงบรรทัด error ที่บอกว่าแต่ละ Attempt ล้มเหลวเพราะอะไร
+func TestExecute_FailedStepKeepsLogsOfEveryAttempt(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(temporal.Execute)
+	stepLogs := memlogger.New()
+	activities := temporal.NewActivities(stepLogs)
+	activities.Register(&stubBot{name: "ok-bot", result: bot.Result{Summary: "ok"}})
+	activities.Register(&stubBot{name: "fail-bot", err: errors.New("connection refused")})
+	env.RegisterActivityWithOptions(activities.RunStep, activity.RegisterOptions{Name: temporal.ActivityName})
+
+	env.SetStartWorkflowOptions(client.StartWorkflowOptions{ID: "wf-logs"})
+	env.ExecuteWorkflow(temporal.Execute, workflow.Workflow{
+		Name:  "ok-then-fail",
+		Steps: []workflow.Step{{BotName: "ok-bot"}, {BotName: "fail-bot"}},
+	})
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatal("expected workflow to fail")
+	}
+
+	type attemptLine struct {
+		attempt int
+		level   logger.Level
+		message string
+	}
+	read := func(stepIndex int) []attemptLine {
+		t.Helper()
+		lines, err := stepLogs.StepHistory(context.Background(), "wf-logs", stepIndex)
+		if err != nil {
+			t.Fatalf("StepHistory(%d): %v", stepIndex, err)
+		}
+		var out []attemptLine
+		for _, l := range lines {
+			out = append(out, attemptLine{l.Attempt, l.Level, l.Message})
+		}
+		return out
+	}
+
+	if got, want := read(0), []attemptLine{{1, logger.LevelInfo, "stub bot running"}}; !slices.Equal(got, want) {
+		t.Errorf("logs of step 0 = %v, want %v", got, want)
+	}
+	var want []attemptLine
+	for attempt := 1; attempt <= 3; attempt++ {
+		want = append(want,
+			attemptLine{attempt, logger.LevelInfo, "stub bot running"},
+			attemptLine{attempt, logger.LevelError, "connection refused"},
+		)
+	}
+	if got := read(1); !slices.Equal(got, want) {
+		t.Errorf("logs of step 1 = %v, want %v", got, want)
+	}
+}
+
+// intPtr ช่วยสร้างค่า Step.MaxAttempts (เป็น pointer เพื่อแยก "ไม่ระบุ" ออกจาก 0)
+func intPtr(n int) *int { return &n }
+
+// TestExecute_StepFailsAfterDefaultThreeAttempts ทดสอบว่า Step ที่ error ทุก Attempt และไม่ได้
+// ตั้ง max_attempts กลายเป็น Failed Step หลังครบ 3 Attempt พอดี — ก่อนหน้านี้ RetryPolicy ไม่มี
+// MaximumAttempts ทำให้ Step ถูกลองใหม่ไม่มีที่สิ้นสุดจน Workflow Run ค้าง running
+func TestExecute_StepFailsAfterDefaultThreeAttempts(t *testing.T) {
+	env := newTestEnv(t)
+	env.OnActivity(temporal.ActivityName, mock.Anything, mock.Anything, mock.Anything).
+		Return("", errors.New("connection refused")).Times(3)
+
+	wf := workflow.Workflow{
+		Name:  "always-fails",
+		Steps: []workflow.Step{{BotName: "fail-bot"}},
+	}
+	env.ExecuteWorkflow(temporal.Execute, wf)
+
+	if !env.IsWorkflowCompleted() {
+		t.Fatal("expected workflow to complete (with error)")
+	}
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatal("expected workflow to fail once the step runs out of attempts")
+	}
+	env.AssertExpectations(t)
+}
+
+// TestExecute_StepFailsAfterMaxAttempts ทดสอบว่า max_attempts ที่ตั้งต่อ Step ใช้แทนค่าเริ่มต้น 3
+// ได้ทั้งน้อยกว่าและมากกว่า
+func TestExecute_StepFailsAfterMaxAttempts(t *testing.T) {
+	tests := []struct {
+		name         string
+		giveAttempts int
+	}{
+		{name: "fewer than default", giveAttempts: 1},
+		{name: "more than default", giveAttempts: 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			env.OnActivity(temporal.ActivityName, mock.Anything, mock.Anything, mock.Anything).
+				Return("", errors.New("connection refused")).Times(tt.giveAttempts)
+
+			wf := workflow.Workflow{
+				Name: "always-fails",
+				Steps: []workflow.Step{
+					{BotName: "fail-bot", MaxAttempts: intPtr(tt.giveAttempts)},
+				},
+			}
+			env.ExecuteWorkflow(temporal.Execute, wf)
+
+			if err := env.GetWorkflowError(); err == nil {
+				t.Fatal("expected workflow to fail once the step runs out of attempts")
+			}
+			env.AssertExpectations(t)
+		})
+	}
+}
+
+// TestExecute_NonRetryableErrorFailsOnFirstAttempt ทดสอบว่า ConfigError และ UnknownBot
+// ล้มเหลวใน Attempt แรกเสมอ แม้ max_attempts จะตั้งไว้สูง เพราะลองใหม่กี่ครั้งก็ได้ผลเดิม
+func TestExecute_NonRetryableErrorFailsOnFirstAttempt(t *testing.T) {
+	for _, errType := range []string{"ConfigError", "UnknownBot"} {
+		t.Run(errType, func(t *testing.T) {
+			env := newTestEnv(t)
+			env.OnActivity(temporal.ActivityName, mock.Anything, mock.Anything, mock.Anything).
+				Return("", sdktemporal.NewApplicationError("broken", errType)).Times(1)
+
+			wf := workflow.Workflow{
+				Name:  "non-retryable",
+				Steps: []workflow.Step{{BotName: "bad-bot", MaxAttempts: intPtr(5)}},
+			}
+			env.ExecuteWorkflow(temporal.Execute, wf)
+
+			if err := env.GetWorkflowError(); err == nil {
+				t.Fatal("expected workflow to fail")
+			}
+			env.AssertExpectations(t)
+		})
+	}
+}
+
+// TestExecute_StepAfterFailedStepDoesNotRun ทดสอบว่าเมื่อ Step แรกกลายเป็น Failed Step หลัง
+// หมด Attempt แล้ว Step ถัดไปไม่ถูกรันเลย และ Workflow Run ล้มเหลว
+func TestExecute_StepAfterFailedStepDoesNotRun(t *testing.T) {
+	env := newTestEnv(t)
+	env.OnActivity(temporal.ActivityName, mock.Anything, workflow.Step{BotName: "fail-bot"}, mock.Anything).
+		Return("", errors.New("connection refused")).Times(3)
+
+	wf := workflow.Workflow{
+		Name: "fail-first",
+		Steps: []workflow.Step{
+			{BotName: "fail-bot"},
+			{BotName: "ok-bot"}, // ไม่ควรถูกเรียกเลย (ไม่มี mock ถ้าถูกเรียก testsuite จะ panic)
+		},
+	}
+	env.ExecuteWorkflow(temporal.Execute, wf)
+
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatal("expected workflow to fail")
+	}
+	var queried []workflow.StepResult
+	val, err := env.QueryWorkflow("steps")
+	if err != nil {
+		t.Fatalf("QueryWorkflow: %v", err)
+	}
+	if err := val.Get(&queried); err != nil {
+		t.Fatalf("decode query result: %v", err)
+	}
+	if len(queried) != 1 || queried[0].Error == "" {
+		t.Fatalf("expected exactly 1 failed step result, got %+v", queried)
+	}
+	env.AssertExpectations(t)
+}
+
+// TestExecute_KubernetesJobStepFailsAfterMaxAttempts ทดสอบว่าจำนวน Attempt สูงสุดใช้กับ activity
+// ของ Kubernetes Job ด้วย ไม่ใช่แค่ activity ของ Bot ปกติ — register function แทนไว้ใต้ชื่อ
+// K8sJobActivityName เพื่อให้ OnActivity แบบ string mock ได้โดยไม่ต้องมี cluster
+func TestExecute_KubernetesJobStepFailsAfterMaxAttempts(t *testing.T) {
+	tests := []struct {
+		name         string
+		giveAttempts *int
+		wantCalls    int
+	}{
+		{name: "default", giveAttempts: nil, wantCalls: 3},
+		{name: "configured", giveAttempts: intPtr(2), wantCalls: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			env.RegisterActivityWithOptions(
+				func(context.Context, workflow.K8sJobSpec, int) (string, error) { return "", nil },
+				activity.RegisterOptions{Name: temporal.K8sJobActivityName},
+			)
+			env.OnActivity(temporal.K8sJobActivityName, mock.Anything, mock.Anything, mock.Anything).
+				Return("", errors.New("pod failed")).Times(tt.wantCalls)
+
+			wf := workflow.Workflow{
+				Name: "k8s-fails",
+				Steps: []workflow.Step{{
+					K8sJob:      &workflow.K8sJobSpec{Image: "busybox"},
+					MaxAttempts: tt.giveAttempts,
+				}},
+			}
+			env.ExecuteWorkflow(temporal.Execute, wf)
+
+			if err := env.GetWorkflowError(); err == nil {
+				t.Fatal("expected workflow to fail")
+			}
+			env.AssertExpectations(t)
+		})
 	}
 }

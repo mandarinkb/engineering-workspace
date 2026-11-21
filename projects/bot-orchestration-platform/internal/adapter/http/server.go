@@ -22,11 +22,33 @@ type Server struct {
 	runs      *workflowrunuc.Service
 	schedules *scheduleuc.Service
 	auth      *authuc.Service
+	db        DatabasePinger // nil = โหมด memory ไม่มี database ให้ /readyz เช็ค
+}
+
+// ServerOption ปรับค่าของ Server ตอนสร้าง (ใช้กับสิ่งที่ไม่จำเป็นเสมอ เช่น database)
+type ServerOption interface {
+	apply(*Server)
+}
+
+type databaseOption struct{ db DatabasePinger }
+
+func (o databaseOption) apply(s *Server) { s.db = o.db }
+
+// WithDatabase ให้ /readyz ping database ด้วย — ส่งเฉพาะเมื่อมี database จริง (อย่าส่ง nil
+// pointer ที่ห่อเป็น interface เพราะจะไม่เท่ากับ nil)
+func WithDatabase(db DatabasePinger) ServerOption {
+	return databaseOption{db: db}
 }
 
 // NewServer ผูก handler ทุกตัวเข้ากับ usecase ที่ส่งเข้ามา แล้วลงทะเบียน route ให้เรียบร้อย
-func NewServer(jobs *jobuc.Service, runs *workflowrunuc.Service, schedules *scheduleuc.Service, auth *authuc.Service) *Server {
+func NewServer(
+	jobs *jobuc.Service, runs *workflowrunuc.Service, schedules *scheduleuc.Service, auth *authuc.Service,
+	opts ...ServerOption,
+) *Server {
 	s := &Server{mux: http.NewServeMux(), jobs: jobs, runs: runs, schedules: schedules, auth: auth}
+	for _, opt := range opts {
+		opt.apply(s)
+	}
 	s.routes()
 	return s
 }
@@ -55,7 +77,11 @@ func getenv(key, fallback string) string {
 // การอนุญาต credentials แบบนี้ "ห้าม" ใช้ Access-Control-Allow-Origin: "*" เด็ดขาด ต้องระบุ
 // origin ที่อนุญาตตรงๆ เท่านั้น) request แบบ OPTIONS (preflight ที่เบราว์เซอร์ส่งมาก่อน
 // request จริงเองอัตโนมัติเวลามี custom header อย่าง Authorization) ตอบ 204 ทันทีโดยไม่ต้อง
-// ส่งต่อให้ mux เลย เพราะไม่มี route ไหนใน routes() รองรับ method OPTIONS ตรงๆ
+// ส่งต่อให้ mux เลย เพราะไม่มี route ไหนใน routes() รองรับ method OPTIONS ตรงๆ (และ
+// เบราว์เซอร์ไม่แนบ cookie ไปกับ preflight จึงต้องตอบก่อนบังคับ login)
+//
+// request อื่นทั้งหมดผ่าน requireSession ก่อนถึง mux — ทุก route ต้องมี session เป็นค่า
+// เริ่มต้น ยกเว้นที่อยู่ใน publicRoutes (ดู require_session.go)
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", dashboardOrigin)
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -65,6 +91,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	r, ok := s.requireSession(w, r)
+	if !ok {
+		return
+	}
 	s.mux.ServeHTTP(w, r)
 }
 
@@ -72,7 +102,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ที่รองรับ wildcard แบบ {name} ในตัว ServeMux เองโดยไม่ต้องพึ่ง library ภายนอก
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz) // liveness: process ยังตอบสนองอยู่ไหม
-	s.mux.HandleFunc("GET /readyz", s.handleReadyz)   // readiness: พร้อมรับ traffic ไหม (ต่อ Temporal ได้)
+	s.mux.HandleFunc("GET /readyz", s.handleReadyz)   // readiness: พร้อมรับ traffic ไหม (ต่อ Temporal และ database ได้)
 
 	s.mux.HandleFunc("GET /bots", s.handleListBots)                       // ดูรายชื่อ bot ที่ register ไว้ทั้งหมด + config schema ของแต่ละตัว
 	s.mux.HandleFunc("POST /bots/{name}/jobs", s.handleCreateJob)         // สร้าง job ใหม่และสั่งรันทันที
@@ -82,9 +112,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /jobs/{id}/logs/stream", s.handleStreamJobLogs) // ดู log แบบ real-time ผ่าน SSE (roadmap ข้อ 1.5)
 	s.mux.HandleFunc("DELETE /jobs/{id}", s.handleCancelJob)              // สั่งยกเลิก job ที่กำลังรันอยู่
 
-	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)    // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
-	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun) // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
-	s.mux.HandleFunc("POST /workflow-runs", s.handleCreateWorkflowRun)  // รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน
+	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)        // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
+	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun)     // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
+	s.mux.HandleFunc("GET /workflow-runs/count", s.handleCountWorkflowRuns) // นับ workflow run ตามกลุ่มสถานะ (path ตายตัวชนะ {id} ตามกฎของ ServeMux)
+	s.mux.HandleFunc("POST /workflow-runs", s.handleCreateWorkflowRun)      // รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน
+
+	s.mux.HandleFunc("GET /workflow-runs/{id}/steps/{index}/logs", s.handleGetWorkflowRunStepLogs) // ดู log ทุก Attempt ของ Step เดียวตามลำดับ Step
 
 	s.mux.HandleFunc("POST /login", s.handleLogin)   // ตรวจ credential แล้วออก JWT ใส่ httpOnly cookie (roadmap ข้อ 1.8)
 	s.mux.HandleFunc("POST /logout", s.handleLogout) // ล้าง cookie ทิ้ง

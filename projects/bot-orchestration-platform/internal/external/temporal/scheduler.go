@@ -3,11 +3,14 @@ package temporal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
 	sdktemporal "go.temporal.io/sdk/temporal"
 
 	"bop/internal/domain/apperr"
@@ -40,12 +43,13 @@ func workflowAction(wf wfdomain.Workflow) *client.ScheduleWorkflowAction {
 }
 
 // Create สร้าง Temporal Schedule ใหม่ คืน apperr.ErrConflict ถ้า id นี้มีอยู่แล้ว
-func (s *Scheduler) Create(ctx context.Context, id string, spec schedule.Spec, overlap schedule.Overlap, wf wfdomain.Workflow) error {
+func (s *Scheduler) Create(ctx context.Context, id string, spec schedule.Spec, policy schedule.Policy, wf wfdomain.Workflow) error {
 	_, err := s.c.ScheduleClient().Create(ctx, client.ScheduleOptions{
-		ID:      id,
-		Spec:    toScheduleSpec(spec),
-		Overlap: overlapPolicyByName[overlap],
-		Action:  workflowAction(wf),
+		ID:            id,
+		Spec:          toScheduleSpec(spec),
+		Overlap:       overlapPolicyByName[policy.Overlap],
+		CatchupWindow: policy.CatchupWindow,
+		Action:        workflowAction(wf),
 	})
 	if errors.Is(err, sdktemporal.ErrScheduleAlreadyRunning) {
 		return apperr.Conflict("schedule already exists")
@@ -79,12 +83,17 @@ func (s *Scheduler) List(ctx context.Context) ([]schedule.Summary, error) {
 	return out, nil
 }
 
-// Describe คืนสถานะ/เวลาที่แท้จริงจาก Temporal — ไม่เติม Steps (usecase เติมจาก
-// repository ของ BOP เอง)
+// Describe คืนข้อมูลทั้งหมดของ Schedule จาก Temporal ที่เดียว (ADR 0001) รวม steps ที่
+// ถอดรหัสจาก action args — จึงใช้ได้กับ Schedule ที่สร้างนอก API ด้วย และไม่หายหลัง restart
 func (s *Scheduler) Describe(ctx context.Context, id string) (*schedule.Detail, error) {
 	desc, err := s.c.ScheduleClient().GetHandle(ctx, id).Describe(ctx)
 	if err != nil {
 		return nil, translate(err)
+	}
+
+	steps, err := scheduledSteps(desc.Schedule.Action)
+	if err != nil {
+		return nil, fmt.Errorf("schedule %s: %w", id, err)
 	}
 
 	// หลัง Describe เสมอ Schedule.Action จะเป็น *client.ScheduleWorkflowAction ที่มี
@@ -98,8 +107,10 @@ func (s *Scheduler) Describe(ctx context.Context, id string) (*schedule.Detail, 
 	}
 
 	overlap := schedule.OverlapSkip
+	var catchupWindow time.Duration
 	if desc.Schedule.Policy != nil {
 		overlap = overlapPolicyName[desc.Schedule.Policy.Overlap]
+		catchupWindow = desc.Schedule.Policy.CatchupWindow
 	}
 
 	paused, note := false, ""
@@ -127,24 +138,21 @@ func (s *Scheduler) Describe(ctx context.Context, id string) (*schedule.Detail, 
 			NextActionTimes: desc.Info.NextActionTimes,
 		},
 		Overlap:       overlap,
+		CatchupWindow: catchupWindow,
+		Steps:         steps,
 		RecentActions: actions,
 		CreatedAt:     desc.Info.CreatedAt,
 	}, nil
 }
 
-// Update แทนที่ schedule ทั้งก้อน — DoUpdate callback ของ SDK ส่ง input.Description
-// (สถานะปัจจุบัน) มาให้ แต่ไม่อ่านมันเลยโดยตั้งใจ เพราะ full replace ไม่จำเป็นต้องรู้ค่าเดิม
-func (s *Scheduler) Update(ctx context.Context, id string, spec schedule.Spec, overlap schedule.Overlap, wf wfdomain.Workflow) error {
+// Update แทนที่ workflow (steps), ตารางเวลา, overlap policy และ Catch-up Window ของ
+// schedule — ส่วนอื่นคงค่าเดิมที่ Temporal ส่งมาใน input.Description ดู replaceSchedule
+func (s *Scheduler) Update(ctx context.Context, id string, spec schedule.Spec, policy schedule.Policy, wf wfdomain.Workflow) error {
 	sdkSpec := toScheduleSpec(spec)
 	err := s.c.ScheduleClient().GetHandle(ctx, id).Update(ctx, client.ScheduleUpdateOptions{
-		DoUpdate: func(client.ScheduleUpdateInput) (*client.ScheduleUpdate, error) {
-			return &client.ScheduleUpdate{
-				Schedule: &client.Schedule{
-					Action: workflowAction(wf),
-					Spec:   &sdkSpec,
-					Policy: &client.SchedulePolicies{Overlap: overlapPolicyByName[overlap]},
-				},
-			}, nil
+		DoUpdate: func(in client.ScheduleUpdateInput) (*client.ScheduleUpdate, error) {
+			updated := replaceSchedule(in.Description.Schedule, sdkSpec, policy, workflowAction(wf))
+			return &client.ScheduleUpdate{Schedule: &updated}, nil
 		},
 	})
 	return translate(err)
@@ -177,6 +185,36 @@ func (s *Scheduler) Backfill(ctx context.Context, id string, start, end time.Tim
 	return translate(s.c.ScheduleClient().GetHandle(ctx, id).Backfill(ctx, client.ScheduleBackfillOptions{
 		Backfill: []client.ScheduleBackfill{{Start: start, End: end, Overlap: overlapPolicyByName[overlap]}},
 	}))
+}
+
+// executeWorkflowType คือชื่อ workflow type ที่ Temporal ตั้งจากชื่อฟังก์ชัน Execute — action
+// ของ Schedule ที่ใช้ type อื่นไม่ใช่ Workflow ของ BOP จึงไม่มี steps ให้ถอดรหัส
+const executeWorkflowType = "Execute"
+
+// scheduledSteps ถอดรหัส steps จาก action args ของ Schedule ที่ได้จาก Describe — SDK คืน
+// Args เป็น *commonpb.Payload (ตาม comment ของ ScheduleWorkflowAction.Args) จึงต้องแปลง
+// กลับด้วย DataConverter ตัวเดียวกับตอนสร้าง (default ทั้ง cmd/bop และ cmd/bop-worker)
+//
+// Schedule ที่ไม่ได้สั่งรัน Execute (สร้างโดยระบบอื่นใน namespace เดียวกัน) ได้รายการว่าง
+// แต่ถ้าเป็น Execute แล้วถอดรหัสไม่ได้คือ payload ไม่ตรงกับ workflow.Workflow ซึ่งต้องรู้
+// ทันที ไม่ใช่แสดง steps ว่างให้เข้าใจผิดว่า Schedule ไม่ทำอะไร
+func scheduledSteps(action client.ScheduleAction) ([]wfdomain.Step, error) {
+	wfAction, ok := action.(*client.ScheduleWorkflowAction)
+	if !ok || wfAction.Workflow != executeWorkflowType || len(wfAction.Args) == 0 {
+		return []wfdomain.Step{}, nil
+	}
+	payload, ok := wfAction.Args[0].(*commonpb.Payload)
+	if !ok {
+		return nil, fmt.Errorf("unexpected action arg type %T", wfAction.Args[0])
+	}
+	var wf wfdomain.Workflow
+	if err := converter.GetDefaultDataConverter().FromPayload(payload, &wf); err != nil {
+		return nil, fmt.Errorf("decode workflow steps: %w", err)
+	}
+	if wf.Steps == nil {
+		return []wfdomain.Step{}, nil
+	}
+	return wf.Steps, nil
 }
 
 // translate แปลง "ไม่เจอ schedule นี้" ของ Temporal เป็น apperr.ErrNotFound (ข้อความเดิม)
@@ -219,6 +257,43 @@ func fromScheduleSpec(spec *client.ScheduleSpec) schedule.Spec {
 		return schedule.Spec{CronExpression: &expr}
 	}
 	return schedule.Spec{}
+}
+
+// replaceSchedule สร้าง schedule ชุดใหม่สำหรับ Update จาก schedule ปัจจุบัน โดยแทนที่แค่
+// action, spec, overlap policy และ Catch-up Window (usecase ส่งค่า default มาเสมอถ้า client
+// ไม่ระบุ Schedule เดิมที่ไม่เคยตั้งจึงได้ค่า default ตอนถูกแก้ไขครั้งถัดไป)
+//
+// ต้องเริ่มจากค่าปัจจุบัน ไม่ใช่ client.Schedule เปล่า เพราะ:
+//   - SDK อ่าน schedule.State.Note ตรงๆ ตอนแปลงเป็น protobuf (sdk-go v1.47.0
+//     internal_schedule_client.go) ถ้า State เป็น nil จะ panic — เดิม PUT /schedules ทำ
+//     bop-api panic ทุกครั้งด้วยเหตุนี้ (เจอจาก Bruno collection)
+//   - การแก้ steps หรือตารางเวลาไม่ควรล้างค่าที่ผู้ใช้ไม่ได้แตะ เช่นสถานะ pause, note และ
+//     policy อื่น เช่น PauseOnFailure
+func replaceSchedule(
+	current client.Schedule,
+	spec client.ScheduleSpec,
+	policy schedule.Policy,
+	action client.ScheduleAction,
+) client.Schedule {
+	updated := current
+	updated.Action = action
+	updated.Spec = &spec
+
+	var policies client.SchedulePolicies
+	if current.Policy != nil {
+		policies = *current.Policy
+	}
+	policies.Overlap = overlapPolicyByName[policy.Overlap]
+	policies.CatchupWindow = policy.CatchupWindow
+	updated.Policy = &policies
+
+	var state client.ScheduleState
+	if current.State != nil {
+		state = *current.State
+	}
+	updated.State = &state
+
+	return updated
 }
 
 // overlapPolicyByName/overlapPolicyName คือ mapping ระหว่าง schedule.Overlap กับ enum ตัว

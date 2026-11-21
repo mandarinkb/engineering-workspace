@@ -14,6 +14,7 @@ import { useCreateSchedule } from "../api/use-create-schedule";
 import { useUpdateSchedule } from "../api/use-update-schedule";
 import type { OverlapPolicy, ScheduleDetail, ScheduleStep } from "@/entities/schedule";
 
+import { initialCatchupWindow, validateCatchupWindow } from "../lib/catchup-window";
 import { EMPTY_STEP, validateSteps } from "../lib/steps";
 import { StepsEditor } from "./steps-editor";
 
@@ -69,6 +70,7 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
   const [specType, setSpecType] = useState<"interval" | "cron">(initial?.cron_expression ? "cron" : "interval");
   const [intervalSeconds, setIntervalSeconds] = useState(String(initial?.interval_seconds ?? 60));
   const [cronExpression, setCronExpression] = useState(initial?.cron_expression ?? "");
+  const [catchupWindow, setCatchupWindow] = useState(initialCatchupWindow(initial?.catchup_window_seconds));
 
   const [steps, setSteps] = useState<ScheduleStep[]>(
     initial?.steps && initial.steps.length > 0 ? initial.steps : [EMPTY_STEP],
@@ -102,18 +104,25 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
       return;
     }
 
+    const catchupWindowError = validateCatchupWindow(catchupWindow);
+    if (catchupWindowError) {
+      setFormError(catchupWindowError);
+      return;
+    }
+    const catchup_window_seconds = Number(catchupWindow);
+
     const spec =
       specType === "interval" ? { interval_seconds: Number(intervalSeconds) } : { cron_expression: cronExpression.trim() };
     const overlap = shell.overlap as OverlapPolicy;
 
     if (isEdit && initial) {
       updateSchedule.mutate(
-        { workflow_name: shell.workflow_name, steps, spec, overlap },
+        { workflow_name: shell.workflow_name, steps, spec, overlap, catchup_window_seconds },
         { onSuccess: () => router.push(`/schedules/${initial.id}`) },
       );
     } else {
       createSchedule.mutate(
-        { id: shell.id, workflow_name: shell.workflow_name, steps, spec, overlap },
+        { id: shell.id, workflow_name: shell.workflow_name, steps, spec, overlap, catchup_window_seconds },
         { onSuccess: (created) => router.push(`/schedules/${created.id}`) },
       );
     }
@@ -195,6 +204,24 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
             </option>
           ))}
         </select>
+      </div>
+
+      <div>
+        <label htmlFor="catchup_window_seconds" className="block text-sm font-medium">
+          Catch-up Window (วินาที)
+        </label>
+        <input
+          id="catchup_window_seconds"
+          type="number"
+          min={10}
+          max={31536000}
+          value={catchupWindow}
+          onChange={(event) => setCatchupWindow(event.target.value)}
+          className="mt-1 w-40 rounded border border-gray-300 px-3 py-2"
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          Missed Run ที่เก่ากว่านี้ถูกข้ามเมื่อระบบกลับมา (ค่าเริ่มต้น 3600 = 1 ชั่วโมง ต่ำสุด 10 สูงสุด 31536000 = 1 ปี)
+        </p>
       </div>
 
       <StepsEditor steps={steps} onChange={setSteps} bots={bots} />
