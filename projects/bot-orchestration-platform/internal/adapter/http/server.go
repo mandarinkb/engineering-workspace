@@ -90,9 +90,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /jobs/{id}/logs/stream", s.handleStreamJobLogs) // ดู log แบบ real-time ผ่าน SSE (roadmap ข้อ 1.5)
 	s.mux.HandleFunc("DELETE /jobs/{id}", s.handleCancelJob)              // สั่งยกเลิก job ที่กำลังรันอยู่
 
-	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)    // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
-	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun) // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
-	s.mux.HandleFunc("POST /workflow-runs", s.handleCreateWorkflowRun)  // รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน
+	s.mux.HandleFunc("GET /workflow-runs", s.handleListWorkflowRuns)        // ดูรายการ workflow run ทั้งหมด (ทั้งที่ scheduler สั่งอัตโนมัติและที่ trigger เอง)
+	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun)     // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
+	s.mux.HandleFunc("GET /workflow-runs/count", s.handleCountWorkflowRuns) // นับ workflow run ตามกลุ่มสถานะ (path ตายตัวชนะ {id} ตามกฎของ ServeMux)
+	s.mux.HandleFunc("POST /workflow-runs", s.handleCreateWorkflowRun)      // รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน
 
 	s.mux.HandleFunc("POST /login", s.handleLogin)   // ตรวจ credential แล้วออก JWT ใส่ httpOnly cookie (roadmap ข้อ 1.8)
 	s.mux.HandleFunc("POST /logout", s.handleLogout) // ล้าง cookie ทิ้ง

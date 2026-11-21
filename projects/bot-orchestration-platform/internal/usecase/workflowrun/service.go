@@ -62,12 +62,14 @@ const (
 	maxPageSize     = 200
 )
 
+// errInvalidStatus ใช้ร่วมกันระหว่าง List และ Count ให้ข้อความ error ของ status ตรงกัน
+var errInvalidStatus = apperr.Invalid("status must be one of running, completed, failed, canceled")
+
 // List คืน Workflow Run หนึ่งหน้า (ทั้งที่กำลังรันอยู่และจบไปแล้ว) — PageSize 0 แปลว่า
 // ไม่ได้ระบุ ใช้ค่าเริ่มต้น 50, ติดลบหรือสถานะที่ไม่รู้จักเป็น apperr.ErrInvalid
 func (s *Service) List(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	if !q.Status.Valid() {
-		return workflow.RunPage{}, apperr.Invalid(
-			"status must be one of running, completed, failed, canceled")
+		return workflow.RunPage{}, errInvalidStatus
 	}
 	switch {
 	case q.PageSize < 0:
@@ -78,6 +80,16 @@ func (s *Service) List(ctx context.Context, q workflow.RunQuery) (workflow.RunPa
 		q.PageSize = maxPageSize
 	}
 	return s.engine.ListRuns(ctx, q)
+}
+
+// Count นับ Workflow Run ในกลุ่มสถานะที่ระบุ (ค่าว่าง = ทุกสถานะ) — Overview ใช้ตัวเลขนี้
+// แทนการนับจากหน้าแรกของ List ซึ่งผิดทันทีที่มี run มากกว่าหนึ่งหน้า สถานะที่ไม่รู้จักเป็น
+// apperr.ErrInvalid เหมือน List
+func (s *Service) Count(ctx context.Context, status workflow.RunStatusFilter) (int64, error) {
+	if !status.Valid() {
+		return 0, errInvalidStatus
+	}
+	return s.engine.CountRuns(ctx, status)
 }
 
 // Get คืนรายละเอียด run เดียวรวมผลลัพธ์ทีละ step — id คือ workflow ID
