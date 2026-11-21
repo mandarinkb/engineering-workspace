@@ -125,8 +125,8 @@ type Action struct {
 	WorkflowID   string
 }
 
-// Detail ต่อยอดจาก Summary เพิ่มสิ่งที่ต้อง describe ถึงจะได้ บวกกับ Steps ที่มาจาก
-// Repository ของ BOP เอง (ไม่ใช่จาก engine — engine ไม่เติม field นี้ให้)
+// Detail ต่อยอดจาก Summary เพิ่มสิ่งที่ต้อง describe ถึงจะได้ รวม Steps ที่ engine ถอดรหัส
+// จาก action ของ Schedule เอง (รายการว่างถ้า Schedule ไม่ได้สั่งรัน Workflow ของ BOP)
 type Detail struct {
 	Summary
 	Overlap       Overlap

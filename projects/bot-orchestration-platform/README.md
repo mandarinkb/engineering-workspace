@@ -34,7 +34,7 @@ cmd/bop-worker/main.go   composition root ของ Temporal Worker process — 
    │   ├── job          Job entity + Repository + Executor port (json tag snake_case)
    │   ├── logger       Logger interface (persist + live-subscribe ในตัวเดียว)
    │   ├── workflow     Workflow/Step/StepResult (input schema ของ Temporal workflow) + Engine port
-   │   ├── schedule     Definition + Repository + Spec/Overlap (กฎ validate) + Scheduler port
+   │   ├── schedule     Spec/Overlap/Policy (กฎ validate) + Scheduler port
    │   └── apperr       ประเภท error กลาง (Invalid/NotFound/Conflict) ที่ HTTP แปลงเป็น status code
    │
    ├── internal/usecase               application logic — รู้จักแค่ port ใน domain
@@ -202,7 +202,7 @@ curl localhost:8080/workflow-runs/<workflow_id>   # poll สถานะ/ผล�
 
 ## จัดการ Schedule (CRUD + manual trigger — เทียบเท่า Control-M job management)
 
-`internal/external/temporal/scheduler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK (เปิดเป็น HTTP endpoint ผ่าน `internal/usecase/schedule` และ `internal/adapter/http/*_schedule.go`) — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) BOP เก็บเพิ่มแค่ "workflow definition" (ชื่อ + steps) ไว้ใน `schedule.Repository` (`internal/domain/schedule`, implementation in-memory ที่ `internal/repository/memory`, เหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ อยู่ใน comment ของไฟล์นั้น)
+`internal/external/temporal/scheduler.go` ห่อ `client.ScheduleClient` ของ Temporal SDK (เปิดเป็น HTTP endpoint ผ่าน `internal/usecase/schedule` และ `internal/adapter/http/*_schedule.go`) — ไม่ได้เขียน scheduling logic เองเลยสักบรรทัด (Temporal จัดการ cron parsing, calendar rule, overlap policy, catchup window ให้หมดแล้ว) และ BOP ไม่เก็บข้อมูล Schedule ซ้ำเอง: steps ของ Schedule ถอดรหัสจาก action args ของ Temporal Schedule ทุกครั้ง ([ADR 0001](docs/adr/0001-temporal-is-source-of-truth-for-schedules.md))
 
 | Endpoint | เทียบ Control-M | หมายเหตุ |
 |---|---|---|
@@ -260,7 +260,7 @@ wf := workflow.Workflow{
 สิ่งที่ทำเสร็จแล้วสรุปสั้นๆ (รายละเอียดเต็มดู [FEATURES.md](FEATURES.md)): Phase 0 core engine, Phase 2.5 Temporal migration, Phase 1 backend prerequisite + dashboard, Schedule CRUD เต็มชุด, 3 ทางเลือกรัน external job (`externaljob`/remote task queue/K8s Job hybrid), `POST /workflow-runs` (ad-hoc run), per-job/per-step timeout — ดูหัวข้อต่างๆ ด้านบนของไฟล์นี้สำหรับรายละเอียดแต่ละอัน
 
 **ช่องว่างที่สำคัญที่สุดตอนนี้ (เรียงตาม priority ใน [FEATURES.md](FEATURES.md))**:
-1. **PostgreSQL persistence** — `job.Repository`/`schedule.Repository` ยังเป็น in-memory ทั้งคู่ (Phase 0.4) เป็น prerequisite ของแทบทุกอย่างถัดจากนี้ รวมถึง Phase 3 enterprise feature ด้านล่าง
+1. **PostgreSQL persistence** — `job.Repository` ยังเป็น in-memory (Phase 0.4) เป็น prerequisite ของแทบทุกอย่างถัดจากนี้ รวมถึง Phase 3 enterprise feature ด้านล่าง
 2. **Job Dependency (DAG)** และ **Observability พื้นฐาน** (Phase 2.2) — ยังไม่มีเลยทั้งคู่
 3. **Temporal server จริง verify แล้ว** (แก้ปัญหา Docker permission ได้แล้ว — เพิ่ม user เข้า `docker` group) ครอบคลุม: job เดี่ยว + SSE log stream, auth เต็ม flow, cancel job, Schedule CRUD เต็ม lifecycle, `POST /workflow-runs` (รวมเจอ+เห็น retry ของ transient network error จริง) — **ที่ยังไม่ verify**: route ข้าม task queue จริง (ต้องมี worker ตัวที่สอง), และ **K8s cluster ยังไม่มีเลย** (K8s Job hybrid execution ยังผ่านแค่ unit test ด้วย fake clientset — ดู [KUBERNETES-DEPLOYMENT-TODO.md](../../KUBERNETES-DEPLOYMENT-TODO.md))
 

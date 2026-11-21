@@ -98,13 +98,12 @@ func newAPIServer(t *testing.T) (*apihttp.Server, *authuc.Service) {
 	log := memlogger.New()
 	pool := worker.NewPool(2, 5*time.Second, repo, log)
 	pool.Register(stubBot{})
-	scheduleRepo := memory.NewScheduleRepository()
 
 	auth := authuc.NewService([]byte(testSecret), testUsername, testPassword)
 	srv := apihttp.NewServer(
 		jobuc.NewService(repo, pool, log),
 		workflowrunuc.NewService(healthyEngine{Engine: temporal.NewEngine(nil)}),
-		scheduleuc.NewService(temporal.NewScheduler(nil), scheduleRepo),
+		scheduleuc.NewService(temporal.NewScheduler(nil)),
 		auth,
 	)
 	return srv, auth

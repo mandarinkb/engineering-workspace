@@ -15,4 +15,11 @@ tests {
     expect(res.getStatus()).to.equal(200);
     expect(res.getBody().catchup_window_seconds).to.equal(120);
   });
+
+  test("steps ที่อ่านกลับจาก Temporal Schedule เป็นค่าที่แก้แล้ว", function () {
+    const s = res.getBody();
+    expect(s.steps).to.have.lengthOf(1);
+    expect(s.steps[0].bot_name).to.equal("http-status-checker");
+    expect(s.steps[0].config.url).to.equal("http://bop-api:8080/readyz");
+  });
 }

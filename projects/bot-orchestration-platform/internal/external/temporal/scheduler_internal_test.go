@@ -1,17 +1,21 @@
 // package temporal (ไม่ใช่ temporal_test) เพราะ test ไฟล์นี้ทดสอบ unexported function
-// (toScheduleSpec, fromScheduleSpec, overlapPolicyByName/overlapPolicyName) ตรงๆ โดยไม่
+// (toScheduleSpec, fromScheduleSpec, overlapPolicyByName/overlapPolicyName, scheduledSteps) ตรงๆ โดยไม่
 // ต้องพึ่ง Temporal client จริง — ย้ายมาจาก internal/api/http/schedule_internal_test.go เดิม
 // ส่วนที่ทดสอบการ validate spec/overlap ย้ายไปอยู่ที่ internal/domain/schedule แล้ว
 package temporal
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
 
+	"bop/internal/domain/bot"
 	"bop/internal/domain/schedule"
+	wfdomain "bop/internal/domain/workflow"
 )
 
 func TestToScheduleSpec_Interval(t *testing.T) {
@@ -133,5 +137,52 @@ func TestReplaceSchedule_KeepsUntouchedFields(t *testing.T) {
 	}
 	if current.Policy.Overlap != enumspb.SCHEDULE_OVERLAP_POLICY_SKIP {
 		t.Error("expected the current schedule's policy not to be mutated")
+	}
+}
+
+// scheduledAction สร้าง action แบบที่ Describe คืนมา: Workflow เป็นชื่อ workflow type และ
+// Args เป็น *commonpb.Payload ที่ encode ด้วย DataConverter ตัวเดียวกับตอนสร้าง Schedule
+func scheduledAction(t *testing.T, workflowType string, args ...interface{}) *client.ScheduleWorkflowAction {
+	t.Helper()
+	payloads := make([]interface{}, 0, len(args))
+	for _, arg := range args {
+		p, err := converter.GetDefaultDataConverter().ToPayload(arg)
+		if err != nil {
+			t.Fatalf("encode arg: %v", err)
+		}
+		payloads = append(payloads, p)
+	}
+	return &client.ScheduleWorkflowAction{ID: "wf", Workflow: workflowType, Args: payloads}
+}
+
+func TestScheduledSteps_DecodesStepsFromActionArgs(t *testing.T) {
+	want := []wfdomain.Step{
+		{BotName: "http-status-checker", Config: bot.Config{"url": "https://example.com"}, TimeoutSeconds: 5},
+		{K8sJob: &wfdomain.K8sJobSpec{Image: "busybox", Args: []string{"echo", "hi"}}},
+	}
+	action := scheduledAction(t, "Execute", wfdomain.Workflow{Name: "check", Steps: want})
+
+	got, err := scheduledSteps(action)
+	if err != nil {
+		t.Fatalf("scheduledSteps: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("steps = %+v, want %+v", got, want)
+	}
+}
+
+func TestScheduledSteps_EmptyForOtherWorkflowTypes(t *testing.T) {
+	got, err := scheduledSteps(scheduledAction(t, "SomeoneElsesWorkflow", "not a bop workflow"))
+	if err != nil {
+		t.Fatalf("scheduledSteps: %v", err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Errorf("steps = %#v, want empty non-nil list", got)
+	}
+}
+
+func TestScheduledSteps_ErrorWhenArgsCannotBeDecoded(t *testing.T) {
+	if _, err := scheduledSteps(scheduledAction(t, "Execute", "not a workflow")); err == nil {
+		t.Error("expected an error for an Execute action whose args are not a workflow")
 	}
 }

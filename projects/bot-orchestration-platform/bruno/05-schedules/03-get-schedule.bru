@@ -11,10 +11,11 @@ get {
 }
 
 tests {
-  test("ได้ steps ตามที่สร้าง", function () {
+  test("ได้ steps ตามที่สร้าง (ถอดรหัสจาก Temporal Schedule)", function () {
     expect(res.getStatus()).to.equal(200);
     const s = res.getBody();
     expect(s.steps).to.have.lengthOf(1);
+    expect(s.steps[0].bot_name).to.equal("http-status-checker");
     expect(s.steps[0].config.url).to.equal("http://bop-api:8080/healthz");
   });
 

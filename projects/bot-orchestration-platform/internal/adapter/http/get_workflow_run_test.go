@@ -49,7 +49,7 @@ func TestGetWorkflowRun_NoFinishedStepReturnsEmptyList(t *testing.T) {
 	srv := apihttp.NewServer(
 		jobuc.NewService(repo, worker.NewPool(1, time.Second, repo, log), log),
 		workflowrunuc.NewService(noStepsEngine{}),
-		scheduleuc.NewService(temporal.NewScheduler(nil), memory.NewScheduleRepository()),
+		scheduleuc.NewService(temporal.NewScheduler(nil)),
 		auth,
 	)
 	ts := httptest.NewServer(withSession(t, auth, srv))

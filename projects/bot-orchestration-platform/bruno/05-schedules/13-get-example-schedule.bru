@@ -1,0 +1,23 @@
+meta {
+  name: Get example schedule created by the worker
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{baseUrl}}/schedules/check-example-com-schedule
+  body: none
+  auth: none
+}
+
+tests {
+  // bop-worker สร้าง Schedule นี้ตรงผ่าน Temporal client ไม่ได้ผ่าน API — steps ต้องมาจาก
+  // action args ของ Temporal Schedule (ADR 0001) จึงเห็นได้ทุกครั้ง แม้ bop-api เพิ่ง restart
+  test("Schedule ที่สร้างนอก API มี steps จาก Temporal", function () {
+    expect(res.getStatus()).to.equal(200);
+    const s = res.getBody();
+    expect(s.steps).to.have.lengthOf(1);
+    expect(s.steps[0].bot_name).to.equal("http-status-checker");
+    expect(s.steps[0].config.url).to.equal("https://example.com");
+  });
+}

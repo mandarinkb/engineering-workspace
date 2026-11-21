@@ -173,13 +173,10 @@ func startHealthServer() (stop func()) {
 // ในโค้ด ตอนนี้ย้ายมาไว้ที่นี่เพราะ cmd/bop-worker คือ process ที่ "เป็นเจ้าของ" workflow
 // ที่รันอัตโนมัติตามตาราง ส่วน cmd/bop มีหน้าที่แค่ตอบ HTTP request เท่านั้น
 //
-// หมายเหตุ (หลังเพิ่ม schedule CRUD API ใน internal/adapter/http/*_schedule.go):
-// schedule ตัวนี้สร้างตรงผ่าน Temporal SDK ในนี้ ไม่ได้ผ่าน POST /schedules เลย จึงไม่มี
-// entry คู่กันใน schedule.Repository ของ cmd/bop (คนละ process กัน ดู
-// internal/domain/schedule/schedule.go) — GET /schedules/check-example-com-schedule จะเห็น
-// spec/สถานะถูกต้องปกติ (มาจาก Temporal ตรงๆ) แต่ field "steps" จะว่างเปล่า เพราะ BOP
-// ไม่มี bookkeeping ของ workflow definition ตัวนี้เก็บไว้เลย — ไม่ใช่ bug เป็นผลตามมาที่
-// รู้อยู่แล้วจากการมี 2 ช่องทางสร้าง schedule (โค้ดตรงนี้ + HTTP API)
+// schedule ตัวนี้สร้างตรงผ่าน Temporal SDK ไม่ได้ผ่าน POST /schedules แต่
+// GET /schedules/check-example-com-schedule ยังเห็น steps ครบ เพราะ cmd/bop ถอดรหัส steps
+// จาก action args ของ Temporal Schedule ตรงๆ (ADR 0001) — Args ต้องเป็น workflow.Workflow
+// ตัวเดียวกับที่ API ส่งเสมอ
 func ensureExampleSchedule(ctx context.Context, c client.Client) error {
 	wf := workflow.Workflow{
 		Name: "check-example-com",
