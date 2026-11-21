@@ -20,6 +20,9 @@ export interface ScheduleStep {
   config: Record<string, string>;
   task_queue?: string;
   k8s_job?: K8sJobSpec;
+  // max_attempts คือจำนวน Attempt สูงสุดของ step (mirror จาก workflow.Step.MaxAttempts) —
+  // ไม่ส่งมา = backend ใช้ค่าเริ่มต้น 3, ส่งค่าน้อยกว่า 1 backend ตอบ 400
+  max_attempts?: number;
 }
 
 // K8sJobSpec มี field ชื่อตรงกับ JSON tag ของ workflow.K8sJobSpec ฝั่ง Go เป๊ะ — image

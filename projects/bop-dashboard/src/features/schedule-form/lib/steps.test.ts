@@ -28,6 +28,21 @@ describe("validateSteps", () => {
     expect(validateSteps([step], BOTS)).toContain('ต้องกรอก "image"');
   });
 
+  it("จำนวนครั้งที่ลองสูงสุดต้องเป็นจำนวนเต็มตั้งแต่ 1", () => {
+    for (const max_attempts of [0, -1, 1.5]) {
+      const step = { bot_name: "http-status-checker", config: { url: "https://example.com" }, max_attempts };
+      expect(validateSteps([step], BOTS)).toBe(
+        'step ที่ใช้ bot "http-status-checker" ต้องตั้ง "จำนวนครั้งที่ลองสูงสุด" เป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป',
+      );
+    }
+  });
+
+  it("จำนวนครั้งที่ลองสูงสุดที่ถูกต้องหรือเว้นว่างผ่าน", () => {
+    const base = { bot_name: "http-status-checker", config: { url: "https://example.com" } };
+    expect(validateSteps([{ ...base, max_attempts: 5 }], BOTS)).toBeNull();
+    expect(validateSteps([{ ...base, max_attempts: undefined }], BOTS)).toBeNull();
+  });
+
   it("ผ่านเมื่อครบ", () => {
     expect(validateSteps([{ bot_name: "http-status-checker", config: { url: "https://example.com" } }], BOTS)).toBeNull();
   });
