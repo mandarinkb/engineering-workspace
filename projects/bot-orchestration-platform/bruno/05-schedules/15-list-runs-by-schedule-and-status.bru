@@ -1,0 +1,31 @@
+meta {
+  name: List workflow runs by schedule and status, page_size 2
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?schedule_id=check-example-com-schedule&status=completed&page_size=2
+  body: none
+  auth: none
+}
+
+params:query {
+  schedule_id: check-example-com-schedule
+  status: completed
+  page_size: 2
+}
+
+tests {
+  // Schedule ตัวอย่างรันทุกนาทีบน Mini PC จึงมี run ที่จบแล้วมากกว่า 2 ตัวเสมอ
+  test("schedule_id ใช้ร่วมกับ status และแบ่งหน้าได้", function () {
+    expect(res.getStatus()).to.equal(200);
+    const runs = res.getBody().runs;
+    expect(runs).to.have.lengthOf(2);
+    runs.forEach((r) => {
+      expect(r.schedule_id).to.equal("check-example-com-schedule");
+      expect(r.status).to.equal("Completed");
+    });
+    expect(res.getBody().next_page_token).to.be.a("string").and.not.empty;
+  });
+}

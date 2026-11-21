@@ -1,0 +1,23 @@
+meta {
+  name: List workflow runs of a schedule that never ran
+  type: http
+  seq: 19
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?schedule_id=bruno-no-such-schedule
+  body: none
+  auth: none
+}
+
+params:query {
+  schedule_id: bruno-no-such-schedule
+}
+
+tests {
+  test("Schedule ที่ไม่มี run ได้รายการว่างและไม่มีหน้าถัดไป", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().runs).to.be.an("array").that.is.empty;
+    expect(res.getBody().next_page_token).to.equal("");
+  });
+}

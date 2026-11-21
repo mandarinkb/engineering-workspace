@@ -21,6 +21,16 @@ describe("runListPath", () => {
   it("status ว่างคือทุกสถานะ ไม่ส่ง param", () => {
     expect(runListPath({ status: "" })).toBe("/workflow-runs");
   });
+
+  it("ส่ง schedule_id ไปกรองฝั่ง server ร่วมกับ status (escape ID ให้)", () => {
+    expect(runListPath({ status: "completed", scheduleId: "nightly report" })).toBe(
+      "/workflow-runs?status=completed&schedule_id=nightly+report",
+    );
+  });
+
+  it("schedule ว่างคือทุก run รวมที่สั่งเอง ไม่ส่ง param", () => {
+    expect(runListPath({ scheduleId: "" })).toBe("/workflow-runs");
+  });
 });
 
 describe("nextRunPageToken", () => {

@@ -65,9 +65,8 @@ const (
 // List คืน Workflow Run หนึ่งหน้า (ทั้งที่กำลังรันอยู่และจบไปแล้ว) — PageSize 0 แปลว่า
 // ไม่ได้ระบุ ใช้ค่าเริ่มต้น 50, ติดลบหรือสถานะที่ไม่รู้จักเป็น apperr.ErrInvalid
 func (s *Service) List(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
-	if !q.Status.Valid() {
-		return workflow.RunPage{}, apperr.Invalid(
-			"status must be one of running, completed, failed, canceled")
+	if err := validateFilter(q.Filter); err != nil {
+		return workflow.RunPage{}, err
 	}
 	switch {
 	case q.PageSize < 0:
@@ -88,4 +87,13 @@ func (s *Service) Get(ctx context.Context, id string) (*workflow.RunDetail, erro
 // Ready คืน error ถ้าต่อ engine ไม่ได้ (ใช้กับ readiness probe)
 func (s *Service) Ready(ctx context.Context) error {
 	return s.engine.CheckHealth(ctx)
+}
+
+// validateFilter ตรวจเงื่อนไขกรองที่ใช้ร่วมกันทุก use case ที่อ่านรายการ Workflow Run —
+// ScheduleID รับได้ทุกค่าเพราะ Schedule ID ไม่มีรูปแบบบังคับ (engine เป็นคน escape เอง)
+func validateFilter(f workflow.RunFilter) error {
+	if !f.Status.Valid() {
+		return apperr.Invalid("status must be one of running, completed, failed, canceled")
+	}
+	return nil
 }

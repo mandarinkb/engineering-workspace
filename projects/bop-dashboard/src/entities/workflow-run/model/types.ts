@@ -11,6 +11,9 @@ export interface WorkflowRunSummary {
   status: string;
   started_at: string;
   ended_at?: string;
+  // ID ของ Schedule ที่สั่ง run นี้ — backend ส่ง "" สำหรับ run ที่สั่งเองเสมอ ประกาศเป็น
+  // optional เพื่อให้ข้อมูลตัวอย่างใน test เดิมที่ไม่สนเรื่อง Schedule ไม่ต้องใส่ field นี้
+  schedule_id?: string;
 }
 
 // WorkflowRunPage คือ response ของ GET /workflow-runs — next_page_token ว่าง = หน้าสุดท้าย
@@ -25,6 +28,8 @@ export type RunStatusFilter = "" | "running" | "completed" | "failed" | "cancele
 
 export interface WorkflowRunListParams {
   status?: RunStatusFilter;
+  // กรองเฉพาะ run ของ Schedule นี้ ("" หรือไม่ระบุ = ทุก run รวมที่สั่งเอง)
+  scheduleId?: string;
   // ไม่ระบุ = ค่าเริ่มต้นของ backend (50) สูงสุด 200
   pageSize?: number;
 }

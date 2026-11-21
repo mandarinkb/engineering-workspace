@@ -5,6 +5,7 @@ import type { WorkflowRunListParams, WorkflowRunPage, WorkflowRunSummary } from 
 export function runListPath(params: WorkflowRunListParams, pageToken?: string): string {
   const query = new URLSearchParams();
   if (params.status) query.set("status", params.status);
+  if (params.scheduleId) query.set("schedule_id", params.scheduleId);
   if (params.pageSize) query.set("page_size", String(params.pageSize));
   if (pageToken) query.set("page_token", pageToken);
   const qs = query.toString();
