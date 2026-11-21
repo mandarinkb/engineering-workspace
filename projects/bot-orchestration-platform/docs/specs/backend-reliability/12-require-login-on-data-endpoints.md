@@ -6,13 +6,13 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** 01 (Prefactor: Bruno collection ของ seam A)
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] ทุก endpoint ข้อมูลตอบ 401 เมื่อไม่มี cookie หรือ token ไม่ถูกต้อง/หมดอายุ
-- [ ] `/login`, `/logout`, `/healthz`, `/readyz` และ preflight `OPTIONS` ยังเรียกได้โดยไม่ต้อง login
-- [ ] SSE stream ของ log ใช้ cookie เดิมได้ (EventSource ส่ง cookie ด้วย `withCredentials`)
-- [ ] Go HTTP test ครอบทั้งกรณีมีและไม่มี session
-- [ ] dashboard: ได้ 401 ระหว่างใช้งาน (เช่น session หมดอายุ) แล้วพาไปหน้า login แทนการแสดง error ค้าง
-- [ ] Bruno: โฟลเดอร์ทดสอบว่าทุก endpoint ข้อมูลตอบ 401 เมื่อไม่มี session (ส่ง header `Cookie` ว่าง) และ request เดิมทั้งหมดยังผ่านเพราะส่ง cookie อยู่แล้ว
-- [ ] golangci-lint, vitest และ eslint ผ่าน
+- [x] ทุก endpoint ข้อมูลตอบ 401 เมื่อไม่มี cookie หรือ token ไม่ถูกต้อง/หมดอายุ
+- [x] `/login`, `/logout`, `/healthz`, `/readyz` และ preflight `OPTIONS` ยังเรียกได้โดยไม่ต้อง login
+- [x] SSE stream ของ log ใช้ cookie เดิมได้ (EventSource ส่ง cookie ด้วย `withCredentials`)
+- [x] Go HTTP test ครอบทั้งกรณีมีและไม่มี session
+- [x] dashboard: ได้ 401 ระหว่างใช้งาน (เช่น session หมดอายุ) แล้วพาไปหน้า login แทนการแสดง error ค้าง
+- [x] Bruno: โฟลเดอร์ทดสอบว่าทุก endpoint ข้อมูลตอบ 401 เมื่อไม่มี session (ส่ง header `Cookie` ว่าง) และ request เดิมทั้งหมดยังผ่านเพราะส่ง cookie อยู่แล้ว
+- [x] golangci-lint, vitest และ eslint ผ่าน
 - [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด
