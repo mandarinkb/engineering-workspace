@@ -2,13 +2,28 @@ package temporal
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 
+	"go.temporal.io/api/serviceerror"
 	workflowpb "go.temporal.io/api/workflow/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 
+	"bop/internal/domain/apperr"
 	wfdomain "bop/internal/domain/workflow"
 )
+
+// statusQueries คือ visibility query ของแต่ละกลุ่มสถานะ — failed รวม Terminated และ
+// TimedOut ตามนิยามของ RunStatusFailed ใช้ OR แทน IN เพื่อไม่ผูกกับ visibility store
+// ที่รองรับ syntax ครบเท่านั้น
+var statusQueries = map[wfdomain.RunStatusFilter]string{
+	wfdomain.RunStatusRunning:   "ExecutionStatus = 'Running'",
+	wfdomain.RunStatusCompleted: "ExecutionStatus = 'Completed'",
+	wfdomain.RunStatusFailed: "(ExecutionStatus = 'Failed' OR ExecutionStatus = 'Terminated'" +
+		" OR ExecutionStatus = 'TimedOut')",
+	wfdomain.RunStatusCanceled: "ExecutionStatus = 'Canceled'",
+}
 
 // Engine implement wfdomain.Engine ด้วย Temporal client — ย้ายมาจาก HTTP handler เดิม
 // (GET/POST /workflow-runs, GET /readyz) ที่เคยเรียก client.Client ตรงๆ
@@ -34,21 +49,38 @@ func (e *Engine) Start(ctx context.Context, workflowID string, wf wfdomain.Workf
 	return run.GetRunID(), nil
 }
 
-// ListRuns query ตรงไปที่ Temporal Visibility API — เรียงจากล่าสุดไปเก่าสุดตาม default
-// ordering ของ Temporal เอง (Temporal เก็บ event history + visibility record ให้ทั้งหมด)
-func (e *Engine) ListRuns(ctx context.Context) ([]wfdomain.RunSummary, error) {
+// ListRuns query ตรงไปที่ Temporal Visibility API ทีละหน้า — เรียงจากล่าสุดไปเก่าสุดตาม
+// default ordering ของ Temporal เอง NextPageToken ของ Temporal เป็น []byte จึงห่อเป็น
+// base64 (URL-safe) ให้ส่งผ่าน query string ได้ ฝั่ง client ถือเป็น opaque string
+func (e *Engine) ListRuns(ctx context.Context, q wfdomain.RunQuery) (wfdomain.RunPage, error) {
+	token, err := base64.RawURLEncoding.DecodeString(q.PageToken)
+	if err != nil {
+		return wfdomain.RunPage{}, apperr.Invalid("page_token is malformed")
+	}
+
 	resp, err := e.c.ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
-		Namespace: Namespace,
+		Namespace:     Namespace,
+		PageSize:      int32(q.PageSize), // usecase ปัดเพดานไว้ที่ 200 แล้ว ไม่ล้น int32
+		NextPageToken: token,
+		Query:         statusQueries[q.Status],
 	})
 	if err != nil {
-		return nil, err
+		// token ที่ decode ได้แต่ Temporal อ่านไม่ออก (เช่นแก้มือ) ตอบ InvalidArgument
+		var invalid *serviceerror.InvalidArgument
+		if errors.As(err, &invalid) {
+			return wfdomain.RunPage{}, apperr.WrapInvalid(err)
+		}
+		return wfdomain.RunPage{}, err
 	}
 
 	runs := make([]wfdomain.RunSummary, 0, len(resp.Executions))
 	for _, info := range resp.Executions {
 		runs = append(runs, toRunSummary(info))
 	}
-	return runs, nil
+	return wfdomain.RunPage{
+		Runs:          runs,
+		NextPageToken: base64.RawURLEncoding.EncodeToString(resp.GetNextPageToken()),
+	}, nil
 }
 
 // GetRun ดึงสถานะโดยรวมผ่าน DescribeWorkflowExecution และดึงผลลัพธ์ทีละ step ผ่าน

@@ -1,0 +1,23 @@
+meta {
+  name: List workflow runs filtered by status running
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?status=running&page_size=20
+  body: none
+  auth: none
+}
+
+params:query {
+  status: running
+  page_size: 20
+}
+
+tests {
+  test("ทุกตัวเป็น Running", function () {
+    expect(res.getStatus()).to.equal(200);
+    res.getBody().runs.forEach((r) => expect(r.status).to.equal("Running"));
+  });
+}

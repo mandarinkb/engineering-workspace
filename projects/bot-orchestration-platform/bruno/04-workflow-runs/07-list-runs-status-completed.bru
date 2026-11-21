@@ -1,0 +1,25 @@
+meta {
+  name: List workflow runs filtered by status completed
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?status=completed&page_size=20
+  body: none
+  auth: none
+}
+
+params:query {
+  status: completed
+  page_size: 20
+}
+
+tests {
+  test("ทุกตัวเป็น Completed และมี run ที่เพิ่งจบ", function () {
+    expect(res.getStatus()).to.equal(200);
+    const runs = res.getBody().runs;
+    runs.forEach((r) => expect(r.status).to.equal("Completed"));
+    expect(runs.map((r) => r.workflow_id)).to.include(bru.getVar("workflowId"));
+  });
+}

@@ -1,0 +1,23 @@
+meta {
+  name: List workflow runs filtered by status canceled
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?status=canceled&page_size=20
+  body: none
+  auth: none
+}
+
+params:query {
+  status: canceled
+  page_size: 20
+}
+
+tests {
+  test("ทุกตัวเป็น Canceled", function () {
+    expect(res.getStatus()).to.equal(200);
+    res.getBody().runs.forEach((r) => expect(r.status).to.equal("Canceled"));
+  });
+}

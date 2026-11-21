@@ -1,0 +1,23 @@
+meta {
+  name: List workflow runs filtered by status failed
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?status=failed&page_size=20
+  body: none
+  auth: none
+}
+
+params:query {
+  status: failed
+  page_size: 20
+}
+
+tests {
+  test("failed รวม Failed, Terminated และ TimedOut เท่านั้น", function () {
+    expect(res.getStatus()).to.equal(200);
+    res.getBody().runs.forEach((r) => expect(r.status).to.be.oneOf(["Failed", "Terminated", "TimedOut"]));
+  });
+}

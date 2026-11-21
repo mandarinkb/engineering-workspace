@@ -1,0 +1,21 @@
+meta {
+  name: List workflow runs with unknown status
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?status=bogus
+  body: none
+  auth: none
+}
+
+params:query {
+  status: bogus
+}
+
+tests {
+  test("สถานะที่ไม่รู้จักตอบ 400", function () {
+    expect(res.getStatus()).to.equal(400);
+  });
+}

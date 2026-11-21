@@ -1,0 +1,28 @@
+meta {
+  name: List workflow runs page 1 (page_size 2)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?page_size=2
+  body: none
+  auth: none
+}
+
+params:query {
+  page_size: 2
+}
+
+script:post-response {
+  bru.setVar("runsPage1Ids", res.getBody().runs.map((r) => `${r.workflow_id}/${r.run_id}`));
+  bru.setVar("runsPageToken", res.getBody().next_page_token);
+}
+
+tests {
+  test("ได้ 2 ตัวพร้อม token ของหน้าถัดไป", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().runs).to.have.lengthOf(2);
+    expect(res.getBody().next_page_token).to.be.a("string").and.not.empty;
+  });
+}

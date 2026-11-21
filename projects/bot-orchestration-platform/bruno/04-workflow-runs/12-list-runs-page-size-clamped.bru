@@ -1,0 +1,24 @@
+meta {
+  name: List workflow runs with page_size over 200
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?page_size=500
+  body: none
+  auth: none
+}
+
+params:query {
+  page_size: 500
+}
+
+tests {
+  // Mini PC มี Workflow Run สะสมหลายพันตัว จึงได้เต็ม 200 พอดี ถ้าไม่ปัดลงจะได้ 500
+  test("page_size เกิน 200 ถูกปัดลงเหลือ 200", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().runs).to.have.lengthOf(200);
+    expect(res.getBody().next_page_token).to.be.a("string").and.not.empty;
+  });
+}
