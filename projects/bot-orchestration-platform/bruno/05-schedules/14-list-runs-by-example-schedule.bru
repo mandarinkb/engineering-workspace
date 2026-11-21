@@ -1,0 +1,27 @@
+meta {
+  name: List workflow runs of the example schedule
+  type: http
+  seq: 17
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?schedule_id=check-example-com-schedule&page_size=20
+  body: none
+  auth: none
+}
+
+params:query {
+  schedule_id: check-example-com-schedule
+  page_size: 20
+}
+
+tests {
+  // ใช้ Schedule ตัวอย่างของ bop-worker ที่รันทุกนาทีแทน Schedule ของ bruno เพราะ Schedule ของ
+  // bruno ถูกลบทันทีหลัง trigger จึงไม่แน่ว่า run ที่ trigger ไว้ถูกเริ่มทันก่อนลบ
+  test("ได้เฉพาะ run ที่ schedule_id เป็น Schedule นี้", function () {
+    expect(res.getStatus()).to.equal(200);
+    const runs = res.getBody().runs;
+    expect(runs).to.be.an("array").that.is.not.empty;
+    runs.forEach((r) => expect(r.schedule_id).to.equal("check-example-com-schedule"));
+  });
+}

@@ -15,6 +15,8 @@ type RunSummary struct {
 	Status       string
 	StartedAt    time.Time
 	EndedAt      *time.Time // nil ตราบใดที่ run ยังไม่จบ
+	// ScheduleID คือ ID ของ Schedule ที่สั่ง run นี้ — ว่างสำหรับ run ที่สั่งเองแบบ ad-hoc
+	ScheduleID string
 }
 
 // RunDetail ต่อยอดจาก RunSummary เพิ่มผลลัพธ์ทีละ step — Steps เป็น nil ได้ถ้า engine
@@ -47,13 +49,22 @@ func (f RunStatusFilter) Valid() bool {
 	return false
 }
 
+// RunFilter คือเงื่อนไขกรอง Workflow Run ที่ไม่เกี่ยวกับการแบ่งหน้า — แยกออกจาก RunQuery
+// เพื่อให้ทั้งการขอรายการและการนับจำนวนใช้เงื่อนไขชุดเดียวกัน field ที่เป็นค่าว่างคือไม่กรอง
+// ตาม field นั้น และทุก field ที่ตั้งไว้ต้องตรงพร้อมกัน (AND)
+type RunFilter struct {
+	Status RunStatusFilter
+	// ScheduleID กรองเฉพาะ run ที่ Schedule นี้สั่ง (ว่าง = ทุก run รวมที่สั่งเอง)
+	ScheduleID string
+}
+
 // RunQuery คือเงื่อนไขขอรายการ Workflow Run ทีละหน้า — PageToken เป็น opaque string ที่ได้
 // จาก RunPage.NextPageToken ของหน้าก่อน (ว่าง = หน้าแรก) usecase ต้อง normalize PageSize
 // มาแล้วเสมอ engine ไม่ตั้งค่าเริ่มต้นเอง
 type RunQuery struct {
+	Filter    RunFilter
 	PageSize  int
 	PageToken string
-	Status    RunStatusFilter
 }
 
 // RunPage คือ Workflow Run หนึ่งหน้า เรียงจากล่าสุดไปเก่าสุด — NextPageToken ว่างแปลว่า

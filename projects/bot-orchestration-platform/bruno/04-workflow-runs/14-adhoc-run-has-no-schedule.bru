@@ -1,0 +1,29 @@
+meta {
+  name: Ad-hoc workflow run has no schedule_id
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?status=completed&page_size=20
+  body: none
+  auth: none
+}
+
+params:query {
+  status: completed
+  page_size: 20
+}
+
+tests {
+  test("ทุก run มี field schedule_id เป็น string", function () {
+    expect(res.getStatus()).to.equal(200);
+    res.getBody().runs.forEach((r) => expect(r.schedule_id).to.be.a("string"));
+  });
+
+  test("run ที่สั่งเอง (POST /workflow-runs) มี schedule_id ว่าง", function () {
+    const run = res.getBody().runs.find((r) => r.workflow_id === bru.getVar("workflowId"));
+    expect(run, "ad-hoc run ที่สร้างไว้ใน 02-create-run").to.exist;
+    expect(run.schedule_id).to.equal("");
+  });
+}

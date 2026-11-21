@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"bop/internal/domain/apperr"
@@ -19,13 +20,13 @@ type workflowRunPage struct {
 // handleListWorkflowRuns คืน Workflow Run ทีละหน้า (ทั้งที่กำลังรันอยู่และจบไปแล้ว)
 // เรียงจากล่าสุดไปเก่าสุดตาม default ordering ของ Temporal Visibility API — รับ page_size
 // (default 50 สูงสุด 200), page_token จากหน้าก่อน และ status (running | completed | failed |
-// canceled) ที่กรองฝั่ง server แทนให้ dashboard โหลดทุกตัวมากรองเอง (engine เป็นคนเก็บ
-// event history + visibility record ให้ทั้งหมด ดู internal/external/temporal/engine.go)
+// canceled) กับ schedule_id ที่กรองฝั่ง server แทนให้ dashboard โหลดทุกตัวมากรองเอง (engine
+// เป็นคนเก็บ event history + visibility record ให้ทั้งหมด ดู internal/external/temporal/engine.go)
 func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	q := workflow.RunQuery{
+		Filter:    runFilterFromQuery(query),
 		PageToken: query.Get("page_token"),
-		Status:    workflow.RunStatusFilter(query.Get("status")),
 	}
 	// page_size 0 ใน RunQuery แปลว่า "ไม่ได้ระบุ" (usecase ใส่ค่าเริ่มต้นให้) ดังนั้นค่าที่
 	// client ส่งมาเองต้องเป็นจำนวนเต็มบวกเท่านั้น ไม่งั้นจะแยกไม่ออกจากการไม่ส่ง
@@ -53,4 +54,13 @@ func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) 
 		runs = append(runs, toRunSummary(run))
 	}
 	writeJSON(w, http.StatusOK, workflowRunPage{Runs: runs, NextPageToken: page.NextPageToken})
+}
+
+// runFilterFromQuery อ่านเงื่อนไขกรอง (status, schedule_id) จาก query string — แยกไว้ให้ทุก
+// endpoint ที่อ่านรายการ Workflow Run (เช่นการนับจำนวน) รับ filter ชุดเดียวกัน
+func runFilterFromQuery(query url.Values) workflow.RunFilter {
+	return workflow.RunFilter{
+		Status:     workflow.RunStatusFilter(query.Get("status")),
+		ScheduleID: query.Get("schedule_id"),
+	}
 }

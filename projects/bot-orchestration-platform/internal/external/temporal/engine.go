@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"strings"
 
 	"go.temporal.io/api/serviceerror"
 	workflowpb "go.temporal.io/api/workflow/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
 
 	"bop/internal/domain/apperr"
 	wfdomain "bop/internal/domain/workflow"
@@ -23,6 +25,29 @@ var statusQueries = map[wfdomain.RunStatusFilter]string{
 	wfdomain.RunStatusFailed: "(ExecutionStatus = 'Failed' OR ExecutionStatus = 'Terminated'" +
 		" OR ExecutionStatus = 'TimedOut')",
 	wfdomain.RunStatusCanceled: "ExecutionStatus = 'Canceled'",
+}
+
+// scheduledByIDAttribute คือ search attribute ที่ Temporal ใส่ให้ทุก Workflow Run ที่ Schedule
+// สั่ง (ค่าคือ Schedule ID) — run ที่สั่งเองผ่าน ExecuteWorkflow ไม่มี attribute นี้
+const scheduledByIDAttribute = "TemporalScheduledById"
+
+// visibilityQuery แปลง RunFilter เป็น visibility query ของ Temporal — ใช้ร่วมกันทั้งการขอ
+// รายการและการนับ เพื่อให้ filter ชุดเดียวกันได้ผลตรงกันเสมอ ค่าว่างคือไม่กรองเลย
+func visibilityQuery(f wfdomain.RunFilter) string {
+	var clauses []string
+	if f.Status != wfdomain.RunStatusAny {
+		clauses = append(clauses, statusQueries[f.Status])
+	}
+	if f.ScheduleID != "" {
+		clauses = append(clauses, scheduledByIDAttribute+" = "+quoteLiteral(f.ScheduleID))
+	}
+	return strings.Join(clauses, " AND ")
+}
+
+// quoteLiteral ครอบ string ด้วย ' สำหรับ visibility query — Schedule ID เป็นข้อความอิสระจาก
+// client จึงต้อง escape \ และ ' (ตาม syntax ของ SQL parser ที่ Temporal ใช้) กัน query injection
+func quoteLiteral(s string) string {
+	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(s) + "'"
 }
 
 // Engine implement wfdomain.Engine ด้วย Temporal client — ย้ายมาจาก HTTP handler เดิม
@@ -62,7 +87,7 @@ func (e *Engine) ListRuns(ctx context.Context, q wfdomain.RunQuery) (wfdomain.Ru
 		Namespace:     Namespace,
 		PageSize:      int32(q.PageSize), // usecase ปัดเพดานไว้ที่ 200 แล้ว ไม่ล้น int32
 		NextPageToken: token,
-		Query:         statusQueries[q.Status],
+		Query:         visibilityQuery(q.Filter),
 	})
 	if err != nil {
 		// token ที่ decode ได้แต่ Temporal อ่านไม่ออก (เช่นแก้มือ) ตอบ InvalidArgument
@@ -123,10 +148,25 @@ func toRunSummary(info *workflowpb.WorkflowExecutionInfo) wfdomain.RunSummary {
 		WorkflowName: info.GetType().GetName(),
 		Status:       info.GetStatus().String(),
 		StartedAt:    info.GetStartTime().AsTime(),
+		ScheduleID:   scheduledByID(info),
 	}
 	if info.GetCloseTime() != nil {
 		ended := info.GetCloseTime().AsTime()
 		summary.EndedAt = &ended
 	}
 	return summary
+}
+
+// scheduledByID อ่าน Schedule ID จาก search attribute TemporalScheduledById — ไม่มี attribute
+// (run ที่สั่งเอง) หรือถอดรหัสไม่ได้คืนค่าว่าง เพราะเป็นข้อมูลประกอบ ไม่ควรทำให้รายการพังทั้งหน้า
+func scheduledByID(info *workflowpb.WorkflowExecutionInfo) string {
+	payload, ok := info.GetSearchAttributes().GetIndexedFields()[scheduledByIDAttribute]
+	if !ok {
+		return ""
+	}
+	var id string
+	if err := converter.GetDefaultDataConverter().FromPayload(payload, &id); err != nil {
+		return ""
+	}
+	return id
 }

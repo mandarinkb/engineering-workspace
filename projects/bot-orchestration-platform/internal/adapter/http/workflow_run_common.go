@@ -16,6 +16,8 @@ type workflowRunSummary struct {
 	Status       string     `json:"status"`
 	StartedAt    time.Time  `json:"started_at"`
 	EndedAt      *time.Time `json:"ended_at,omitempty"`
+	// ScheduleID ส่งเป็น "" เสมอสำหรับ run ที่สั่งเอง (ไม่ละ field) ให้ client เช็คค่าเดียวพอ
+	ScheduleID string `json:"schedule_id"`
 }
 
 // toRunSummary แปลง workflow.RunSummary ของ domain เป็นรูปแบบ JSON ของ API
@@ -27,5 +29,6 @@ func toRunSummary(run workflow.RunSummary) workflowRunSummary {
 		Status:       run.Status,
 		StartedAt:    run.StartedAt,
 		EndedAt:      run.EndedAt,
+		ScheduleID:   run.ScheduleID,
 	}
 }
