@@ -40,18 +40,26 @@ func (stubBot) Run(_ context.Context, log bot.LogFunc, _ bot.Config) (bot.Result
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv, auth := newAPIServer(t)
+	ts := httptest.NewServer(withSession(t, auth, srv))
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// withSession ห่อ handler ให้แนบ cookie bop_session ที่ valid (ออกโดย auth) ให้ทุก request
+// ที่ยังไม่มี cookie นี้ — test ที่ประกอบ Server เอง (เช่นใส่ engine ปลอม) ใช้ห่อ srv ก่อนส่ง
+// เข้า httptest.NewServer เพื่อให้ผ่านการบังคับ login
+func withSession(t *testing.T, auth *authuc.Service, srv http.Handler) http.Handler {
+	t.Helper()
 	token, err := auth.Login(testUsername, testPassword)
 	if err != nil {
 		t.Fatalf("issue test session: %v", err)
 	}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, err := r.Cookie(sessionCookieName); err != nil {
 			r.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
 		}
 		srv.ServeHTTP(w, r)
-	}))
-	t.Cleanup(ts.Close)
-	return ts
+	})
 }
 
 // newAnonymousTestServer คือ server ตัวเดียวกับ cmd/bop/main.go โดยไม่แนบ session ให้ —
