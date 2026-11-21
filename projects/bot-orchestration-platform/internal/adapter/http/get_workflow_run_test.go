@@ -28,8 +28,8 @@ func (noStepsEngine) Start(context.Context, string, workflow.Workflow) (string, 
 	return "", nil
 }
 
-func (noStepsEngine) ListRuns(context.Context) ([]workflow.RunSummary, error) {
-	return nil, nil
+func (noStepsEngine) ListRuns(context.Context, workflow.RunQuery) (workflow.RunPage, error) {
+	return workflow.RunPage{}, nil
 }
 
 func (noStepsEngine) GetRun(_ context.Context, id string) (*workflow.RunDetail, error) {
