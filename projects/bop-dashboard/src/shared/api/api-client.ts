@@ -4,7 +4,7 @@ import { ApiError } from "./api-error";
 // โค้ดฝั่ง client/เบราว์เซอร์ถึงจะอ่านค่านี้ได้ — ดู .env.example) ถ้าไม่ได้ตั้งไว้เลย
 // fallback ไปที่ localhost:8080 เพื่อให้ `npm run dev` ทำงานได้ทันทีโดยไม่ต้อง config
 // อะไรก่อน ตราบใดที่ backend (cmd/bop) รันอยู่ที่ port default ของมันเอง
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
