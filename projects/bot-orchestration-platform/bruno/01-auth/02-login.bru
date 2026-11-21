@@ -1,0 +1,34 @@
+meta {
+  name: Login
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {"username": "{{username}}", "password": "{{password}}"}
+}
+
+script:post-response {
+  // เก็บค่า cookie bop_session ไว้ให้ header ของ collection ส่งต่อทุก request
+  const raw = res.getHeader("set-cookie");
+  const cookies = Array.isArray(raw) ? raw : [raw];
+  const session = cookies.map((c) => String(c).split(";")[0]).find((c) => c.startsWith("bop_session="));
+  if (session) {
+    bru.setVar("session", session.slice("bop_session=".length));
+  }
+}
+
+tests {
+  test("ตอบ 204", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+  test("ได้ cookie bop_session", function () {
+    expect(bru.getVar("session")).to.be.a("string").and.not.empty;
+  });
+}

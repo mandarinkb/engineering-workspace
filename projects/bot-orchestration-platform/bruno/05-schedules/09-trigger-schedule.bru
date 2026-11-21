@@ -1,0 +1,17 @@
+meta {
+  name: Trigger schedule (Run Now)
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/schedules/{{scheduleId}}/trigger
+  body: none
+  auth: none
+}
+
+tests {
+  test("ตอบ 204", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

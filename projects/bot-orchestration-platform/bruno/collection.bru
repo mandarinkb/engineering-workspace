@@ -1,0 +1,17 @@
+headers {
+  Cookie: bop_session={{session}}
+}
+
+docs {
+  # BOP API
+
+  ทดสอบ HTTP API ของ bop-api แบบ black-box กับ stack ที่รันอยู่จริง
+
+  รันทั้งชุดจาก terminal (ในโฟลเดอร์นี้):
+
+      bru run --env minipc
+
+  - `01-auth/02 Login` เก็บ cookie `bop_session` ลง runtime variable `session` แล้วทุก request ส่งต่อผ่าน header ของ collection
+  - request ที่สร้างข้อมูลใช้ชื่อขึ้นต้นด้วย `bruno-` และลบ Schedule ที่สร้างทิ้งเองตอนจบ (Job และ Workflow Run ลบผ่าน API ไม่ได้)
+  - ต้องรันตามลำดับโฟลเดอร์ เพราะ request หลังใช้ค่าที่ request ก่อนหน้าเก็บไว้
+}

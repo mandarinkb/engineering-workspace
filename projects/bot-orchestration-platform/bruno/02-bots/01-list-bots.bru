@@ -1,0 +1,21 @@
+meta {
+  name: List bots
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/bots
+  body: none
+  auth: none
+}
+
+tests {
+  test("ตอบ 200 และมี http-status-checker พร้อม config field url ที่บังคับกรอก", function () {
+    expect(res.getStatus()).to.equal(200);
+    const bot = res.getBody().find((b) => b.name === "http-status-checker");
+    expect(bot, "http-status-checker").to.exist;
+    const url = bot.config_schema.find((f) => f.key === "url");
+    expect(url.required).to.equal(true);
+  });
+}

@@ -1,0 +1,17 @@
+meta {
+  name: Get deleted schedule
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/schedules/{{scheduleId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("ตอบ 404 หลังลบ", function () {
+    expect(res.getStatus()).to.equal(404);
+  });
+}

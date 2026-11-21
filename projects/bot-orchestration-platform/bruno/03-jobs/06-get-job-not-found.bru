@@ -1,0 +1,17 @@
+meta {
+  name: Get job not found
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/jobs/does-not-exist
+  body: none
+  auth: none
+}
+
+tests {
+  test("ตอบ 404", function () {
+    expect(res.getStatus()).to.equal(404);
+  });
+}

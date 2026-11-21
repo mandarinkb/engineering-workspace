@@ -1,0 +1,27 @@
+meta {
+  name: Create job
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/bots/http-status-checker/jobs
+  body: json
+  auth: none
+}
+
+body:json {
+  {"url": "http://bop-api:8080/healthz"}
+}
+
+script:post-response {
+  bru.setVar("jobId", res.getBody().id);
+}
+
+tests {
+  test("ตอบ 202 พร้อม Job ที่ยังไม่จบ", function () {
+    expect(res.getStatus()).to.equal(202);
+    expect(res.getBody().bot_name).to.equal("http-status-checker");
+    expect(["pending", "running", "succeeded"]).to.include(res.getBody().status);
+  });
+}

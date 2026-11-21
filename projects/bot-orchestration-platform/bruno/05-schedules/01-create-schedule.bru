@@ -1,0 +1,38 @@
+meta {
+  name: Create schedule
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/schedules
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "id": "{{scheduleId}}",
+    "workflow_name": "bruno-schedule",
+    "steps": [
+      {"bot_name": "http-status-checker", "config": {"url": "http://bop-api:8080/healthz"}}
+    ],
+    "spec": {"interval_seconds": 3600}
+  }
+}
+
+script:pre-request {
+  // ID ไม่ซ้ำกันทุกครั้งที่รัน เผื่อรอบก่อนพังกลางทางแล้ว Schedule ค้างอยู่
+  bru.setVar("scheduleId", "bruno-" + Date.now());
+}
+
+tests {
+  test("ตอบ 201 พร้อม Schedule ที่ active และมีเวลารันถัดไป", function () {
+    expect(res.getStatus()).to.equal(201);
+    const s = res.getBody();
+    expect(s.id).to.equal(bru.getVar("scheduleId"));
+    expect(s.paused).to.equal(false);
+    expect(s.interval_seconds).to.equal(3600);
+    expect(s.next_action_times).to.be.an("array").that.is.not.empty;
+  });
+}

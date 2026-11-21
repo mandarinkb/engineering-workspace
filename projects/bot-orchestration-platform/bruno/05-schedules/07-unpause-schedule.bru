@@ -1,0 +1,17 @@
+meta {
+  name: Unpause schedule
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/schedules/{{scheduleId}}/unpause
+  body: none
+  auth: none
+}
+
+tests {
+  test("ตอบ 204", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

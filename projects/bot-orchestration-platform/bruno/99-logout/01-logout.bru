@@ -1,0 +1,20 @@
+meta {
+  name: Logout
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/logout
+  body: none
+  auth: none
+}
+
+tests {
+  test("ตอบ 204 และล้าง cookie", function () {
+    expect(res.getStatus()).to.equal(204);
+    const raw = res.getHeader("set-cookie");
+    const cookies = (Array.isArray(raw) ? raw : [raw]).join(";");
+    expect(cookies).to.match(/bop_session=;|Max-Age=0|max-age=-1|Expires=Thu, 01 Jan 1970/i);
+  });
+}
