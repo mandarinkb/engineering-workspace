@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { apiClient } from "@/shared/api";
+import { apiClient, LIST_REFETCH_INTERVAL_MS } from "@/shared/api";
 import type { WorkflowRunSummary } from "../model/types";
 
 // useWorkflowRuns เรียก GET /workflow-runs — ต่างจาก useJobs ตรงที่ backend endpoint นี้
@@ -11,5 +11,6 @@ export function useWorkflowRuns() {
   return useQuery({
     queryKey: ["workflow-runs"],
     queryFn: () => apiClient<WorkflowRunSummary[]>("/workflow-runs"),
+    refetchInterval: LIST_REFETCH_INTERVAL_MS,
   });
 }

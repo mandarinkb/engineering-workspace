@@ -2,6 +2,11 @@ import { QueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "./api-error";
 
+// LIST_REFETCH_INTERVAL_MS คือรอบ refetch อัตโนมัติของหน้า list (jobs, schedules, workflow
+// runs) ให้ dashboard ที่เปิดค้างไว้เห็นตัวเลขขยับเองโดยไม่ต้องกด refresh — TanStack Query
+// หยุด refetch ตอนแท็บถูกซ่อนอยู่ให้เอง (refetchIntervalInBackground ค่า default เป็น false)
+export const LIST_REFETCH_INTERVAL_MS = 10_000;
+
 // createQueryClient สร้าง TanStack QueryClient ตัวใหม่พร้อม config กลางที่ใช้ร่วมกันทั้ง
 // แอป — แยกเป็นฟังก์ชันแทนที่จะสร้าง instance เดียวระดับ module เพราะ Next.js App Router
 // render ฝั่ง server ด้วย (แม้ query hook ส่วนใหญ่จะทำงานเฉพาะฝั่ง client) การสร้าง

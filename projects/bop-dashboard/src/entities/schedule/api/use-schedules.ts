@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { apiClient } from "@/shared/api";
+import { apiClient, LIST_REFETCH_INTERVAL_MS } from "@/shared/api";
 import type { ScheduleSummary } from "../model/types";
 
 // useSchedules เรียก GET /schedules — list เร็วเพราะ backend ไม่ Describe() ทีละตัว
@@ -10,5 +10,6 @@ export function useSchedules() {
   return useQuery({
     queryKey: ["schedules"],
     queryFn: () => apiClient<ScheduleSummary[]>("/schedules"),
+    refetchInterval: LIST_REFETCH_INTERVAL_MS,
   });
 }

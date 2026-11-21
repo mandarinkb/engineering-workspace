@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { apiClient } from "@/shared/api";
+import { apiClient, LIST_REFETCH_INTERVAL_MS } from "@/shared/api";
 import type { Job } from "../model/types";
 
 // useJobs เรียก GET /jobs — ใช้กับหน้า job history (roadmap ข้อ 1.4) filter ตาม
@@ -11,5 +11,6 @@ export function useJobs() {
   return useQuery({
     queryKey: ["jobs"],
     queryFn: () => apiClient<Job[]>("/jobs"),
+    refetchInterval: LIST_REFETCH_INTERVAL_MS,
   });
 }
