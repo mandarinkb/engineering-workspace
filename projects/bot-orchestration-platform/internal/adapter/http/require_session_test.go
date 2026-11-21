@@ -28,6 +28,7 @@ var dataEndpoints = []struct {
 	{http.MethodDelete, "/jobs/missing"},
 	{http.MethodGet, "/workflow-runs"},
 	{http.MethodGet, "/workflow-runs/missing"},
+	{http.MethodGet, "/workflow-runs/missing/steps/0/logs"},
 	{http.MethodPost, "/workflow-runs"},
 	{http.MethodPost, "/schedules"},
 	{http.MethodGet, "/schedules"},

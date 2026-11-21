@@ -1,0 +1,21 @@
+meta {
+  name: Get step logs without session
+  type: http
+  seq: 23
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/bruno-missing/steps/0/logs
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie:
+}
+
+tests {
+  test("ตอบ 401 เมื่อไม่มี session", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

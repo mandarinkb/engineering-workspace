@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"bop/internal/domain/bot"
+	"bop/internal/domain/logger"
 	"bop/internal/domain/schedule"
 	"bop/internal/domain/workflow"
 	"bop/internal/external/bots/externaljob"
@@ -36,6 +37,7 @@ import (
 	"bop/internal/external/k8s"
 	"bop/internal/external/temporal"
 	memlogger "bop/internal/pkg/logger"
+	"bop/internal/repository/postgres"
 )
 
 // k8sJobDefaultNamespace คือ namespace ที่ K8s Job hybrid execution (ดู
@@ -88,7 +90,14 @@ func run() error {
 	// (คนละ registry กับ worker.Pool ใน cmd/bop เพราะเป็นคนละ process กัน ดูหมายเหตุยาว
 	// ที่ internal/external/temporal/activity.go เรื่อง logger แยก process) เพิ่ม bot ชนิดใหม่ต้อง
 	// register ที่นี่ด้วยเสมอ ไม่งั้น workflow ที่อ้างถึง bot นั้นจะ fail ด้วย "unknown bot"
-	appLogger := memlogger.New()
+	//
+	// log ของ Step ลง PostgreSQL ตัวเดียวกับ bop-api เมื่อตั้ง BOP_DATABASE_URL เพื่อให้
+	// GET /workflow-runs/{id}/steps/{index}/logs ของ bop-api อ่านได้
+	appLogger, closeDB, err := newStepLogger(context.Background(), os.Getenv("BOP_DATABASE_URL"))
+	if err != nil {
+		return err
+	}
+	defer closeDB()
 	activities := temporal.NewActivities(appLogger)
 	activities.Register(httpstatus.New())
 	activities.Register(externaljob.New())
@@ -137,6 +146,23 @@ func run() error {
 		return fmt.Errorf("worker stopped with error: %w", err)
 	}
 	return nil
+}
+
+// newStepLogger เลือกที่เก็บ log ของ Step — ไม่ตั้ง databaseURL = memory พร้อมคำเตือน (log อ่านผ่าน
+// API ไม่ได้เพราะอยู่คนละ process กับ bop-api) worker ไม่รัน migration เพราะเป็นหน้าที่ของ bop-api
+// ฝ่ายเดียว กันสอง process แย่งกันแก้ schema — closeDB ต้องเรียกตอน worker หยุด
+func newStepLogger(ctx context.Context, databaseURL string) (l logger.StepLogger, closeDB func(), err error) {
+	if databaseURL == "" {
+		log.Printf("warning: BOP_DATABASE_URL not set, Step logs stay in bop-worker memory" +
+			" and cannot be read through the API")
+		return memlogger.New(), func() {}, nil
+	}
+	db, err := postgres.Connect(ctx, databaseURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	log.Printf("using PostgreSQL Step log storage")
+	return postgres.NewLogger(db), db.Close, nil
 }
 
 // startHealthServer เปิด HTTP server ตอบ GET /healthz ใน goroutine แยก แล้วคืนฟังก์ชันที่

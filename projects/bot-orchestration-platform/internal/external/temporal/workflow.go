@@ -146,11 +146,15 @@ func Execute(ctx workflow.Context, wf wfdomain.Workflow) ([]wfdomain.StepResult,
 		// activity name/registry กับ ActivityName ("RunStep") ปกติ (ดู K8sJobActivityName
 		// ด้านบน และ internal/domain/workflow/workflow.go เรื่อง Step.K8sJob) ส่ง *step.K8sJob (ไม่ใช่ step ทั้งก้อน)
 		// เป็น input เพราะ activity นี้ไม่สนใจ BotName/Config/TaskQueue เลย
+		//
+		// ทั้งสอง activity รับลำดับ Step (i) เป็น argument ที่สอง เพื่อผูก log ของ Step กับ
+		// workflow ID + ลำดับ Step + Attempt — เปลี่ยน argument ไม่กระทบ replay ของ Workflow Run
+		// ที่รันค้างอยู่ เพราะ SDK เทียบแค่ activity type/ID ไม่เทียบ input (ดู RunStep ใน activity.go)
 		var activityErr error
 		if step.K8sJob != nil {
-			activityErr = workflow.ExecuteActivity(stepCtx, K8sJobActivityName, *step.K8sJob).Get(stepCtx, &res.Summary)
+			activityErr = workflow.ExecuteActivity(stepCtx, K8sJobActivityName, *step.K8sJob, i).Get(stepCtx, &res.Summary)
 		} else {
-			activityErr = workflow.ExecuteActivity(stepCtx, ActivityName, step).Get(stepCtx, &res.Summary)
+			activityErr = workflow.ExecuteActivity(stepCtx, ActivityName, step, i).Get(stepCtx, &res.Summary)
 		}
 		if activityErr != nil {
 			// step ล้มเหลว (หมดจำนวน retry ตาม RetryPolicy แล้ว หรือเป็น error ที่ตั้งไว้

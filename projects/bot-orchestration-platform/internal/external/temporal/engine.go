@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"strings"
 
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	workflowpb "go.temporal.io/api/workflow/v1"
 	"go.temporal.io/api/workflowservice/v1"
@@ -129,6 +131,36 @@ func (e *Engine) GetRun(ctx context.Context, workflowID string) (*wfdomain.RunDe
 		RunSummary: toRunSummary(desc.WorkflowExecutionInfo),
 		Steps:      steps,
 	}, nil
+}
+
+// GetRunWorkflow อ่าน Workflow ที่ run นั้นรันจาก input ของ event แรกใน history
+// (WorkflowExecutionStarted) — ได้ครบทุก Step ทั้งตอนที่ run ยังรันอยู่และจบไปแล้ว ไม่ต้องพึ่ง
+// query handler ของ worker (ซึ่งคืนเฉพาะ Step ที่จบแล้ว และต้องมี worker ออนไลน์) อ่านแค่
+// หน้าแรกของ history แล้วหยุด ไม่ไล่ดึงทุกหน้าของ run ที่ยาว
+func (e *Engine) GetRunWorkflow(ctx context.Context, workflowID string) (*wfdomain.Workflow, error) {
+	iter := e.c.GetWorkflowHistory(ctx, workflowID, "", false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+	if !iter.HasNext() {
+		return nil, apperr.WrapNotFound(fmt.Errorf("workflow run %s has no history", workflowID))
+	}
+	event, err := iter.Next()
+	if err != nil {
+		var notFound *serviceerror.NotFound
+		if errors.As(err, &notFound) {
+			return nil, apperr.WrapNotFound(err)
+		}
+		return nil, fmt.Errorf("read history of workflow run %s: %w", workflowID, err)
+	}
+	started := event.GetWorkflowExecutionStartedEventAttributes()
+	if started == nil {
+		return nil, fmt.Errorf("first event of workflow run %s is %s, not WorkflowExecutionStarted",
+			workflowID, event.GetEventType())
+	}
+
+	var wf wfdomain.Workflow
+	if err := converter.GetDefaultDataConverter().FromPayloads(started.GetInput(), &wf); err != nil {
+		return nil, fmt.Errorf("decode input of workflow run %s: %w", workflowID, err)
+	}
+	return &wf, nil
 }
 
 // CheckHealth ใช้กับ readiness probe — error ถ้าต่อ Temporal server ไม่ได้
