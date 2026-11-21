@@ -1,0 +1,29 @@
+meta {
+  name: Update schedule with catch-up window under 10s
+  type: http
+  seq: 9
+}
+
+put {
+  url: {{baseUrl}}/schedules/{{scheduleId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "workflow_name": "bruno-schedule",
+    "steps": [
+      {"bot_name": "http-status-checker", "config": {"url": "http://bop-api:8080/healthz"}}
+    ],
+    "spec": {"interval_seconds": 3600},
+    "catchup_window_seconds": 5
+  }
+}
+
+tests {
+  test("ตอบ 400 พร้อมข้อความที่บอกชื่อ field", function () {
+    expect(res.getStatus()).to.equal(400);
+    expect(res.getBody()).to.include("catchup_window_seconds");
+  });
+}
