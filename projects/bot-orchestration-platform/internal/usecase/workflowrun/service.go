@@ -85,14 +85,14 @@ func (s *Service) List(ctx context.Context, q workflow.RunQuery) (workflow.RunPa
 	return s.engine.ListRuns(ctx, q)
 }
 
-// Count นับ Workflow Run ในกลุ่มสถานะที่ระบุ (ค่าว่าง = ทุกสถานะ) — Overview ใช้ตัวเลขนี้
-// แทนการนับจากหน้าแรกของ List ซึ่งผิดทันทีที่มี run มากกว่าหนึ่งหน้า สถานะที่ไม่รู้จักเป็น
-// apperr.ErrInvalid เหมือน List
-func (s *Service) Count(ctx context.Context, status workflow.RunStatusFilter) (int64, error) {
-	if err := validateFilter(workflow.RunFilter{Status: status}); err != nil {
+// Count นับ Workflow Run ที่ตรงกับ filter (status และ schedule_id ค่าว่าง = ไม่กรอง) —
+// Overview ใช้ตัวเลขนี้แทนการนับจากหน้าแรกของ List ซึ่งผิดทันทีที่มี run มากกว่าหนึ่งหน้า
+// filter เดียวกับ List และสถานะที่ไม่รู้จักเป็น apperr.ErrInvalid เหมือน List
+func (s *Service) Count(ctx context.Context, filter workflow.RunFilter) (int64, error) {
+	if err := validateFilter(filter); err != nil {
 		return 0, err
 	}
-	return s.engine.CountRuns(ctx, status)
+	return s.engine.CountRuns(ctx, filter)
 }
 
 // Get คืนรายละเอียด run เดียวรวมผลลัพธ์ทีละ step — id คือ workflow ID

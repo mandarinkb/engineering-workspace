@@ -214,12 +214,13 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
           id="catchup_window_seconds"
           type="number"
           min={10}
+          max={31536000}
           value={catchupWindow}
           onChange={(event) => setCatchupWindow(event.target.value)}
           className="mt-1 w-40 rounded border border-gray-300 px-3 py-2"
         />
         <p className="mt-1 text-xs text-gray-500">
-          Missed Run ที่เก่ากว่านี้ถูกข้ามเมื่อระบบกลับมา (ค่าเริ่มต้น 3600 = 1 ชั่วโมง ต่ำสุด 10)
+          Missed Run ที่เก่ากว่านี้ถูกข้ามเมื่อระบบกลับมา (ค่าเริ่มต้น 3600 = 1 ชั่วโมง ต่ำสุด 10 สูงสุด 31536000 = 1 ปี)
         </p>
       </div>
 

@@ -130,7 +130,13 @@ func run() error {
 	defer stopRetention()
 
 	// ถ้าไม่ใช่ CLI mode ให้เปิด HTTP API server ตามปกติ (ค่า default ของโปรแกรมนี้)
-	if err := serve(ctx, apihttp.NewServer(jobs, runs, schedules, auth)); err != nil {
+	// db เป็น nil ในโหมด memory — ห้ามส่ง nil pointer เข้า WithDatabase (interface จะไม่เท่ากับ nil)
+	// /readyz จะได้ไม่ ping database ที่ไม่มี
+	var serverOpts []apihttp.ServerOption
+	if db != nil {
+		serverOpts = append(serverOpts, apihttp.WithDatabase(db))
+	}
+	if err := serve(ctx, apihttp.NewServer(jobs, runs, schedules, auth, serverOpts...)); err != nil {
 		return err
 	}
 

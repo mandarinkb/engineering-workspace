@@ -37,7 +37,7 @@ internal/
 
   usecase/                 application logic — import ได้แค่ domain และ pkg (jwt, idgen)
     job/                   สร้าง/ดู/ยกเลิก job เดี่ยว + log
-    workflowrun/           สั่งรัน workflow แบบ ad-hoc + ดูสถานะ run + readiness
+    workflowrun/           สั่งรัน workflow แบบ ad-hoc + ดูสถานะ run + readiness (/readyz เช็ค Temporal และ PostgreSQL ถ้าตั้งไว้ ตอบ 503 พร้อมสาเหตุ)
     schedule/              validate + เรียก scheduler
     auth/                  ตรวจ credential + ออก/ตรวจ token
     logretention/          งานลบ log ที่เก่ากว่า 30 วัน วันละครั้ง (รันใน bop-api)

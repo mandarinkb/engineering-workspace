@@ -133,7 +133,7 @@
 - `GET /workflow-runs` รับ `page_size` (default 50, สูงสุด 200 ปัดลง), `page_token` (opaque จาก Temporal), `status` (running | completed | failed | canceled; failed รวม terminated และ timed out), `schedule_id`
 - response เปลี่ยนจาก array เป็น object: `{ "runs": [...], "next_page_token": "..." }` (ไม่มีหน้าถัดไป = ว่าง) — breaking change, dashboard แก้ในรอบเดียวกัน
 - แต่ละ run มี `schedule_id` (มาจาก search attribute `TemporalScheduledById`; ว่างสำหรับ run ที่สั่งเอง)
-- endpoint ใหม่ `GET /workflow-runs/count?status=` ใช้ CountWorkflowExecutions คืน `{ "count": n }`
+- endpoint ใหม่ `GET /workflow-runs/count?status=` ใช้ CountWorkflowExecutions คืน `{ "count": n }` — รับ `schedule_id` ด้วย (filter เดียวกับ list)
 - ตามไป Temporal ด้วย `NextPageToken` จริง ไม่ใช่เรียกหน้าเดียวแบบเดิม
 
 ### steps เป็นรายการว่าง

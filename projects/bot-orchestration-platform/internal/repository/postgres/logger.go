@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,7 +79,7 @@ func (l *Logger) Log(ctx context.Context, jobID string, level logger.Level, mess
 		JobID:   jobID,
 		Time:    l.now().Truncate(time.Microsecond),
 		Level:   level,
-		Message: message,
+		Message: sanitizeMessage(message),
 	}
 
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
@@ -162,7 +163,7 @@ func (l *Logger) LogStep(ctx context.Context, owner logger.StepAttempt, level lo
 		`INSERT INTO log_lines (workflow_id, step_index, attempt, time, level, message)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
 		owner.WorkflowID, owner.StepIndex, owner.Attempt, l.now().Truncate(time.Microsecond),
-		level, message); err != nil {
+		level, sanitizeMessage(message)); err != nil {
 		log.Printf("postgres: store log line of workflow %s step %d attempt %d: %v",
 			owner.WorkflowID, owner.StepIndex, owner.Attempt, err)
 	}
@@ -193,6 +194,14 @@ func (l *Logger) StepHistory(ctx context.Context, workflowID string, stepIndex i
 		return nil, fmt.Errorf("postgres: history of workflow %s step %d: %w", workflowID, stepIndex, err)
 	}
 	return out, nil
+}
+
+// sanitizeMessage ล้างข้อความก่อนเก็บลง text column ของ PostgreSQL ที่ปฏิเสธ NUL (\x00) และ
+// UTF-8 ที่ไม่ถูกต้อง — output ของ Bot อาจมีทั้งสองอย่าง (เช่น binary ปน) INSERT ที่พลาดทำให้
+// บรรทัดหายแม้เป็นบรรทัด error สุดท้ายของ Failed Step จึงตัด NUL ทิ้งและแทน byte เสียด้วย U+FFFD
+// ที่จุดเดียว ใช้ทั้ง Log และ LogStep
+func sanitizeMessage(message string) string {
+	return strings.ToValidUTF8(strings.ReplaceAll(message, "\x00", ""), "�")
 }
 
 // DeleteBefore ลบ log line ทุกเจ้าของ (Job และ Step) ที่เก่ากว่า cutoff — ไม่แตะตาราง jobs

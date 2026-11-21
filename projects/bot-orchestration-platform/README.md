@@ -39,7 +39,7 @@ cmd/bop-worker/main.go   composition root ของ Temporal Worker process — 
    │
    ├── internal/usecase               application logic — รู้จักแค่ port ใน domain
    │   ├── job          สร้าง/ดู/ยกเลิก job เดี่ยว + log (POST /bots/{name}/jobs, /jobs/...)
-   │   ├── workflowrun  สั่งรัน workflow แบบ ad-hoc + ดูสถานะ run (/workflow-runs, /readyz)
+   │   ├── workflowrun  สั่งรัน workflow แบบ ad-hoc + ดูสถานะ run (/workflow-runs) + readiness (/readyz: เช็ค Temporal และ PostgreSQL ถ้าตั้ง BOP_DATABASE_URL)
    │   ├── schedule     validate + ลำดับ "scheduler ก่อน repository" + compensation (/schedules/...)
    │   └── auth         ตรวจ credential + ออก/ตรวจ token (/login, /me)
    │

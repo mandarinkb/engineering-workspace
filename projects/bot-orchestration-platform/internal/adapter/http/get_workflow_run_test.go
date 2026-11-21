@@ -32,7 +32,7 @@ func (noStepsEngine) ListRuns(context.Context, workflow.RunQuery) (workflow.RunP
 	return workflow.RunPage{}, nil
 }
 
-func (noStepsEngine) CountRuns(context.Context, workflow.RunStatusFilter) (int64, error) {
+func (noStepsEngine) CountRuns(context.Context, workflow.RunFilter) (int64, error) {
 	return 0, nil
 }
 

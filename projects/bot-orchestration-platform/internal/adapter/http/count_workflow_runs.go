@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"bop/internal/domain/apperr"
-	"bop/internal/domain/workflow"
 )
 
 // workflowRunCount คือ JSON response ของ GET /workflow-runs/count
@@ -14,11 +13,10 @@ type workflowRunCount struct {
 }
 
 // handleCountWorkflowRuns นับ Workflow Run ตาม status (running | completed | failed | canceled,
-// ไม่ส่ง = ทุกสถานะ) ฝั่ง server — Overview ของ dashboard ใช้ตัวเลขนี้แทนการนับจากหน้าแรก
+// ไม่ส่ง = ทุกสถานะ) และ schedule_id (filter เดียวกับ GET /workflow-runs) ฝั่ง server — Overview ของ dashboard ใช้ตัวเลขนี้แทนการนับจากหน้าแรก
 // ของ GET /workflow-runs ซึ่งผิดทันทีที่มี run เกินหนึ่งหน้า
 func (s *Server) handleCountWorkflowRuns(w http.ResponseWriter, r *http.Request) {
-	status := workflow.RunStatusFilter(r.URL.Query().Get("status"))
-	count, err := s.runs.Count(r.Context(), status)
+	count, err := s.runs.Count(r.Context(), runFilterFromQuery(r.URL.Query()))
 	if err != nil {
 		code := http.StatusInternalServerError
 		if errors.Is(err, apperr.ErrInvalid) {

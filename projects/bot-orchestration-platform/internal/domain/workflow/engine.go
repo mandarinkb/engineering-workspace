@@ -82,9 +82,9 @@ type Engine interface {
 	// ListRuns คืน Workflow Run หนึ่งหน้าตาม query เรียงจากล่าสุดไปเก่าสุด — PageToken ที่
 	// อ่านไม่ออกคืน error ประเภท apperr.ErrInvalid
 	ListRuns(ctx context.Context, q RunQuery) (RunPage, error)
-	// CountRuns นับ Workflow Run ทั้งหมดในกลุ่มสถานะที่ระบุ (RunStatusAny = ทุกสถานะ) ฝั่ง
-	// engine เอง ไม่ขึ้นกับขนาดหน้าของ ListRuns
-	CountRuns(ctx context.Context, status RunStatusFilter) (int64, error)
+	// CountRuns นับ Workflow Run ทั้งหมดที่ตรงกับ filter เดียวกับ ListRuns (status และ
+	// schedule_id; filter ว่าง = ทุก run) ฝั่ง engine เอง ไม่ขึ้นกับขนาดหน้าของ ListRuns
+	CountRuns(ctx context.Context, filter RunFilter) (int64, error)
 	// GetRun คืนรายละเอียด run เดียวตาม workflow ID
 	GetRun(ctx context.Context, workflowID string) (*RunDetail, error)
 	// GetRunWorkflow คืน Workflow (ชื่อและรายการ Step ทั้งหมด) ที่ run นั้นถูกสั่งให้รัน — ต่างจาก
