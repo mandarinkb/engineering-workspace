@@ -8,11 +8,13 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] ดึงข้อมูลของ run ใหม่ทุก 2 วินาที **เฉพาะ**เมื่อสถานะยังเป็น running และหยุดเมื่อจบ ตัดสินจากสถานะที่ผ่าน `normalizeRunStatus` (ไม่เทียบสตริงดิบ) ไม่ดึงซ้ำตอนยังโหลดไม่เสร็จหรือเกิด error
-- [ ] vitest: ฟังก์ชันที่ตัดสินว่าต้องดึงซ้ำหรือไม่ — running ได้ผลจริง สถานะที่จบแล้วทุกแบบ สถานะที่ไม่รู้จัก และไม่มีข้อมูล ได้ผลเท็จ
-- [ ] พิสูจน์กับ stack จริงด้วย Playwright: สั่งรัน workflow ที่ล้มเหลว (ตั้งลอง 2 ครั้ง) แล้วหน้ารายละเอียดเปลี่ยนจาก running เป็น failed เอง ไม่ reload ภายใน 30 วินาที
-- [ ] vitest, eslint และ `next build` ผ่าน
-- [ ] เอาหมายเหตุ "ข้อควรระวัง" เรื่องนี้ออกจาก `projects/bop-dashboard/UI-GUIDE.md` และแก้ตารางช่วงรีเฟรชอัตโนมัติ
-- [ ] orchestrator deploy branch แล้ว `bru run --env minipc` ผ่านทั้งชุด
+**Verified:** deploy commit 5beb18b ขึ้น Mini PC แล้ว ตรวจด้วย Playwright: run ที่ค้างอยู่ (ชี้ไปที่อยู่ที่ไม่ตอบ ลอง 1 ครั้ง) แสดง `running` แล้วเปลี่ยนเป็น `failed` เองหลัง 30.9 วินาทีในหน้าเดิมโดยไม่ reload (ยืนยันด้วยตัวแปรที่ฝังไว้ในหน้า); vitest 63 ตัว, eslint, `next build` ผ่าน — 2026-11-21
+
+- [x] ดึงข้อมูลของ run ใหม่ทุก 2 วินาที **เฉพาะ**เมื่อสถานะยังเป็น running และหยุดเมื่อจบ ตัดสินจากสถานะที่ผ่าน `normalizeRunStatus` (ไม่เทียบสตริงดิบ) ไม่ดึงซ้ำตอนยังโหลดไม่เสร็จหรือเกิด error
+- [x] vitest: ฟังก์ชันที่ตัดสินว่าต้องดึงซ้ำหรือไม่ — running ได้ผลจริง สถานะที่จบแล้วทุกแบบ สถานะที่ไม่รู้จัก และไม่มีข้อมูล ได้ผลเท็จ
+- [x] พิสูจน์กับ stack จริงด้วย Playwright: สั่งรัน workflow ที่ล้มเหลว (ตั้งลอง 2 ครั้ง) แล้วหน้ารายละเอียดเปลี่ยนจาก running เป็น failed เอง ไม่ reload ภายใน 30 วินาที
+- [x] vitest, eslint และ `next build` ผ่าน
+- [x] เอาหมายเหตุ "ข้อควรระวัง" เรื่องนี้ออกจาก `projects/bop-dashboard/UI-GUIDE.md` และแก้ตารางช่วงรีเฟรชอัตโนมัติ
+- [x] orchestrator deploy branch แล้ว `bru run --env minipc` ผ่านทั้งชุด

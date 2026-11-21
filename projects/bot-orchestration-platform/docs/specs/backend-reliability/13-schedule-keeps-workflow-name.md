@@ -8,7 +8,9 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** None (can start immediately)
 
-**Status:** implemented
+**Status:** done
+
+**Verified:** deploy branch `fix/schedule-name-and-run-refresh` (commit 5beb18b) ขึ้น Mini PC แล้ว `bru run --env minipc` ผ่านทั้งชุด 91 request / 106 test (รวมอ่านแล้วส่งกลับด้วย PUT ชื่อไม่เปลี่ยน) ตรวจด้วย Playwright: ฟอร์มแก้ไขเติม `uiwalk` ไม่ใช่ `Execute` และ run ถัดไปหลังบันทึกขึ้นต้น `uiwalk-` และ Temporal ยืนยัน Action ID ของ Schedule ยังเป็น `uiwalk` — 2026-11-21
 
 **ข้อจำกัดของ list:** `GET /schedules` ใช้ ListSchedules ซึ่ง `ScheduleListEntry` (SDK v1.47.0) ไม่มี action args มีแค่ `WorkflowType` จึงยังได้ "Execute" ใน `workflow_name` — ไม่เพิ่ม Describe ทีละ Schedule (N+1) ฟอร์มแก้ไขใช้ detail endpoint จึงไม่กระทบ
 
@@ -16,6 +18,6 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [x] อ่านแล้วส่งกลับใน `PUT` (round trip) ไม่เปลี่ยน Action ID และชื่อใน args ของ Schedule (ตรวจด้วย Go test แล้ว; ส่วน Temporal จริงตรวจโดย Bruno ตอน orchestrator deploy)
 - [x] Go test: Describe คืนชื่อจาก args (List ไม่มี args ให้ถอดรหัส), กรณี args ไม่ใช่รูปแบบ BOP, และ round trip
 - [x] Bruno (detail endpoint): สร้าง Schedule ด้วย `workflow_name` ที่ไม่ใช่ `Execute` แล้ว `GET` ได้ชื่อเดิม; `PUT` ด้วยค่าที่ได้จาก `GET` แล้ว `GET` อีกครั้งชื่อเท่าเดิม และ run ที่ trigger หลังจากนั้นมี workflow ID ขึ้นต้นด้วยชื่อนั้น
-- [ ] dashboard: ฟอร์มแก้ไข Schedule เติมชื่อที่ถูกต้อง และบันทึกโดยไม่แก้ชื่อแล้ว Action ID ไม่เปลี่ยน (ตรวจด้วย Playwright กับ Schedule ที่สร้างเอง ไม่ใช้ `check-example-com-schedule` ของ worker)
-- [ ] golangci-lint (ผ่านแล้ว), vitest และ eslint ผ่าน
-- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)
+- [x] dashboard: ฟอร์มแก้ไข Schedule เติมชื่อที่ถูกต้อง และบันทึกโดยไม่แก้ชื่อแล้ว Action ID ไม่เปลี่ยน (ตรวจด้วย Playwright กับ Schedule ที่สร้างเอง ไม่ใช้ `check-example-com-schedule` ของ worker)
+- [x] golangci-lint (ผ่านแล้ว), vitest และ eslint ผ่าน
+- [x] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

@@ -14,7 +14,9 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** None (can start immediately)
 
-**Status:** implemented
+**Status:** done
+
+**Verified:** deploy commit 5beb18b ขึ้น Mini PC แล้ว log ของ bop-api ตอน start ขึ้น `reconcile interrupted jobs: marked 0 job(s) as failed` และ `bruno/run-with-restart.sh` ผ่านทั้ง 6 ขั้น: Job ที่ค้างอยู่ (ยืนยันว่าเป็น `running` ก่อน recreate bop-api) กลับมาเป็น `failed: interrupted: bop-api restarted` — 2026-11-21
 
 - [x] ตอน start ก่อนรับ request ตั้ง Job ที่เป็น `pending` หรือ `running` เป็น `failed` พร้อม `error` ที่บอกว่าถูกขัดจังหวะโดย restart และมี `ended_at` พิมพ์ log บอกจำนวนที่ตั้ง
 - [x] Job ที่จบแล้ว (`succeeded`, `failed`, `cancelled`) และ Job ที่สร้างหลัง start ไม่ถูกแตะ
@@ -22,6 +24,6 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [x] repository แบบ memory ไม่ทำอะไร (ไม่มี Job ค้างข้าม restart อยู่แล้ว)
 - [x] Go test กับ PostgreSQL จริง: ใส่ Job หลายสถานะ รันการกวาด แล้วตรวจแต่ละแถว (สถานะ, error, ended_at) และตรวจกรณีสวิตช์ปิด
 - [x] ARCHITECTURE.md และ README ระบุข้อจำกัด "รัน bop-api ตัวเดียว" และสวิตช์
-- [ ] พิสูจน์กับ stack จริงใน `bruno/run-with-restart.sh`: เริ่ม Job ที่ใช้เวลานาน ยืนยันว่ามันเป็น `running` ก่อน recreate `bop-api` แล้วตรวจว่าเป็น `failed` พร้อมเหตุผลหลังกลับมา ถ้าไม่ได้เป็น `running` ตอนนั้นต้องรายงานว่าข้ามการตรวจ (ห้ามผ่านเงียบๆ) ถ้าทำอัตโนมัติไม่ได้ ให้เขียนเหตุผลและขั้นตอนทำมือ
+- [x] พิสูจน์กับ stack จริงใน `bruno/run-with-restart.sh`: เริ่ม Job ที่ใช้เวลานาน ยืนยันว่ามันเป็น `running` ก่อน recreate `bop-api` แล้วตรวจว่าเป็น `failed` พร้อมเหตุผลหลังกลับมา ถ้าไม่ได้เป็น `running` ตอนนั้นต้องรายงานว่าข้ามการตรวจ (ห้ามผ่านเงียบๆ) ถ้าทำอัตโนมัติไม่ได้ ให้เขียนเหตุผลและขั้นตอนทำมือ
 - [x] golangci-lint ผ่าน
-- [ ] orchestrator deploy branch แล้ว `bru run --env minipc` และ `run-with-restart.sh` ผ่านทั้งชุด
+- [x] orchestrator deploy branch แล้ว `bru run --env minipc` และ `run-with-restart.sh` ผ่านทั้งชุด
