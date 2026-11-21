@@ -1,8 +1,8 @@
 // Package schedule คือ usecase ของการจัดการ schedule (สร้าง/แก้ไข/ลบ/pause/trigger ทันที/
 // backfill) — scheduling logic จริงทั้งหมด (cron parsing, calendar rule, overlap policy,
 // catchup window) อยู่ที่ schedule.Scheduler (ตอนนี้คือ Temporal Schedules) สิ่งที่ usecase
-// นี้ทำเพิ่มคือ validate input และเก็บ "workflow definition" (ชื่อ + steps) คู่กันผ่าน
-// schedule.Repository (ดูเหตุผลที่ internal/domain/schedule/schedule.go)
+// นี้ทำเพิ่มคือ validate input — ข้อมูลของ Schedule ทั้งหมดรวม steps อ่านจาก scheduler ที่
+// เดียว BOP ไม่เก็บซ้ำเอง (ADR 0001)
 package schedule
 
 import (
@@ -18,12 +18,11 @@ import (
 // Service รวม use case ทั้งหมดของ schedule
 type Service struct {
 	scheduler schedule.Scheduler
-	repo      schedule.Repository
 }
 
 // NewService ผูก use case เข้ากับ port ที่ส่งเข้ามา (ประกอบใน cmd/bop/main.go)
-func NewService(scheduler schedule.Scheduler, repo schedule.Repository) *Service {
-	return &Service{scheduler: scheduler, repo: repo}
+func NewService(scheduler schedule.Scheduler) *Service {
+	return &Service{scheduler: scheduler}
 }
 
 // Input คือข้อมูลที่ต้องใช้ตอนสร้างหรือแทนที่ schedule ทั้งก้อน
@@ -61,14 +60,10 @@ func (in Input) validate() (schedule.Policy, error) {
 	return schedule.Policy{Overlap: overlap, CatchupWindow: catchupWindow}, nil
 }
 
-// Create สร้าง schedule ใหม่ที่ scheduler แล้วเก็บ workflow definition ไว้ใน repository
-// คู่กัน — ลำดับสำคัญ: สร้างที่ scheduler ก่อนเสมอ (เป็น source of truth ตัวจริง) แล้วค่อย
-// บันทึก definition ของเราทีหลัง ถ้าขั้นหลังพลาด (ไม่ควรเกิดในทางปกติ) จะ compensate ด้วย
-// การลบ schedule ที่เพิ่งสร้างทิ้ง ไม่ปล่อยให้เหลือ schedule กำพร้าที่ไม่มี definition คู่กัน
-// (Saga-style compensation เดียวกับแนวคิดใน FULLSTACK-INFRA-ROADMAP.md Phase 3)
+// Create สร้าง schedule ใหม่ที่ scheduler แล้วอ่านรายละเอียดกลับมาตอบ
 //
-// error จาก repository และจาก describe หลังสร้างเสร็จห่อด้วย apperr.Plain เพราะ API เดิม
-// ตอบ 500 ในสองขั้นตอนนี้เสมอไม่ว่า error ข้างในจะเป็นประเภทไหน
+// error จาก describe หลังสร้างเสร็จห่อด้วย apperr.Plain เพราะ API เดิมตอบ 500 ในขั้นนี้
+// เสมอไม่ว่า error ข้างในจะเป็นประเภทไหน
 func (s *Service) Create(ctx context.Context, id string, in Input) (*schedule.Detail, error) {
 	if id == "" {
 		return nil, apperr.Invalid("id is required")
@@ -86,12 +81,6 @@ func (s *Service) Create(ctx context.Context, id string, in Input) (*schedule.De
 		return nil, apperr.Plain(err)
 	}
 
-	def := &schedule.Definition{ID: id, WorkflowName: in.WorkflowName, Steps: in.Steps, CreatedAt: time.Now()}
-	if err := s.repo.Create(ctx, def); err != nil {
-		_ = s.scheduler.Delete(ctx, id)
-		return nil, apperr.Plain(err)
-	}
-
 	detail, err := s.Get(ctx, id)
 	return detail, apperr.Plain(err)
 }
@@ -102,20 +91,11 @@ func (s *Service) List(ctx context.Context) ([]schedule.Summary, error) {
 	return s.scheduler.List(ctx)
 }
 
-// Get รวมข้อมูลจาก 2 แหล่งเข้าด้วยกัน: scheduler (สถานะ/เวลาที่แท้จริง) และ repository ของ
-// BOP เอง (workflow steps) — ถ้าไม่เจอ definition (schedule นี้สร้างก่อนมี API ชุดนี้ เช่น
-// check-example-com-schedule ที่ cmd/bop-worker สร้างตรงผ่าน SDK, หรือ cmd/bop เพิ่ง restart
-// เพราะ repository เป็น in-memory) ปล่อย Steps เป็น nil เงียบๆ ไม่ใช่ fatal error — schedule
-// ยังใช้งานได้ปกติ แค่ frontend จะไม่รู้ว่า steps ข้างในคืออะไรเท่านั้น
+// Get คืนรายละเอียดของ schedule จาก scheduler ที่เดียว รวม steps ที่จะรันจริง — ใช้ได้กับ
+// Schedule ที่สร้างนอก API (เช่น check-example-com-schedule ของ cmd/bop-worker) และไม่
+// เปลี่ยนหลัง cmd/bop restart
 func (s *Service) Get(ctx context.Context, id string) (*schedule.Detail, error) {
-	detail, err := s.scheduler.Describe(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if def, err := s.repo.Get(ctx, id); err == nil {
-		detail.Steps = def.Steps
-	}
-	return detail, nil
+	return s.scheduler.Describe(ctx, id)
 }
 
 // Update แทนที่ schedule ทั้งก้อนด้วยค่าใหม่ (full replace ไม่ใช่ partial patch)
@@ -130,27 +110,13 @@ func (s *Service) Update(ctx context.Context, id string, in Input) (*schedule.De
 		return nil, err
 	}
 
-	def := &schedule.Definition{ID: id, WorkflowName: in.WorkflowName, Steps: in.Steps, CreatedAt: time.Now()}
-	// ใช้ Update() ก่อน ถ้าไม่เจอ definition เดิม (schedule นี้สร้างก่อนมี API ชุดนี้) ให้
-	// Create() แทน — ไม่ปล่อยให้การแก้ที่สำเร็จฝั่ง scheduler แล้วมาล้มเหลวเพราะ bookkeeping
-	// ของเราเองยังไม่เคยมี record นี้มาก่อน
-	if err := s.repo.Update(ctx, def); err != nil {
-		_ = s.repo.Create(ctx, def)
-	}
-
 	detail, err := s.Get(ctx, id)
 	return detail, apperr.Plain(err)
 }
 
-// Delete ลบ schedule ทิ้งทั้งฝั่ง scheduler และ definition ของเราเอง — ลบที่ scheduler ก่อน
-// เสมอ (source of truth) ถ้าสำเร็จค่อยลบ definition (ไม่ fatal ถ้าไม่เจอ — schedule อาจไม่
-// เคยมี definition ใน repository นี้อยู่แล้วตั้งแต่ต้น)
+// Delete ลบ schedule ทิ้งถาวรที่ scheduler
 func (s *Service) Delete(ctx context.Context, id string) error {
-	if err := s.scheduler.Delete(ctx, id); err != nil {
-		return err
-	}
-	_ = s.repo.Delete(ctx, id)
-	return nil
+	return s.scheduler.Delete(ctx, id)
 }
 
 // Pause หยุด schedule ชั่วคราวโดยไม่ลบทิ้ง — เทียบเท่า "Hold" ของ Control-M

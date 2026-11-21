@@ -5,10 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"bop/internal/domain/bot"
 	"bop/internal/domain/job"
-	"bop/internal/domain/schedule"
-	"bop/internal/domain/workflow"
 	"bop/internal/repository/memory"
 )
 
@@ -49,26 +46,5 @@ func TestJobRepository_GetReturnsOwnConfig(t *testing.T) {
 	again, _ := repo.Get(ctx, "j1")
 	if again.Config["url"] != "a" {
 		t.Errorf("stored Config changed through returned map: url = %q, want a", again.Config["url"])
-	}
-}
-
-func TestScheduleRepository_KeepsOwnStepConfig(t *testing.T) {
-	repo := memory.NewScheduleRepository()
-	ctx := context.Background()
-	d := &schedule.Definition{
-		ID:    "s1",
-		Steps: []workflow.Step{{BotName: "b", Config: bot.Config{"url": "a"}}},
-	}
-	if err := repo.Create(ctx, d); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	d.Steps[0].Config["url"] = "changed"
-	got, _ := repo.Get(ctx, "s1")
-	got.Steps[0].Config["url"] = "changed"
-
-	again, _ := repo.Get(ctx, "s1")
-	if again.Steps[0].Config["url"] != "a" {
-		t.Errorf("stored step Config changed: url = %q, want a", again.Steps[0].Config["url"])
 	}
 }

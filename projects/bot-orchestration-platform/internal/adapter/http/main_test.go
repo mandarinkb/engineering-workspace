@@ -42,12 +42,11 @@ func newTestServer(t *testing.T) *httptest.Server {
 	log := memlogger.New()
 	pool := worker.NewPool(2, 5*time.Second, repo, log)
 	pool.Register(stubBot{})
-	scheduleRepo := memory.NewScheduleRepository()
 
 	srv := apihttp.NewServer(
 		jobuc.NewService(repo, pool, log),
 		workflowrunuc.NewService(temporal.NewEngine(nil)),
-		scheduleuc.NewService(temporal.NewScheduler(nil), scheduleRepo),
+		scheduleuc.NewService(temporal.NewScheduler(nil)),
 		authuc.NewService([]byte("test-secret"), "admin", "changeme"),
 	)
 	ts := httptest.NewServer(srv)

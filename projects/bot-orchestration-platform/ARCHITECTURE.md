@@ -33,12 +33,12 @@ internal/
     job/                   Job entity, Repository port, Executor port
     logger/                Logger port, Line, Level
     workflow/              Workflow, Step, StepResult, RunSummary/RunDetail, Engine port
-    schedule/              Definition, Repository port, Spec, Overlap, Scheduler port
+    schedule/              Spec, Overlap, Policy, Detail, Scheduler port (ไม่มี Repository ดู ADR 0001)
 
   usecase/                 application logic — import ได้แค่ domain และ pkg (jwt, idgen)
     job/                   สร้าง/ดู/ยกเลิก job เดี่ยว + log
     workflowrun/           สั่งรัน workflow แบบ ad-hoc + ดูสถานะ run + readiness
-    schedule/              validate + ลำดับการเรียก scheduler/repository + compensation
+    schedule/              validate + เรียก scheduler
     auth/                  ตรวจ credential + ออก/ตรวจ token
 
   adapter/
@@ -51,7 +51,7 @@ internal/
     bots/                  httpstatus, externaljob (implement bot.Bot)
 
   repository/              ขาออก: implement Repository port (storage)
-    memory/                job + schedule repository แบบ in-memory
+    memory/                job repository แบบ in-memory
 
   pkg/                     library ที่ใช้ร่วมกัน
     jwt/                   JWT HS256 เขียนเอง (ไม่รู้จัก domain)
@@ -72,7 +72,6 @@ internal/
 | `job.Repository` | `domain/job` | `repository/memory.JobRepository` |
 | `job.Executor` | `domain/job` | `adapter/worker.Pool` |
 | `logger.Logger` | `domain/logger` | `pkg/logger.Logger` |
-| `schedule.Repository` | `domain/schedule` | `repository/memory.ScheduleRepository` |
 | `schedule.Scheduler` | `domain/schedule` | `external/temporal.Scheduler` |
 | `workflow.Engine` | `domain/workflow` | `external/temporal.Engine` |
 | `bot.Bot` | `domain/bot` | `external/bots/httpstatus`, `external/bots/externaljob` |
@@ -80,7 +79,7 @@ internal/
 ### `usecase`
 
 - ทำงานผ่าน port เท่านั้น ห้าม import Temporal SDK, `net/http`, K8s client หรือ implementation ตัวจริง
-- รับผิดชอบการ validate input, ลำดับขั้นตอน และ compensation เช่น `schedule.Service.Create` สร้างที่ scheduler ก่อนแล้วค่อยบันทึก definition ถ้าบันทึกพลาดให้ลบ schedule ที่เพิ่งสร้างทิ้ง
+- รับผิดชอบการ validate input และลำดับขั้นตอน เช่น `schedule.Service.Create` สร้างที่ scheduler แล้วอ่านรายละเอียดกลับจาก scheduler
 - คืน error เป็นประเภทใน `domain/apperr` เพื่อให้ชั้น HTTP เลือก status code ได้โดยไม่ต้องรู้ว่าข้างหลังเป็นอะไร
 
 ### `adapter/http`
@@ -145,9 +144,8 @@ go list -f '{{.ImportPath}}: {{join .Imports " "}}' ./internal/domain/... ./inte
 1. `adapter/http.handleCreateSchedule` decode JSON เป็น `createScheduleRequest` แล้วเรียก `usecase/schedule.Service.Create`
 2. usecase ตรวจ `id` → `steps` → `Spec.Validate()` → `ParseOverlap()` ถ้าผิดคืน `apperr.ErrInvalid`
 3. usecase เรียก `schedule.Scheduler.Create` ซึ่งตัวจริงคือ `external/temporal.Scheduler` แปลงเป็น `client.ScheduleOptions` แล้วเรียก Temporal
-4. usecase บันทึก `schedule.Definition` ผ่าน `schedule.Repository` ถ้าพลาดให้เรียก `Scheduler.Delete` เพื่อย้อนกลับ
-5. usecase เรียก `Get` เพื่อรวมสถานะจาก Temporal กับ steps จาก repository
-6. handler แปลง `schedule.Detail` เป็น JSON และแปลง error เป็น status code ผ่าน `writeScheduleError`
+4. usecase เรียก `Get` ซึ่งอ่านทุกอย่างจาก Temporal ที่เดียว (ADR 0001) — `Scheduler.Describe` ถอดรหัส steps จาก action args ของ Temporal Schedule
+5. handler แปลง `schedule.Detail` เป็น JSON และแปลง error เป็น status code ผ่าน `writeScheduleError`
 
 ## การแปลง error เป็น HTTP status
 
@@ -173,7 +171,7 @@ wrapper ทุกตัวใน `apperr` คืนข้อความเด�
 |---|---|---|
 | bot ชนิดใหม่ | `internal/external/bots/<name>/` implement `bot.Bot` | register ทั้ง `cmd/bop` (`pool.Register`) และ `cmd/bop-worker` (`activities.Register`) |
 | endpoint ใหม่ | ไฟล์ใหม่ใน `adapter/http` (เช่น `get_bot.go`) + route ใน `server.go` + method ใน usecase ที่เกี่ยวข้อง | ถ้าต้องใช้ระบบภายนอกใหม่ ให้ประกาศ port ใน `domain` ก่อน |
-| storage ใหม่ (PostgreSQL) | `internal/repository/postgres/` implement `job.Repository` / `schedule.Repository` | สลับใน `cmd/bop/main.go` แล้วรัน test ชุดเดียวกันกับ in-memory |
+| storage ใหม่ (PostgreSQL) | `internal/repository/postgres/` implement `job.Repository` | สลับใน `cmd/bop/main.go` แล้วรัน test ชุดเดียวกันกับ in-memory |
 | ระบบภายนอกใหม่ (เช่น ส่งแจ้งเตือน) | port ใน `domain/<concept>` + implementation ใน `internal/external/<system>/` | usecase เรียกผ่าน port แล้วประกอบใน `cmd` |
 | กฎทางธุรกิจที่ไม่ขึ้นกับเทคโนโลยี | method บน type ใน `domain` (แบบ `Spec.Validate`) | usecase เป็นคนเรียก |
 | ลำดับขั้นตอนหลาย port | `usecase` | — |

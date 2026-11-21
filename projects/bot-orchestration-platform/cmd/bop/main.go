@@ -91,18 +91,13 @@ func run() error {
 	}
 	defer temporalClient.Close()
 
-	// ขั้นตอนที่ 5: bookkeeping ของ schedule definition (ชื่อ workflow + steps ต่อ
-	// schedule หนึ่งตัว) — ดูเหตุผลที่แยกเก็บเองแทนที่จะ decode จาก Temporal ตรงๆ ที่
-	// internal/domain/schedule/schedule.go
-	scheduleRepo := memory.NewScheduleRepository()
-
-	// ขั้นตอนที่ 6: เช็คว่าถูกเรียกแบบ CLI mode หรือไม่ (มี argument แรกเป็นคำว่า "run")
+	// ขั้นตอนที่ 5: เช็คว่าถูกเรียกแบบ CLI mode หรือไม่ (มี argument แรกเป็นคำว่า "run")
 	// ถ้าใช่ ให้ทำงานแบบ CLI แล้วจบโปรแกรมทันทีหลังจากนั้น ไม่เปิด HTTP server ต่อ
 	if len(os.Args) > 1 && os.Args[1] == "run" {
 		return runCLI(ctx, repo, pool, os.Args[2:])
 	}
 
-	// ขั้นตอนที่ 7: ประกอบ usecase จาก port ทั้งหมด (clean architecture: HTTP adapter รู้จัก
+	// ขั้นตอนที่ 6: ประกอบ usecase จาก port ทั้งหมด (clean architecture: HTTP adapter รู้จัก
 	// แค่ usecase, usecase รู้จักแค่ interface ใน internal/domain ส่วน implementation จริง
 	// ทั้งหมดถูกเลือกที่นี่ที่เดียว) — secret/credential ของ auth อ่านจาก env var ที่นี่
 	// **ห้ามใช้ค่า fallback ใน production เด็ดขาด** BOP_JWT_SECRET ต้องสุ่มค่าใหม่ด้วย
@@ -111,7 +106,7 @@ func run() error {
 	// ตอนนี้เพราะยังไม่มี user database (BOP เป็น single-operator tool)
 	jobs := jobuc.NewService(repo, pool, appLogger)
 	runs := workflowrunuc.NewService(temporal.NewEngine(temporalClient))
-	schedules := scheduleuc.NewService(temporal.NewScheduler(temporalClient), scheduleRepo)
+	schedules := scheduleuc.NewService(temporal.NewScheduler(temporalClient))
 	auth := authuc.NewService(
 		[]byte(getenv("BOP_JWT_SECRET", "bop-dev-secret-change-me-before-deploying")),
 		getenv("BOP_ADMIN_USERNAME", "admin"),

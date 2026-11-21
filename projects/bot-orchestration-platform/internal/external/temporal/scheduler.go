@@ -3,11 +3,14 @@ package temporal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
 	sdktemporal "go.temporal.io/sdk/temporal"
 
 	"bop/internal/domain/apperr"
@@ -80,12 +83,17 @@ func (s *Scheduler) List(ctx context.Context) ([]schedule.Summary, error) {
 	return out, nil
 }
 
-// Describe คืนสถานะ/เวลาที่แท้จริงจาก Temporal — ไม่เติม Steps (usecase เติมจาก
-// repository ของ BOP เอง)
+// Describe คืนข้อมูลทั้งหมดของ Schedule จาก Temporal ที่เดียว (ADR 0001) รวม steps ที่
+// ถอดรหัสจาก action args — จึงใช้ได้กับ Schedule ที่สร้างนอก API ด้วย และไม่หายหลัง restart
 func (s *Scheduler) Describe(ctx context.Context, id string) (*schedule.Detail, error) {
 	desc, err := s.c.ScheduleClient().GetHandle(ctx, id).Describe(ctx)
 	if err != nil {
 		return nil, translate(err)
+	}
+
+	steps, err := scheduledSteps(desc.Schedule.Action)
+	if err != nil {
+		return nil, fmt.Errorf("schedule %s: %w", id, err)
 	}
 
 	// หลัง Describe เสมอ Schedule.Action จะเป็น *client.ScheduleWorkflowAction ที่มี
@@ -131,6 +139,7 @@ func (s *Scheduler) Describe(ctx context.Context, id string) (*schedule.Detail, 
 		},
 		Overlap:       overlap,
 		CatchupWindow: catchupWindow,
+		Steps:         steps,
 		RecentActions: actions,
 		CreatedAt:     desc.Info.CreatedAt,
 	}, nil
@@ -176,6 +185,36 @@ func (s *Scheduler) Backfill(ctx context.Context, id string, start, end time.Tim
 	return translate(s.c.ScheduleClient().GetHandle(ctx, id).Backfill(ctx, client.ScheduleBackfillOptions{
 		Backfill: []client.ScheduleBackfill{{Start: start, End: end, Overlap: overlapPolicyByName[overlap]}},
 	}))
+}
+
+// executeWorkflowType คือชื่อ workflow type ที่ Temporal ตั้งจากชื่อฟังก์ชัน Execute — action
+// ของ Schedule ที่ใช้ type อื่นไม่ใช่ Workflow ของ BOP จึงไม่มี steps ให้ถอดรหัส
+const executeWorkflowType = "Execute"
+
+// scheduledSteps ถอดรหัส steps จาก action args ของ Schedule ที่ได้จาก Describe — SDK คืน
+// Args เป็น *commonpb.Payload (ตาม comment ของ ScheduleWorkflowAction.Args) จึงต้องแปลง
+// กลับด้วย DataConverter ตัวเดียวกับตอนสร้าง (default ทั้ง cmd/bop และ cmd/bop-worker)
+//
+// Schedule ที่ไม่ได้สั่งรัน Execute (สร้างโดยระบบอื่นใน namespace เดียวกัน) ได้รายการว่าง
+// แต่ถ้าเป็น Execute แล้วถอดรหัสไม่ได้คือ payload ไม่ตรงกับ workflow.Workflow ซึ่งต้องรู้
+// ทันที ไม่ใช่แสดง steps ว่างให้เข้าใจผิดว่า Schedule ไม่ทำอะไร
+func scheduledSteps(action client.ScheduleAction) ([]wfdomain.Step, error) {
+	wfAction, ok := action.(*client.ScheduleWorkflowAction)
+	if !ok || wfAction.Workflow != executeWorkflowType || len(wfAction.Args) == 0 {
+		return []wfdomain.Step{}, nil
+	}
+	payload, ok := wfAction.Args[0].(*commonpb.Payload)
+	if !ok {
+		return nil, fmt.Errorf("unexpected action arg type %T", wfAction.Args[0])
+	}
+	var wf wfdomain.Workflow
+	if err := converter.GetDefaultDataConverter().FromPayload(payload, &wf); err != nil {
+		return nil, fmt.Errorf("decode workflow steps: %w", err)
+	}
+	if wf.Steps == nil {
+		return []wfdomain.Step{}, nil
+	}
+	return wf.Steps, nil
 }
 
 // translate แปลง "ไม่เจอ schedule นี้" ของ Temporal เป็น apperr.ErrNotFound (ข้อความเดิม)
