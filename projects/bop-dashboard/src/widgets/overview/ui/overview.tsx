@@ -5,17 +5,18 @@ import Link from "next/link";
 import { StatCard } from "@/shared/ui";
 import { useJobs } from "@/entities/job";
 import { useSchedules } from "@/entities/schedule";
-import { useWorkflowRuns, WorkflowStatusBadge } from "@/entities/workflow-run";
+import { useWorkflowRunPage, WorkflowStatusBadge } from "@/entities/workflow-run";
 
 import { computeOverviewStats } from "../lib/overview-stats";
 
 // Overview คือหน้าแรกของ dashboard — สรุปสถานะจาก /jobs, /schedules และ /workflow-runs
-// ไว้ในหน้าเดียว ใช้ query key เดียวกับหน้าอื่น (useJobs/useSchedules/useWorkflowRuns) จึง
-// แชร์ cache กัน กดเข้าไปหน้า Jobs ต่อจะไม่ต้องโหลดใหม่
+// ไว้ในหน้าเดียว ใช้ query key เดียวกับหน้าอื่น (useJobs/useSchedules) จึงแชร์ cache กัน
+// กดเข้าไปหน้า Jobs ต่อจะไม่ต้องโหลดใหม่ — workflow run ใช้แค่หน้าแรก (50 ตัวล่าสุด) ตัวเลข
+// "กำลังรัน" และรายการล้มเหลวจึงมาจากหน้านั้นเท่านั้น
 export function Overview() {
   const jobs = useJobs();
   const schedules = useSchedules();
-  const runs = useWorkflowRuns();
+  const runs = useWorkflowRunPage();
 
   const failedSources = [
     jobs.isError && "jobs",
@@ -24,7 +25,7 @@ export function Overview() {
   ].filter(Boolean);
   const loading = jobs.isLoading || schedules.isLoading || runs.isLoading;
 
-  const stats = computeOverviewStats(jobs.data ?? [], schedules.data ?? [], runs.data ?? [], new Date());
+  const stats = computeOverviewStats(jobs.data ?? [], schedules.data ?? [], runs.data?.runs ?? [], new Date());
   const rate = stats.successRate7dPercent;
 
   return (

@@ -1,9 +1,8 @@
-import { isFailedRunStatus, normalizeRunStatus, type WorkflowRunSummary } from "@/entities/workflow-run";
+import type { RunStatusFilter, WorkflowRunSummary } from "@/entities/workflow-run";
 
-// RunStatusFilter คือตัวเลือกใน dropdown — "failed" รวม failed/terminated/timed out ไว้ด้วยกัน
-// (ตรงกับที่ badge ใช้สีแดง) เพราะคนดูสนใจว่า "พังไหม" มากกว่าพังแบบไหน
-export type RunStatusFilter = "" | "running" | "completed" | "failed" | "canceled";
-
+// ป้ายของตัวเลือกใน dropdown สถานะ — ค่าจริงส่งไปกรองฝั่ง server ("failed" รวม failed/
+// terminated/timed out ไว้ด้วยกัน ตรงกับที่ badge ใช้สีแดง เพราะคนดูสนใจว่า "พังไหม" มากกว่า
+// พังแบบไหน)
 export const RUN_STATUS_FILTER_LABELS: Record<Exclude<RunStatusFilter, "">, string> = {
   running: "running",
   completed: "succeeded",
@@ -11,24 +10,11 @@ export const RUN_STATUS_FILTER_LABELS: Record<Exclude<RunStatusFilter, "">, stri
   canceled: "cancelled",
 };
 
-export interface RunFilters {
-  status: RunStatusFilter;
-  // ค้นหาใน workflow_id แบบไม่สนตัวพิมพ์ — workflow ID ของ run ที่ schedule สั่งขึ้นต้นด้วย
-  // ชื่อ schedule (เช่น check-example-com-2026-…) จึงพิมพ์ชื่อ schedule เพื่อกรองได้
-  search: string;
-}
-
-function matchesStatus(run: WorkflowRunSummary, filter: RunStatusFilter): boolean {
-  if (filter === "") return true;
-  const status = normalizeRunStatus(run.status);
-  return filter === "failed" ? isFailedRunStatus(status) : status === filter;
-}
-
-// filterRuns กรองแล้วเรียงใหม่สุดก่อน (backend เรียงมาแล้วก็จริง แต่ไม่ได้รับประกันไว้)
-export function filterRuns(runs: WorkflowRunSummary[], filters: RunFilters): WorkflowRunSummary[] {
-  const search = filters.search.trim().toLowerCase();
-  return runs
-    .filter((run) => matchesStatus(run, filters.status))
-    .filter((run) => search === "" || run.workflow_id.toLowerCase().includes(search))
-    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+// searchRuns ค้นหาใน workflow_id แบบไม่สนตัวพิมพ์ เฉพาะแถวที่โหลดมาแล้ว — workflow ID ของ run
+// ที่ schedule สั่งขึ้นต้นด้วยชื่อ schedule (เช่น check-example-com-2026-…) จึงพิมพ์ชื่อ
+// schedule เพื่อกรองได้ ลำดับคงตามที่ backend ส่งมา (ใหม่สุดก่อน)
+export function searchRuns(runs: WorkflowRunSummary[], search: string): WorkflowRunSummary[] {
+  const needle = search.trim().toLowerCase();
+  if (needle === "") return runs;
+  return runs.filter((run) => run.workflow_id.toLowerCase().includes(needle));
 }

@@ -13,6 +13,22 @@ export interface WorkflowRunSummary {
   ended_at?: string;
 }
 
+// WorkflowRunPage คือ response ของ GET /workflow-runs — next_page_token ว่าง = หน้าสุดท้าย
+export interface WorkflowRunPage {
+  runs: WorkflowRunSummary[];
+  next_page_token: string;
+}
+
+// RunStatusFilter คือค่า status ที่ GET /workflow-runs กรองฝั่ง server ได้ ("" = ทุกสถานะ)
+// "failed" รวม failed/terminated/timed out ไว้ด้วยกันตั้งแต่ backend
+export type RunStatusFilter = "" | "running" | "completed" | "failed" | "canceled";
+
+export interface WorkflowRunListParams {
+  status?: RunStatusFilter;
+  // ไม่ระบุ = ค่าเริ่มต้นของ backend (50) สูงสุด 200
+  pageSize?: number;
+}
+
 export interface StepResult {
   step_index: number;
   bot_name: string;

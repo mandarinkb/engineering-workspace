@@ -54,9 +54,30 @@ func (s *Service) Start(ctx context.Context, workflowName string, steps []workfl
 	return &StartResult{WorkflowID: workflowID, RunID: runID}, nil
 }
 
-// List คืน workflow run ทั้งหมด (ทั้งที่กำลังรันอยู่และจบไปแล้ว)
-func (s *Service) List(ctx context.Context) ([]workflow.RunSummary, error) {
-	return s.engine.ListRuns(ctx)
+// ขนาดหน้าของรายการ Workflow Run — schedule รายนาทีสร้าง run วันละ 1,440 ตัว จึงต้อง
+// แบ่งหน้าเสมอ ขอเกิน maxPageSize ถูกปัดลงแทนที่จะ error เพื่อให้ client ขอก้อนใหญ่ได้
+// โดยไม่ต้องรู้เพดาน
+const (
+	defaultPageSize = 50
+	maxPageSize     = 200
+)
+
+// List คืน Workflow Run หนึ่งหน้า (ทั้งที่กำลังรันอยู่และจบไปแล้ว) — PageSize 0 แปลว่า
+// ไม่ได้ระบุ ใช้ค่าเริ่มต้น 50, ติดลบหรือสถานะที่ไม่รู้จักเป็น apperr.ErrInvalid
+func (s *Service) List(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
+	if !q.Status.Valid() {
+		return workflow.RunPage{}, apperr.Invalid(
+			"status must be one of running, completed, failed, canceled")
+	}
+	switch {
+	case q.PageSize < 0:
+		return workflow.RunPage{}, apperr.Invalid("page_size must be a positive integer")
+	case q.PageSize == 0:
+		q.PageSize = defaultPageSize
+	case q.PageSize > maxPageSize:
+		q.PageSize = maxPageSize
+	}
+	return s.engine.ListRuns(ctx, q)
 }
 
 // Get คืนรายละเอียด run เดียวรวมผลลัพธ์ทีละ step — id คือ workflow ID
