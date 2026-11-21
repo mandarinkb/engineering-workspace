@@ -32,8 +32,9 @@ type Logger struct {
 }
 
 var (
-	_ logger.Logger = (*Logger)(nil)
-	_ logger.Pruner = (*Logger)(nil)
+	_ logger.Logger     = (*Logger)(nil)
+	_ logger.StepLogger = (*Logger)(nil)
+	_ logger.Pruner     = (*Logger)(nil)
 )
 
 // LoggerOption ปรับค่าของ Logger ตอนสร้าง
@@ -149,6 +150,49 @@ func (l *Logger) Subscribe(jobID string) (<-chan logger.Line, func()) {
 		}
 	}
 	return ch, unsubscribe
+}
+
+// LogStep บันทึก log หนึ่งบรรทัดของ Attempt หนึ่งของ Step — bop-worker เป็นคนเขียน bop-api เป็น
+// คนอ่าน (StepHistory) จึงไม่มี subscriber ใน process ให้ส่งต่อ กติกาเรื่องเวลา ctx ที่ถูกยกเลิก
+// และ insert พลาดเหมือน Log ทุกข้อ (Attempt ที่หมดเวลา log error ด้วย ctx ที่หมดอายุแล้ว)
+func (l *Logger) LogStep(ctx context.Context, owner logger.StepAttempt, level logger.Level, message string) {
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
+	defer cancel()
+	if _, err := l.db.Exec(writeCtx,
+		`INSERT INTO log_lines (workflow_id, step_index, attempt, time, level, message)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		owner.WorkflowID, owner.StepIndex, owner.Attempt, l.now().Truncate(time.Microsecond),
+		level, message); err != nil {
+		log.Printf("postgres: store log line of workflow %s step %d attempt %d: %v",
+			owner.WorkflowID, owner.StepIndex, owner.Attempt, err)
+	}
+}
+
+// StepHistory คืน log ทุก Attempt ของ Step เรียงตามเวลา (บรรทัดที่เวลาเท่ากันเรียงตามลำดับที่ insert)
+func (l *Logger) StepHistory(ctx context.Context, workflowID string, stepIndex int) ([]logger.StepLine, error) {
+	rows, err := l.db.Query(ctx,
+		`SELECT workflow_id, step_index, attempt, time, level, message FROM log_lines
+		 WHERE workflow_id = $1 AND step_index = $2 ORDER BY time, id`,
+		workflowID, stepIndex)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: history of workflow %s step %d: %w", workflowID, stepIndex, err)
+	}
+	defer rows.Close()
+
+	// slice ว่างแทน nil เพราะ endpoint ส่งผลเป็น JSON ตรงๆ ต้องได้ [] ไม่ใช่ null (เหมือน memory)
+	out := []logger.StepLine{}
+	for rows.Next() {
+		var line logger.StepLine
+		if err := rows.Scan(&line.WorkflowID, &line.StepIndex, &line.Attempt,
+			&line.Time, &line.Level, &line.Message); err != nil {
+			return nil, fmt.Errorf("postgres: history of workflow %s step %d: %w", workflowID, stepIndex, err)
+		}
+		out = append(out, line)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: history of workflow %s step %d: %w", workflowID, stepIndex, err)
+	}
+	return out, nil
 }
 
 // DeleteBefore ลบ log line ทุกเจ้าของ (Job และ Step) ที่เก่ากว่า cutoff — ไม่แตะตาราง jobs

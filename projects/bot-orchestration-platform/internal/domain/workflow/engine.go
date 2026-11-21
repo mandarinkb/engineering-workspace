@@ -73,6 +73,10 @@ type Engine interface {
 	ListRuns(ctx context.Context, q RunQuery) (RunPage, error)
 	// GetRun คืนรายละเอียด run เดียวตาม workflow ID
 	GetRun(ctx context.Context, workflowID string) (*RunDetail, error)
+	// GetRunWorkflow คืน Workflow (ชื่อและรายการ Step ทั้งหมด) ที่ run นั้นถูกสั่งให้รัน — ต่างจาก
+	// RunDetail.Steps ที่มีเฉพาะ Step ที่จบแล้ว ใช้ตรวจว่าลำดับ Step มีจริงไหม run ที่ไม่มีจริงคืน
+	// error ประเภท apperr.ErrNotFound
+	GetRunWorkflow(ctx context.Context, workflowID string) (*Workflow, error)
 	// CheckHealth คืน error ถ้าต่อ engine ไม่ได้ (ใช้กับ readiness probe)
 	CheckHealth(ctx context.Context) error
 }

@@ -95,7 +95,7 @@ go run ./cmd/bop          # HTTP API ที่ :8080 — ให้ dashboard เ
 
 ### PostgreSQL ของ BOP (Job และ log อยู่รอดข้าม restart)
 
-ตั้ง `BOP_DATABASE_URL` แล้ว bop-api เก็บ Job และ log ของ Job ใน PostgreSQL และรัน migration เองตอน start (bop-worker ไม่รัน migration) ไม่ตั้ง = เก็บใน memory แบบเดิม ข้อมูลหายเมื่อ restart และ log เตือนตอน start
+ตั้ง `BOP_DATABASE_URL` แล้ว bop-api เก็บ Job และ log ของ Job ใน PostgreSQL และรัน migration เองตอน start (bop-worker ไม่รัน migration) ไม่ตั้ง = เก็บใน memory แบบเดิม ข้อมูลหายเมื่อ restart และ log เตือนตอน start — bop-worker ใช้ค่าเดียวกันเขียน log ของ Step ลง database เดียวกัน (ไม่ตั้ง = log ของ Step อยู่ใน memory ของ bop-worker และอ่านผ่าน `GET /workflow-runs/{id}/steps/{index}/logs` ไม่ได้)
 
 bop-api ลบ log line ที่เก่ากว่า 30 วันทันทีตอน start แล้ววันละครั้ง (Job ไม่ถูกลบ ยังเห็นสถานะและ summary)
 
@@ -129,6 +129,7 @@ curl -X DELETE localhost:8080/jobs/<id>           # cancel ถ้า job ยั�
 
 curl localhost:8080/workflow-runs                # ดูว่า scheduled workflow รันไปแล้วกี่รอบ (query ตรงจาก Temporal)
 curl localhost:8080/workflow-runs/<workflow-id>   # ดูผลลัพธ์ทีละ step ของ run เดียว (workflow-id ดูได้จาก Temporal UI หรือ response ของ list ด้านบน)
+curl localhost:8080/workflow-runs/<workflow-id>/steps/0/logs   # log ทุก Attempt ของ Step แรก (ลำดับ Step เริ่มที่ 0, แต่ละบรรทัดมี attempt)
 
 curl -c cookies.txt -X POST localhost:8080/login -d '{"username":"admin","password":"changeme"}'  # ได้ httpOnly cookie กลับมา (เปลี่ยน credential ก่อน deploy จริงเสมอ)
 curl -b cookies.txt localhost:8080/me             # เช็คว่า session ยัง valid อยู่ไหม

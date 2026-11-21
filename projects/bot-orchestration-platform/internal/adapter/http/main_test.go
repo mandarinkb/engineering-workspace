@@ -102,7 +102,7 @@ func newAPIServer(t *testing.T) (*apihttp.Server, *authuc.Service) {
 	auth := authuc.NewService([]byte(testSecret), testUsername, testPassword)
 	srv := apihttp.NewServer(
 		jobuc.NewService(repo, pool, log),
-		workflowrunuc.NewService(healthyEngine{Engine: temporal.NewEngine(nil)}),
+		workflowrunuc.NewService(healthyEngine{Engine: temporal.NewEngine(nil)}, log),
 		scheduleuc.NewService(temporal.NewScheduler(nil)),
 		auth,
 	)

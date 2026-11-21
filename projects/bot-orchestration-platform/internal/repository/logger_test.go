@@ -218,3 +218,130 @@ func TestLogRetention_DeletesOnlyLinesOlderThan30Days(t *testing.T) {
 		t.Errorf("Job after retention: status=%q summary=%q, want succeeded/ok", kept.Status, kept.Summary)
 	}
 }
+
+// contract ของ logger.StepLogger: log ของ Step ที่ bop-worker เขียนต้องอ่านกลับได้ตาม Workflow Run
+// และลำดับ Step ครบทุก Attempt ไม่ว่าจะเก็บใน memory หรือ PostgreSQL
+
+func TestStepLoggerContract_Memory(t *testing.T) {
+	runStepLoggerContract(t, func(*testing.T) logger.StepLogger { return memlogger.New() })
+}
+
+func TestStepLoggerContract_Postgres(t *testing.T) {
+	url := testDatabaseURL(t)
+	runStepLoggerContract(t, func(t *testing.T) logger.StepLogger {
+		return postgres.NewLogger(openCleanDatabase(t, url))
+	})
+}
+
+func runStepLoggerContract(t *testing.T, newLogger func(*testing.T) logger.StepLogger) {
+	t.Run("StepHistory returns every Attempt of the Step in time order", func(t *testing.T) {
+		l := newLogger(t)
+		ctx := context.Background()
+		step := func(attempt int) logger.StepAttempt {
+			return logger.StepAttempt{WorkflowID: "wf-a", StepIndex: 0, Attempt: attempt}
+		}
+		l.LogStep(ctx, step(1), logger.LevelInfo, "requesting")
+		l.LogStep(ctx, step(1), logger.LevelError, "connection refused")
+		l.LogStep(ctx, logger.StepAttempt{WorkflowID: "wf-a", StepIndex: 1, Attempt: 1},
+			logger.LevelInfo, "other step")
+		l.LogStep(ctx, logger.StepAttempt{WorkflowID: "wf-b", StepIndex: 0, Attempt: 1},
+			logger.LevelInfo, "other run")
+		l.LogStep(ctx, step(2), logger.LevelInfo, "requesting again")
+
+		lines, err := l.StepHistory(ctx, "wf-a", 0)
+		if err != nil {
+			t.Fatalf("StepHistory: %v", err)
+		}
+		want := []struct {
+			attempt int
+			level   logger.Level
+			message string
+		}{
+			{1, logger.LevelInfo, "requesting"},
+			{1, logger.LevelError, "connection refused"},
+			{2, logger.LevelInfo, "requesting again"},
+		}
+		if len(lines) != len(want) {
+			t.Fatalf("StepHistory = %+v, want %d lines", lines, len(want))
+		}
+		for i, w := range want {
+			got := lines[i]
+			if got.WorkflowID != "wf-a" || got.StepIndex != 0 || got.Attempt != w.attempt ||
+				got.Level != w.level || got.Message != w.message {
+				t.Errorf("line %d = %+v, want wf-a step 0 attempt %d %s %q",
+					i, got, w.attempt, w.level, w.message)
+			}
+			if got.Time.IsZero() {
+				t.Errorf("line %d has no time", i)
+			}
+		}
+	})
+
+	t.Run("StepHistory of a Step without logs is an empty slice, not nil", func(t *testing.T) {
+		// GET /workflow-runs/{id}/steps/{index}/logs ส่งผลเป็น JSON ตรงๆ — nil กลายเป็น null
+		lines, err := newLogger(t).StepHistory(context.Background(), "wf-none", 0)
+		if err != nil {
+			t.Fatalf("StepHistory: %v", err)
+		}
+		if lines == nil || len(lines) != 0 {
+			t.Errorf("StepHistory = %#v, want empty non-nil slice", lines)
+		}
+	})
+
+	t.Run("a Step line logged with a cancelled context is still stored", func(t *testing.T) {
+		// Attempt ที่หมดเวลา (StartToCloseTimeout) log error ด้วย ctx ที่ถูกยกเลิกไปแล้ว
+		l := newLogger(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		l.LogStep(ctx, logger.StepAttempt{WorkflowID: "wf-a", StepIndex: 0, Attempt: 1},
+			logger.LevelError, "context deadline exceeded")
+
+		lines, err := l.StepHistory(context.Background(), "wf-a", 0)
+		if err != nil {
+			t.Fatalf("StepHistory: %v", err)
+		}
+		if len(lines) != 1 || lines[0].Message != "context deadline exceeded" {
+			t.Errorf("StepHistory = %+v, want the cancelled line", lines)
+		}
+	})
+}
+
+// TestLogRetention_DeletesOldStepLines ยืนยันว่า log ของ Step อยู่ใต้กฎลบเมื่อเกิน 30 วันเดียวกับ
+// log ของ Job
+func TestLogRetention_DeletesOldStepLines(t *testing.T) {
+	url := testDatabaseURL(t)
+	ctx := context.Background()
+	db := openCleanDatabase(t, url)
+	now := time.Date(2026, 11, 21, 3, 0, 0, 0, time.UTC)
+
+	for _, c := range []struct {
+		message string
+		age     time.Duration
+	}{
+		{"31 days old", 31 * 24 * time.Hour},
+		{"29 days old", 29 * 24 * time.Hour},
+	} {
+		at := now.Add(-c.age)
+		postgres.NewLogger(db, postgres.WithClock(func() time.Time { return at })).
+			LogStep(ctx, logger.StepAttempt{WorkflowID: "wf-old", StepIndex: 0, Attempt: 1},
+				logger.LevelInfo, c.message)
+	}
+
+	l := postgres.NewLogger(db)
+	retention := logretention.NewService(l, logretention.WithClock(func() time.Time { return now }))
+	deleted, err := retention.PruneOnce(ctx)
+	if err != nil {
+		t.Fatalf("PruneOnce: %v", err)
+	}
+	if deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
+	}
+
+	lines, err := l.StepHistory(ctx, "wf-old", 0)
+	if err != nil {
+		t.Fatalf("StepHistory: %v", err)
+	}
+	if len(lines) != 1 || lines[0].Message != "29 days old" {
+		t.Errorf("remaining Step lines = %+v, want only the 29-day-old line", lines)
+	}
+}

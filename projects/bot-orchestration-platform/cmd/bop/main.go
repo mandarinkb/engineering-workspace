@@ -116,7 +116,7 @@ func run() error {
 	// KUBERNETES-DEPLOYMENT-TODO.md หัวข้อ 3.4) credential admin เป็นตัวเดียวที่ระบบรู้จัก
 	// ตอนนี้เพราะยังไม่มี user database (BOP เป็น single-operator tool)
 	jobs := jobuc.NewService(repo, pool, appLogger)
-	runs := workflowrunuc.NewService(temporal.NewEngine(temporalClient))
+	runs := workflowrunuc.NewService(temporal.NewEngine(temporalClient), appLogger)
 	schedules := scheduleuc.NewService(temporal.NewScheduler(temporalClient))
 	auth := authuc.NewService(
 		[]byte(getenv("BOP_JWT_SECRET", "bop-dev-secret-change-me-before-deploying")),
@@ -174,8 +174,16 @@ func newJobRepository(db *pgxpool.Pool) job.Repository {
 	return postgres.NewJobRepository(db)
 }
 
-// newLogger เลือก implementation ของ logger.Logger ตาม pool ที่ openDatabase คืนมา
-func newLogger(db *pgxpool.Pool) logger.Logger {
+// apiLogger คือ logger ที่ bop-api ใช้ทั้งสองหน้าที่: log ของ Job (worker pool เขียน, handler อ่าน)
+// และอ่าน log ของ Step ที่ bop-worker เขียนไว้ — ทั้ง memory และ PostgreSQL implement ครบทั้งคู่
+type apiLogger interface {
+	logger.Logger
+	logger.StepLogger
+}
+
+// newLogger เลือก implementation ของ logger ตาม pool ที่ openDatabase คืนมา (แบบ memory อ่าน log
+// ของ Step จาก bop-worker ไม่ได้เพราะอยู่คนละ process จึงได้ [] เสมอ)
+func newLogger(db *pgxpool.Pool) apiLogger {
 	if db == nil {
 		return memlogger.New()
 	}

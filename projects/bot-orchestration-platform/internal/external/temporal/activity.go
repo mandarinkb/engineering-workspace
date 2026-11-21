@@ -28,13 +28,13 @@ import (
 // (ดู internal/adapter/http/create_job.go) ไม่เกี่ยวกับ workflow ที่รันผ่าน Temporal อีกต่อไป
 type Activities struct {
 	bots map[string]bot.Bot
-	log  logger.Logger
+	log  logger.StepLogger
 }
 
 // NewActivities สร้าง Activities เปล่าๆ พร้อม logger ที่จะใช้บันทึก log ความคืบหน้าของ
 // แต่ละ step — ต้องเรียก Register ให้ครบทุก bot ที่ workflow อาจสั่งใช้ก่อนเริ่ม Worker
 // (ดู cmd/bop-worker/main.go) เหมือนกับที่ cmd/bop เดิมต้อง pool.Register ให้ครบก่อน serve
-func NewActivities(log logger.Logger) *Activities {
+func NewActivities(log logger.StepLogger) *Activities {
 	return &Activities{bots: make(map[string]bot.Bot), log: log}
 }
 
@@ -61,8 +61,9 @@ func (a *Activities) Register(b bot.Bot) {
 //     ไว้ก่อนเพิ่ม json tag ให้ Step ไม่ตรงกับ struct เวอร์ชันใหม่) retry ไม่มีที่สิ้นสุด
 //     (ไม่มี MaximumAttempts กำกับ) เสีย worker resource ไปเรื่อยๆ ทั้งที่ retry กี่ครั้ง
 //     ก็ได้ผลลัพธ์เดิมแน่นอน (ชื่อ bot ที่ผิดไม่มีทางเปลี่ยนเองระหว่าง retry)
-//  2. เรียก b.Run พร้อม log function ที่ผูก "log ID" ของ step นี้ไว้แล้ว (ดูหมายเหตุยาว
-//     ด้านล่างเรื่อง log ID)
+//  2. เรียก b.Run พร้อม log function ที่ผูกเจ้าของ log ไว้แล้ว: workflow ID + ลำดับ Step
+//     (stepIndex ที่ Execute ส่งมา) + หมายเลข Attempt จาก activity info — ทุก Attempt ของ Step
+//     เดียวกันจึงอ่านรวมกันได้ทีหลังผ่าน GET /workflow-runs/{id}/steps/{index}/logs
 //  3. ถ้า error เป็น *bot.ConfigError (เช็คด้วย errors.As ซึ่งมองทะลุผ่าน wrapper ไปหา
 //     type จริงข้างในได้ ดู bot.ConfigError.Unwrap) ห่อกลับเป็น
 //     temporal.NewApplicationErrorWithCause พร้อมตั้ง Type เป็น "ConfigError" ให้ตรงกับ
@@ -72,39 +73,48 @@ func (a *Activities) Register(b bot.Bot) {
 //     error ชนิดอื่นปล่อยเป็น error ธรรมดา ให้ Temporal retry ตาม stepRetryPolicy ใน
 //     workflow.go (เผื่อเป็นปัญหาชั่วคราว เช่น network timeout)
 //
-// หมายเหตุเรื่อง log ID (สำคัญ — อ่านก่อนแก้): เวอร์ชันก่อน Temporal (Runner เดิม) สร้าง
-// job.Job จริงลง job.Repository ให้ทุก step (ID รูปแบบ "<runID>-step<N>") ทำให้
-// GET /jobs/{id}/logs เดิมใช้ดู log ของ step ใน workflow ได้ด้วย — เวอร์ชันนี้ไม่สร้าง
-// job.Repository entry ให้ step ของ workflow อีกต่อไป (job.Repository เก็บไว้เฉพาะ job
-// เดี่ยวที่ไม่ผ่าน workflow แล้ว ตาม Open Question ข้อ 3 ที่ตัดสินใจไว้ใน
-// TEMPORAL-MIGRATION-TODO.md) จึงผูก log ไว้กับ "<Temporal WorkflowID>-<ActivityID>" แทน
+// ทุก Attempt ที่ล้มเหลว (รวม UnknownBot) log error เป็นบรรทัดสุดท้ายของ Attempt นั้น เพื่อให้
+// operator เห็นว่า Attempt ก่อนหน้าล้มเหลวเพราะอะไรโดยไม่ต้องเปิด Temporal UI
 //
-// ข้อจำกัดที่ต้องรู้ตอนนี้: NewActivities ถูกสร้างขึ้นใน cmd/bop-worker ซึ่งเป็นคนละ
-// process กับ cmd/bop (ที่ HTTP handler `GET /jobs/{id}/logs` อ่าน log อยู่) — logger.Logger
-// ตัวที่ใช้ตอนนี้เป็น in-memory ล้วนๆ (ยังไม่มี PostgreSQL ตาม roadmap Phase 2.2) ข้อมูล
-// จึงอยู่คนละ memory space กัน ทำให้ log ของ step ใน workflow "บันทึกจริง" (เห็นใน stdout
-// ของ cmd/bop-worker ผ่าน log.Log) แต่ "ดึงผ่าน HTTP ของ cmd/bop ไม่ได้" จนกว่าจะสลับไปใช้
-// backend ที่ทั้งสอง process แชร์กันได้จริง (PostgreSQL/OpenSearch) — เขียน interface
-// เดียวกันไว้รอเปลี่ยนแค่ 2 บรรทัดตอนนั้นได้เลยเหมือนกับ job.Repository เดิม
-func (a *Activities) RunStep(ctx context.Context, step wfdomain.Step) (string, error) {
+// stepIndex เป็น argument ที่สองแทนการแปะลงใน Step เพราะ Step คือ payload ที่ผู้ใช้ส่งมาและ
+// Schedule เก็บไว้ — remote worker (projects/remote-job-worker) ที่ register RunStep แบบรับ Step
+// อย่างเดียวยังทำงานได้ เพราะ SDK ทิ้ง argument ที่เกินจำนวน parameter ไปเอง ส่วน Attempt ที่
+// ถูก schedule ไว้ก่อน deploy เวอร์ชันนี้จะได้ stepIndex เป็น 0
+//
+// log ของ Step อ่านผ่าน bop-api ได้เมื่อ bop-worker ตั้ง BOP_DATABASE_URL (logger บน PostgreSQL
+// ตัวเดียวกับ bop-api) ถ้าไม่ตั้งจะอยู่ใน memory ของ bop-worker และอ่านจาก API ไม่ได้
+func (a *Activities) RunStep(ctx context.Context, step wfdomain.Step, stepIndex int) (string, error) {
+	owner := stepAttempt(ctx, stepIndex)
+	log := func(msg string) { a.log.LogStep(ctx, owner, logger.LevelInfo, msg) }
+	fail := func(err error) error {
+		a.log.LogStep(ctx, owner, logger.LevelError, err.Error())
+		return err
+	}
+
 	b, ok := a.bots[step.BotName]
 	if !ok {
 		err := fmt.Errorf("workflow: unknown bot %q", step.BotName)
-		return "", sdktemporal.NewApplicationErrorWithCause(err.Error(), "UnknownBot", err)
+		return "", fail(sdktemporal.NewApplicationErrorWithCause(err.Error(), "UnknownBot", err))
 	}
 
-	info := activity.GetInfo(ctx)
-	logID := fmt.Sprintf("%s-%s", info.WorkflowExecution.ID, info.ActivityID)
-
-	log := func(msg string) { a.log.Log(ctx, logID, logger.LevelInfo, msg) }
 	result, err := b.Run(ctx, log, step.Config)
 	if err != nil {
 		var cfgErr *bot.ConfigError
 		if errors.As(err, &cfgErr) {
-			return "", sdktemporal.NewApplicationErrorWithCause(err.Error(), "ConfigError", err)
+			return "", fail(sdktemporal.NewApplicationErrorWithCause(err.Error(), "ConfigError", err))
 		}
-		return "", err
+		return "", fail(err)
 	}
 
 	return result.Summary, nil
+}
+
+// stepAttempt คือเจ้าของ log ของ Attempt ที่กำลังรันอยู่ (Temporal นับ Attempt เริ่มที่ 1)
+func stepAttempt(ctx context.Context, stepIndex int) logger.StepAttempt {
+	info := activity.GetInfo(ctx)
+	return logger.StepAttempt{
+		WorkflowID: info.WorkflowExecution.ID,
+		StepIndex:  stepIndex,
+		Attempt:    int(info.Attempt),
+	}
 }

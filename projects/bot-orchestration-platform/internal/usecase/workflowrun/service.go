@@ -7,18 +7,21 @@ import (
 	"fmt"
 
 	"bop/internal/domain/apperr"
+	"bop/internal/domain/logger"
 	"bop/internal/domain/workflow"
 	"bop/internal/pkg/idgen"
 )
 
 // Service รวม use case ทั้งหมดของ workflow run
 type Service struct {
-	engine workflow.Engine
+	engine   workflow.Engine
+	stepLogs logger.StepLogger
 }
 
-// NewService ผูก use case เข้ากับ engine ที่ส่งเข้ามา (ประกอบใน cmd/bop/main.go)
-func NewService(engine workflow.Engine) *Service {
-	return &Service{engine: engine}
+// NewService ผูก use case เข้ากับ engine และที่เก็บ log ของ Step (ประกอบใน cmd/bop/main.go —
+// ต้องเป็น storage เดียวกับที่ bop-worker เขียน ไม่งั้นจะอ่าน log ของ Step ไม่เจอ)
+func NewService(engine workflow.Engine, stepLogs logger.StepLogger) *Service {
+	return &Service{engine: engine, stepLogs: stepLogs}
 }
 
 // StartResult คือผลของการสั่งรัน — มีแค่ ID ที่พอเอาไป poll สถานะต่อผ่าน Get
@@ -83,6 +86,21 @@ func (s *Service) List(ctx context.Context, q workflow.RunQuery) (workflow.RunPa
 // Get คืนรายละเอียด run เดียวรวมผลลัพธ์ทีละ step — id คือ workflow ID
 func (s *Service) Get(ctx context.Context, id string) (*workflow.RunDetail, error) {
 	return s.engine.GetRun(ctx, id)
+}
+
+// StepLogs คืน log ทุก Attempt ของ Step ลำดับที่ stepIndex (เริ่มที่ 0) ของ run นั้นเรียงตามเวลา —
+// ลำดับ Step ที่ไม่มีใน Workflow ของ run คืน apperr.ErrNotFound ส่วน Step ที่มีจริงแต่ยังไม่ได้รัน
+// (เช่น Step หลัง Failed Step) คืน slice ว่าง
+func (s *Service) StepLogs(ctx context.Context, id string, stepIndex int) ([]logger.StepLine, error) {
+	wf, err := s.engine.GetRunWorkflow(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if stepIndex < 0 || stepIndex >= len(wf.Steps) {
+		return nil, apperr.WrapNotFound(fmt.Errorf(
+			"workflow run %s has no step %d (it has %d steps)", id, stepIndex, len(wf.Steps)))
+	}
+	return s.stepLogs.StepHistory(ctx, id, stepIndex)
 }
 
 // Ready คืน error ถ้าต่อ engine ไม่ได้ (ใช้กับ readiness probe)

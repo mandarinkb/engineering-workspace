@@ -31,7 +31,7 @@ internal/
     apperr/                ประเภท error กลาง: ErrInvalid, ErrNotFound, ErrConflict
     bot/                   Bot interface, Config, Result, ConfigError
     job/                   Job entity, Repository port, Executor port
-    logger/                Logger port, Pruner port, Line, Level
+    logger/                Logger port, StepLogger port, Pruner port, Line, StepLine, Level
     workflow/              Workflow, Step, StepResult, RunSummary/RunDetail, Engine port
     schedule/              Spec, Overlap, Policy, Detail, Scheduler port (ไม่มี Repository ดู ADR 0001)
 
@@ -74,6 +74,7 @@ internal/
 | `job.Repository` | `domain/job` | `repository/memory.JobRepository`, `repository/postgres.JobRepository` (เลือกตาม `BOP_DATABASE_URL` ใน `cmd/bop`) |
 | `job.Executor` | `domain/job` | `adapter/worker.Pool` |
 | `logger.Logger` | `domain/logger` | `pkg/logger.Logger`, `repository/postgres.Logger` (เลือกตาม `BOP_DATABASE_URL` ใน `cmd/bop`) |
+| `logger.StepLogger` | `domain/logger` | `pkg/logger.Logger`, `repository/postgres.Logger` (bop-worker เขียนผ่าน `external/temporal.Activities` และ `external/k8s.JobActivities`, bop-api อ่านผ่าน `usecase/workflowrun` — เลือกตาม `BOP_DATABASE_URL` ทั้งสอง process) |
 | `logger.Pruner` | `domain/logger` | `repository/postgres.Logger` (ใช้โดย `usecase/logretention`) |
 | `schedule.Scheduler` | `domain/schedule` | `external/temporal.Scheduler` |
 | `workflow.Engine` | `domain/workflow` | `external/temporal.Engine` |
@@ -110,7 +111,7 @@ internal/
 - implementation ทุกตัวต้อง copy ค่าเข้า-ออกเสมอ ห้ามคืน pointer ที่ map ภายในถืออยู่ (ดูเหตุผลใน `repository/memory/job_repository.go`)
 - PostgreSQL implementation อยู่ที่ `repository/postgres/` (`Connect` เปิด pool ที่ทุก repository/logger ใช้ร่วมกัน, `Migrate` รันเฉพาะใน bop-api) แล้วสลับในขั้นประกอบ dependency ของ `cmd/bop/main.go`
 - contract test ของ `job.Repository` อยู่ที่ `repository/job_repository_test.go` และของ `logger.Logger` อยู่ที่ `repository/logger_test.go` รันชุดเดียวกันกับทุก implementation (ส่วน PostgreSQL รันเมื่อตั้ง `BOP_TEST_DATABASE_URL`)
-- ตาราง `log_lines` มีเจ้าของได้ 2 แบบตาม spec: Job (`job_id`) หรือ Step (`workflow_id` + `step_index` + `attempt`) บังคับด้วย CHECK ให้มีแบบเดียวพอดี
+- ตาราง `log_lines` มีเจ้าของได้ 2 แบบตาม spec: Job (`job_id`) หรือ Step (`workflow_id` + `step_index` + `attempt`) บังคับด้วย CHECK ให้มีแบบเดียวพอดี — log ของ Step เขียนโดย bop-worker (ไม่รัน migration) แล้ว bop-api อ่านผ่าน `GET /workflow-runs/{id}/steps/{index}/logs`
 
 ### `pkg`
 

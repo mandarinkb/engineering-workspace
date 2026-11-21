@@ -94,6 +94,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /workflow-runs/{id}", s.handleGetWorkflowRun) // ดูรายละเอียด workflow run เดียว รวมผลลัพธ์ทีละ step
 	s.mux.HandleFunc("POST /workflow-runs", s.handleCreateWorkflowRun)  // รัน step (1 หรือหลาย step) ทันทีแบบ ad-hoc โดยไม่ต้องสร้าง schedule ก่อน
 
+	s.mux.HandleFunc("GET /workflow-runs/{id}/steps/{index}/logs", s.handleGetWorkflowRunStepLogs) // ดู log ทุก Attempt ของ Step เดียวตามลำดับ Step
+
 	s.mux.HandleFunc("POST /login", s.handleLogin)   // ตรวจ credential แล้วออก JWT ใส่ httpOnly cookie (roadmap ข้อ 1.8)
 	s.mux.HandleFunc("POST /logout", s.handleLogout) // ล้าง cookie ทิ้ง
 	s.mux.HandleFunc("GET /me", s.handleMe)          // เช็คว่า cookie ปัจจุบัน valid อยู่ไหม คืนชื่อ user ถ้าใช่

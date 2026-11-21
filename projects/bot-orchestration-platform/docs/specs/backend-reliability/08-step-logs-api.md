@@ -6,14 +6,14 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** 03 (Attempt และ Failed Step), 07 (log ของ Job ลง PostgreSQL และลบอัตโนมัติเมื่อเกิน 30 วัน)
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] bop-worker เขียน log ของ Step ลง PostgreSQL ผูกกับ workflow ID + ลำดับ Step + หมายเลข Attempt
-- [ ] `GET /workflow-runs/{id}/steps/{index}/logs` คืน log ทุก Attempt เรียงตามเวลา แต่ละบรรทัดมี `attempt`
-- [ ] ลำดับ Step ที่ไม่มีจริง = 404
-- [ ] seam A: Step ที่ล้มเหลว 3 Attempt มี log ของทั้ง 3 Attempt
-- [ ] log ของ Step อยู่ภายใต้กฎลบเมื่อเกิน 30 วันเดียวกัน
-- [ ] golangci-lint ผ่าน
+- [x] bop-worker เขียน log ของ Step ลง PostgreSQL ผูกกับ workflow ID + ลำดับ Step + หมายเลข Attempt
+- [x] `GET /workflow-runs/{id}/steps/{index}/logs` คืน log ทุก Attempt เรียงตามเวลา แต่ละบรรทัดมี `attempt`
+- [x] ลำดับ Step ที่ไม่มีจริง = 404
+- [x] seam A: Step ที่ล้มเหลว 3 Attempt มี log ของทั้ง 3 Attempt
+- [x] log ของ Step อยู่ภายใต้กฎลบเมื่อเกิน 30 วันเดียวกัน
+- [x] golangci-lint ผ่าน
 - [ ] Bruno: log ของ Step ที่ล้มเหลวมีครบ 3 Attempt, ลำดับ Step ที่ไม่มีจริงได้ 404
-- [ ] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
+- [x] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
 - [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

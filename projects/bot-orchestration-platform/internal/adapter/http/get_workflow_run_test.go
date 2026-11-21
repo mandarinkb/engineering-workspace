@@ -38,6 +38,10 @@ func (noStepsEngine) GetRun(_ context.Context, id string) (*workflow.RunDetail, 
 	}, nil
 }
 
+func (noStepsEngine) GetRunWorkflow(context.Context, string) (*workflow.Workflow, error) {
+	return &workflow.Workflow{}, nil
+}
+
 func (noStepsEngine) CheckHealth(context.Context) error { return nil }
 
 // TestGetWorkflowRun_NoFinishedStepReturnsEmptyList ยืนยันว่า Workflow Run ที่ยังไม่มี Step
@@ -48,7 +52,7 @@ func TestGetWorkflowRun_NoFinishedStepReturnsEmptyList(t *testing.T) {
 	auth := authuc.NewService([]byte(testSecret), testUsername, testPassword)
 	srv := apihttp.NewServer(
 		jobuc.NewService(repo, worker.NewPool(1, time.Second, repo, log), log),
-		workflowrunuc.NewService(noStepsEngine{}),
+		workflowrunuc.NewService(noStepsEngine{}, log),
 		scheduleuc.NewService(temporal.NewScheduler(nil)),
 		auth,
 	)

@@ -50,7 +50,7 @@ func TestRunStep_Success(t *testing.T) {
 	activities.Register(&stubBot{name: "ok-bot", result: bot.Result{Summary: "done"}})
 	env := newActivityTestEnv(t, activities)
 
-	val, err := env.ExecuteActivity(activities.RunStep, workflow.Step{BotName: "ok-bot"})
+	val, err := env.ExecuteActivity(activities.RunStep, workflow.Step{BotName: "ok-bot"}, 0)
 	if err != nil {
 		t.Fatalf("ExecuteActivity: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestRunStep_ConfigErrorIsNonRetryable(t *testing.T) {
 	activities.Register(&stubBot{name: "bad-config-bot", err: bot.NewConfigError(errors.New("missing url"))})
 	env := newActivityTestEnv(t, activities)
 
-	_, err := env.ExecuteActivity(activities.RunStep, workflow.Step{BotName: "bad-config-bot"})
+	_, err := env.ExecuteActivity(activities.RunStep, workflow.Step{BotName: "bad-config-bot"}, 0)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -96,7 +96,7 @@ func TestRunStep_UnknownBot(t *testing.T) {
 	activities := temporal.NewActivities(memlogger.New())
 	env := newActivityTestEnv(t, activities)
 
-	_, err := env.ExecuteActivity(activities.RunStep, workflow.Step{BotName: "does-not-exist"})
+	_, err := env.ExecuteActivity(activities.RunStep, workflow.Step{BotName: "does-not-exist"}, 0)
 	if err == nil {
 		t.Fatal("expected error for unknown bot")
 	}
