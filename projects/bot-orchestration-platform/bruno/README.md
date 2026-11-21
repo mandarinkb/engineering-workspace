@@ -20,6 +20,8 @@ bru run 05-schedules --env minipc   # เฉพาะโฟลเดอร์เ
 
 Bruno สั่ง restart container เองไม่ได้ `run-with-restart.sh` จึงรันชุดหลัก → recreate bop-api ด้วยคำสั่งใน `RESTART_CMD` → รันโฟลเดอร์ `after-restart` (Job และ log แบบ REST) โดยส่ง `runMarker` เดียวกันให้ทั้งสองรอบ (`after-restart` หา Job จากรอบก่อนด้วย `bruno-run=<runMarker>` ใน url ของ config) → เปิด SSE stream ของ Job เดียวกันด้วย curl แล้วตรวจว่ามี log จากรอบก่อน (Bruno CLI อ่าน stream ที่เปิดค้างไม่ได้ ต้องมี `curl` และ `node`)
 
+สคริปต์ยังพิสูจน์ ticket 14 ด้วย: ก่อน restart สร้าง Job ของ `http-status-checker` ที่ชี้ไป `HANG_URL` (ค่าเริ่มต้น `http://10.255.255.1:81/` address ที่ไม่ตอบ ตั้งเองได้ถ้า network ตอบ "no route" ทันที) แล้ว poll จนเป็น `running` จริง หลัง restart ต้องเป็น `failed` พร้อม error `interrupted` และมี `ended_at` exit code: `0` ผ่าน, `1` ไม่ผ่าน, `2` SKIPPED (Job ไม่เคยเป็น running ก่อน restart จึงไม่ได้พิสูจน์), `3` NOT PROVEN (Job เป็น `cancelled` เพราะ bop-api ตัวเก่าปิดแบบ graceful เอง — ต้องให้ grace period ของ container สั้นกว่า 30 วินาที)
+
 การลบ log ที่เก่ากว่า 30 วันทดสอบด้วย Go test (`internal/repository/logger_test.go`) เพราะ Bruno ย้อนเวลาไม่ได้
 
 ```bash

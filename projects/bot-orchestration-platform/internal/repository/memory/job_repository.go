@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"bop/internal/domain/job"
 )
@@ -76,4 +77,10 @@ func (r *JobRepository) List(_ context.Context) ([]*job.Job, error) {
 	}
 	sort.Slice(out, func(i, k int) bool { return out[i].CreatedAt.After(out[k].CreatedAt) })
 	return out, nil
+}
+
+// FailInterrupted ไม่ทำอะไรและคืน 0: Job ใน memory หายไปพร้อม process ตอน restart จึงไม่มี Job
+// ที่ถูกขัดจังหวะค้างอยู่ให้แก้ (ถ้าแก้ตอนนี้จะไปทับ Job ของ process เดียวกันที่กำลังรันอยู่)
+func (r *JobRepository) FailInterrupted(context.Context, string, time.Time) (int, error) {
+	return 0, nil
 }

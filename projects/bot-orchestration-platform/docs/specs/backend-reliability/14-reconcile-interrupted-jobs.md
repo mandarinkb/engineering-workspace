@@ -14,14 +14,14 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** implemented
 
-- [ ] ตอน start ก่อนรับ request ตั้ง Job ที่เป็น `pending` หรือ `running` เป็น `failed` พร้อม `error` ที่บอกว่าถูกขัดจังหวะโดย restart และมี `ended_at` พิมพ์ log บอกจำนวนที่ตั้ง
-- [ ] Job ที่จบแล้ว (`succeeded`, `failed`, `cancelled`) และ Job ที่สร้างหลัง start ไม่ถูกแตะ
-- [ ] `BOP_RECONCILE_INTERRUPTED_JOBS=false` ปิดการกวาด; ไม่ตั้ง = เปิด
-- [ ] repository แบบ memory ไม่ทำอะไร (ไม่มี Job ค้างข้าม restart อยู่แล้ว)
-- [ ] Go test กับ PostgreSQL จริง: ใส่ Job หลายสถานะ รันการกวาด แล้วตรวจแต่ละแถว (สถานะ, error, ended_at) และตรวจกรณีสวิตช์ปิด
-- [ ] ARCHITECTURE.md และ README ระบุข้อจำกัด "รัน bop-api ตัวเดียว" และสวิตช์
+- [x] ตอน start ก่อนรับ request ตั้ง Job ที่เป็น `pending` หรือ `running` เป็น `failed` พร้อม `error` ที่บอกว่าถูกขัดจังหวะโดย restart และมี `ended_at` พิมพ์ log บอกจำนวนที่ตั้ง
+- [x] Job ที่จบแล้ว (`succeeded`, `failed`, `cancelled`) และ Job ที่สร้างหลัง start ไม่ถูกแตะ
+- [x] `BOP_RECONCILE_INTERRUPTED_JOBS=false` ปิดการกวาด; ไม่ตั้ง = เปิด
+- [x] repository แบบ memory ไม่ทำอะไร (ไม่มี Job ค้างข้าม restart อยู่แล้ว)
+- [x] Go test กับ PostgreSQL จริง: ใส่ Job หลายสถานะ รันการกวาด แล้วตรวจแต่ละแถว (สถานะ, error, ended_at) และตรวจกรณีสวิตช์ปิด
+- [x] ARCHITECTURE.md และ README ระบุข้อจำกัด "รัน bop-api ตัวเดียว" และสวิตช์
 - [ ] พิสูจน์กับ stack จริงใน `bruno/run-with-restart.sh`: เริ่ม Job ที่ใช้เวลานาน ยืนยันว่ามันเป็น `running` ก่อน recreate `bop-api` แล้วตรวจว่าเป็น `failed` พร้อมเหตุผลหลังกลับมา ถ้าไม่ได้เป็น `running` ตอนนั้นต้องรายงานว่าข้ามการตรวจ (ห้ามผ่านเงียบๆ) ถ้าทำอัตโนมัติไม่ได้ ให้เขียนเหตุผลและขั้นตอนทำมือ
-- [ ] golangci-lint ผ่าน
+- [x] golangci-lint ผ่าน
 - [ ] orchestrator deploy branch แล้ว `bru run --env minipc` และ `run-with-restart.sh` ผ่านทั้งชุด

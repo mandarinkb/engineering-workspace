@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -103,6 +104,19 @@ func (r *JobRepository) List(ctx context.Context) ([]*job.Job, error) {
 		return nil, fmt.Errorf("postgres: list jobs: %w", err)
 	}
 	return out, nil
+}
+
+// FailInterrupted ตั้ง Job ที่ pending/running ทุกแถวเป็น failed ใน statement เดียว (atomic) —
+// เรียกตอน bop-api start ก่อนเปิดรับงาน จึงไม่ชนกับ Job ใหม่ของ process นี้ (ถือว่ารัน bop-api
+// ตัวเดียว ดู ARCHITECTURE.md) แถวที่จบแล้วไม่ถูกแตะ started_at คงเดิม (pending ยังเป็น NULL)
+func (r *JobRepository) FailInterrupted(ctx context.Context, reason string, now time.Time) (int, error) {
+	tag, err := r.db.Exec(ctx, `UPDATE jobs SET status = $1, error = $2, ended_at = $3
+		WHERE status IN ($4, $5)`,
+		job.StatusFailed, reason, now, job.StatusPending, job.StatusRunning)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: fail interrupted jobs: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // scanJob อ่านหนึ่งแถวตามลำดับ jobColumns

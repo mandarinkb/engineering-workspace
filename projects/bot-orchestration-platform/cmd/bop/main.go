@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -108,6 +109,14 @@ func run() error {
 		return runCLI(ctx, repo, pool, os.Args[2:])
 	}
 
+	// ขั้นตอนที่ 5.5: กวาด Job ที่ค้างจาก process ก่อนหน้า (pending/running ที่ไม่มี goroutine
+	// ไหนเขียนสถานะสุดท้ายให้แล้ว) ให้เป็น failed — ต้องทำตรงนี้: หลัง CLI mode (CLI ใช้ database
+	// ร่วมกับ bop-api ที่อาจกำลังรันอยู่ ห้ามกวาด Job ของมัน) และก่อนเปิด HTTP server กับก่อน
+	// pool รับงาน ไม่งั้นจะกวาดโดนงานใหม่ของ process นี้เอง
+	if err := reconcileInterruptedJobs(ctx, repo, os.Getenv("BOP_RECONCILE_INTERRUPTED_JOBS"), time.Now); err != nil {
+		return err
+	}
+
 	// ขั้นตอนที่ 6: ประกอบ usecase จาก port ทั้งหมด (clean architecture: HTTP adapter รู้จัก
 	// แค่ usecase, usecase รู้จักแค่ interface ใน internal/domain ส่วน implementation จริง
 	// ทั้งหมดถูกเลือกที่นี่ที่เดียว) — secret/credential ของ auth อ่านจาก env var ที่นี่
@@ -147,6 +156,33 @@ func run() error {
 	if err := pool.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown worker pool: %w", err)
 	}
+	return nil
+}
+
+// interruptedReason คือข้อความใน error ของ Job ที่ถูกขัดจังหวะโดย restart/crash ของ bop-api
+const interruptedReason = "interrupted: bop-api restarted"
+
+// reconcileInterruptedJobs ตั้ง Job ที่ค้าง pending/running จาก process ก่อนหน้าเป็น failed แล้ว
+// log จำนวนที่แก้ ข้อจำกัด: ถือว่ารัน bop-api ตัวเดียว (ดู ARCHITECTURE.md) ถ้ามีหลายตัวการกวาดนี้
+// จะทำให้ Job ที่อีกตัวกำลังรันอยู่ล้มผิดๆ — ตั้ง BOP_RECONCILE_INTERRUPTED_JOBS=false เพื่อปิด
+// (ค่าว่าง = เปิด, ค่าที่ ParseBool ไม่รู้จัก = error ตั้งแต่ start ดีกว่าเดาแล้วกวาด Job ผิด)
+func reconcileInterruptedJobs(ctx context.Context, repo job.Repository, setting string, now func() time.Time) error {
+	enabled := true
+	if setting != "" {
+		var err error
+		if enabled, err = strconv.ParseBool(setting); err != nil {
+			return fmt.Errorf("BOP_RECONCILE_INTERRUPTED_JOBS=%q: want true or false", setting)
+		}
+	}
+	if !enabled {
+		log.Printf("reconcile interrupted jobs: disabled by BOP_RECONCILE_INTERRUPTED_JOBS")
+		return nil
+	}
+	n, err := repo.FailInterrupted(ctx, interruptedReason, now())
+	if err != nil {
+		return fmt.Errorf("reconcile interrupted jobs: %w", err)
+	}
+	log.Printf("reconcile interrupted jobs: marked %d job(s) as failed", n)
 	return nil
 }
 

@@ -32,6 +32,80 @@ func TestJobRepositoryContract_Postgres(t *testing.T) {
 	})
 }
 
+// TestJobRepositoryFailInterrupted_Memory: memory ไม่ทำอะไรและคืน 0 (Job หายตอน restart อยู่แล้ว)
+func TestJobRepositoryFailInterrupted_Memory(t *testing.T) {
+	ctx := context.Background()
+	repo := memory.NewJobRepository()
+	j := &job.Job{ID: "live", BotName: "b", Status: job.StatusRunning, CreatedAt: time.Now()}
+	if err := repo.Create(ctx, j); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	n, err := repo.FailInterrupted(ctx, "interrupted", time.Now())
+	if err != nil || n != 0 {
+		t.Fatalf("FailInterrupted = (%d, %v), want (0, nil)", n, err)
+	}
+	got, _ := repo.Get(ctx, "live")
+	assertJobEqual(t, got, j)
+}
+
+// TestJobRepositoryFailInterrupted_Postgres ใส่ Job ทุกสถานะ กวาด แล้วตรวจทีละแถว: เฉพาะ
+// pending/running กลายเป็น failed พร้อมเหตุผลและ ended_at ส่วนที่จบแล้วต้องไม่เปลี่ยน
+func TestJobRepositoryFailInterrupted_Postgres(t *testing.T) {
+	url := testDatabaseURL(t)
+	ctx := context.Background()
+	repo := postgres.NewJobRepository(openCleanDatabase(t, url))
+
+	created := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
+	ended := created.Add(time.Minute)
+	started := created.Add(time.Second)
+	seed := []*job.Job{
+		{ID: "pending", Status: job.StatusPending},
+		{ID: "running", Status: job.StatusRunning, StartedAt: &started},
+		{ID: "succeeded", Status: job.StatusSucceeded, Summary: "ok", StartedAt: &started, EndedAt: &ended},
+		{ID: "failed", Status: job.StatusFailed, Error: "boom", StartedAt: &started, EndedAt: &ended},
+		{ID: "cancelled", Status: job.StatusCancelled, Error: "cancelled", StartedAt: &started, EndedAt: &ended},
+	}
+	for _, j := range seed {
+		j.BotName, j.CreatedAt = "b", created
+		if err := repo.Create(ctx, j); err != nil {
+			t.Fatalf("Create %s: %v", j.ID, err)
+		}
+	}
+
+	now := created.Add(time.Hour)
+	n, err := repo.FailInterrupted(ctx, "interrupted: bop-api restarted", now)
+	if err != nil {
+		t.Fatalf("FailInterrupted: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("count = %d, want 2", n)
+	}
+
+	for _, id := range []string{"pending", "running"} {
+		got, err := repo.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("Get %s: %v", id, err)
+		}
+		if got.Status != job.StatusFailed || got.Error != "interrupted: bop-api restarted" {
+			t.Errorf("%s: status=%q error=%q, want failed/interrupted", id, got.Status, got.Error)
+		}
+		assertTimePtrEqual(t, id+" EndedAt", got.EndedAt, &now)
+	}
+	// Job ที่จบแล้วต้องเหมือนตอน seed ทุก field
+	for _, want := range seed[2:] {
+		got, err := repo.Get(ctx, want.ID)
+		if err != nil {
+			t.Fatalf("Get %s: %v", want.ID, err)
+		}
+		assertJobEqual(t, got, want)
+	}
+
+	// กวาดซ้ำไม่เหลืออะไรให้แก้ (Job ที่สร้างหลัง start ไม่ถูกกวาดเพราะ cmd/bop เรียกครั้งเดียวก่อนรับงาน)
+	if n, err := repo.FailInterrupted(ctx, "x", now); err != nil || n != 0 {
+		t.Errorf("second sweep = (%d, %v), want (0, nil)", n, err)
+	}
+}
+
 // TestPostgresJobRepository_SurvivesReconnect จำลองการ restart ของ bop-api: เขียน Job ผ่าน
 // connection pool ชุดหนึ่ง ปิดทิ้ง แล้วเปิดชุดใหม่ (รวมรัน migration ซ้ำแบบตอน start) ต้องยัง
 // อ่าน Job และสถานะล่าสุดได้
