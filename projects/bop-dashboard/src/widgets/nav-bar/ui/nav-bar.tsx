@@ -47,7 +47,7 @@ const NAV_LINKS = [
 
 const READINESS_META: Record<Readiness, { label: string; dot: string }> = {
   ready: { label: "ระบบปกติ", dot: "bg-green-500" },
-  temporal_down: { label: "ต่อ Temporal ไม่ได้", dot: "bg-red-500" },
+  not_ready: { label: "ระบบไม่พร้อม (Temporal/ฐานข้อมูล)", dot: "bg-red-500" },
   api_down: { label: "เรียก API ไม่ติด", dot: "bg-red-500" },
 };
 

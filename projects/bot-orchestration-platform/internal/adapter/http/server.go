@@ -22,11 +22,33 @@ type Server struct {
 	runs      *workflowrunuc.Service
 	schedules *scheduleuc.Service
 	auth      *authuc.Service
+	db        DatabasePinger // nil = โหมด memory ไม่มี database ให้ /readyz เช็ค
+}
+
+// ServerOption ปรับค่าของ Server ตอนสร้าง (ใช้กับสิ่งที่ไม่จำเป็นเสมอ เช่น database)
+type ServerOption interface {
+	apply(*Server)
+}
+
+type databaseOption struct{ db DatabasePinger }
+
+func (o databaseOption) apply(s *Server) { s.db = o.db }
+
+// WithDatabase ให้ /readyz ping database ด้วย — ส่งเฉพาะเมื่อมี database จริง (อย่าส่ง nil
+// pointer ที่ห่อเป็น interface เพราะจะไม่เท่ากับ nil)
+func WithDatabase(db DatabasePinger) ServerOption {
+	return databaseOption{db: db}
 }
 
 // NewServer ผูก handler ทุกตัวเข้ากับ usecase ที่ส่งเข้ามา แล้วลงทะเบียน route ให้เรียบร้อย
-func NewServer(jobs *jobuc.Service, runs *workflowrunuc.Service, schedules *scheduleuc.Service, auth *authuc.Service) *Server {
+func NewServer(
+	jobs *jobuc.Service, runs *workflowrunuc.Service, schedules *scheduleuc.Service, auth *authuc.Service,
+	opts ...ServerOption,
+) *Server {
 	s := &Server{mux: http.NewServeMux(), jobs: jobs, runs: runs, schedules: schedules, auth: auth}
+	for _, opt := range opts {
+		opt.apply(s)
+	}
 	s.routes()
 	return s
 }
@@ -80,7 +102,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ที่รองรับ wildcard แบบ {name} ในตัว ServeMux เองโดยไม่ต้องพึ่ง library ภายนอก
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz) // liveness: process ยังตอบสนองอยู่ไหม
-	s.mux.HandleFunc("GET /readyz", s.handleReadyz)   // readiness: พร้อมรับ traffic ไหม (ต่อ Temporal ได้)
+	s.mux.HandleFunc("GET /readyz", s.handleReadyz)   // readiness: พร้อมรับ traffic ไหม (ต่อ Temporal และ database ได้)
 
 	s.mux.HandleFunc("GET /bots", s.handleListBots)                       // ดูรายชื่อ bot ที่ register ไว้ทั้งหมด + config schema ของแต่ละตัว
 	s.mux.HandleFunc("POST /bots/{name}/jobs", s.handleCreateJob)         // สร้าง job ใหม่และสั่งรันทันที
