@@ -10,7 +10,7 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 - [x] ขั้นแรก: ยืนยันว่าถอดรหัส steps จาก action args ของ Temporal Schedule ด้วย SDK ได้ — ถ้าไม่ได้ให้หยุดและกลับไปถามผู้ใช้ก่อนทำต่อ (SDK v1.47.0 ระบุใน `ScheduleWorkflowAction.Args` ว่า Describe คืน `*commonpb.Payload` และยืนยันด้วย test กับ Temporal dev server)
 - [ ] seam A: รายละเอียดของ Schedule ที่สร้างผ่าน API แสดง steps ตรงกับที่ส่งไป (`05-schedules/03`, `08b` — รอ orchestrator รัน)
-- [ ] seam A: Schedule ที่สร้างตรงผ่าน Temporal client (นอก API) แสดง steps ได้ (`05-schedules/12` — รอ orchestrator รัน)
+- [ ] seam A: Schedule ที่สร้างตรงผ่าน Temporal client (นอก API) แสดง steps ได้ (`05-schedules/13` — รอ orchestrator รัน)
 - [ ] seam A: steps ยังถูกต้องหลัง restart bop-api (รัน collection ซ้ำหลัง recreate `bop-api`)
 - [x] ลบ repository ของ Schedule และ implementation แบบ memory ออก
 - [x] golangci-lint ผ่าน

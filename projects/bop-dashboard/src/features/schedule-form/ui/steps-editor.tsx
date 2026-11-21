@@ -34,7 +34,13 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
   function setStepBot(index: number, botName: string) {
     // เปลี่ยน bot ของ step นี้ต้องล้าง config เดิมทิ้งเสมอ เพราะ config field ของ bot
     // ใหม่อาจไม่ตรงกับของ bot เดิมเลย (คนละ key กัน) เก็บ config เก่าไว้จะสับสน
-    update(index, () => ({ bot_name: botName, config: {} }));
+    // ส่วน max_attempts ไม่ผูกกับ bot ตัวไหน จึงเก็บค่าเดิมไว้
+    update(index, (s) => ({ bot_name: botName, config: {}, max_attempts: s.max_attempts }));
+  }
+  // setStepMaxAttempts รับค่าจากช่องตัวเลข — ช่องว่างแปลงเป็น undefined เพื่อไม่ส่ง field นี้
+  // ไปเลย (backend ใช้ค่าเริ่มต้น 3) ส่วนค่าที่ไม่ถูกต้องเก็บไว้ตามที่พิมพ์ ให้ validateSteps บอก error
+  function setStepMaxAttempts(index: number, value: string) {
+    update(index, (s) => ({ ...s, max_attempts: value === "" ? undefined : Number(value) }));
   }
   function setStepConfigValue(index: number, key: string, value: string) {
     update(index, (s) => ({ ...s, config: { ...s.config, [key]: value } }));
@@ -50,7 +56,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
       // สร้าง base object จาก field ที่รู้จักตรงๆ (ไม่ destructure แล้วทิ้ง
       // task_queue/k8s_job เดิม) เพื่อเคลียร์ทั้งสอง field นี้ให้แน่ใจว่าไม่มีค่าเก่า
       // ของโหมดก่อนหน้าค้างอยู่ ไม่ว่าจะสลับมาโหมดไหนก็ตาม
-      const base: ScheduleStep = { bot_name: s.bot_name, config: s.config };
+      const base: ScheduleStep = { bot_name: s.bot_name, config: s.config, max_attempts: s.max_attempts };
       if (mode === "remote_task_queue") return { ...base, task_queue: "" };
       if (mode === "k8s_job") return { ...base, k8s_job: { image: "" } };
       return base;
@@ -108,6 +114,23 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
               />
             </div>
           ))}
+
+          {/* จำนวน Attempt สูงสุดใช้ได้กับทุก dispatch mode จึงอยู่นอกกล่อง "รันที่ไหน" */}
+          <div>
+            <label className="block text-sm" htmlFor={`max-attempts-${index}`}>
+              จำนวนครั้งที่ลองสูงสุด
+            </label>
+            <input
+              id={`max-attempts-${index}`}
+              type="number"
+              min={1}
+              step={1}
+              placeholder="ค่าเริ่มต้น 3"
+              value={step.max_attempts ?? ""}
+              onChange={(event) => setStepMaxAttempts(index, event.target.value)}
+              className="mt-1 w-40 rounded border border-gray-300 px-3 py-2"
+            />
+          </div>
 
           {/* Dispatch mode: local bot (default) / remote Temporal task queue /
               Kubernetes Job hybrid — ดู EXTERNAL-JOB-BOT-TODO.md,

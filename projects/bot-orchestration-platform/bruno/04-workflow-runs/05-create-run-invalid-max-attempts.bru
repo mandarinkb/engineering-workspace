@@ -1,0 +1,26 @@
+meta {
+  name: Create workflow run with max_attempts 0
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/workflow-runs
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "workflow_name": "bruno-invalid",
+    "steps": [
+      {"bot_name": "http-status-checker", "config": {"url": "http://bop-api:8080/healthz"}, "max_attempts": 0}
+    ]
+  }
+}
+
+tests {
+  test("ตอบ 400 เมื่อ max_attempts น้อยกว่า 1", function () {
+    expect(res.getStatus()).to.equal(400);
+  });
+}

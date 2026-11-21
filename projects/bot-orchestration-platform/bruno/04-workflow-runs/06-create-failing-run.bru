@@ -1,0 +1,32 @@
+meta {
+  name: Create workflow run that calls a missing host
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/workflow-runs
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "workflow_name": "bruno-failing",
+    "steps": [
+      {"bot_name": "http-status-checker", "config": {"url": "http://bruno-no-such-host.invalid/"}},
+      {"bot_name": "http-status-checker", "config": {"url": "http://bop-api:8080/healthz"}}
+    ]
+  }
+}
+
+script:post-response {
+  bru.setVar("failedWorkflowId", res.getBody().workflow_id);
+}
+
+tests {
+  test("ตอบ 202 พร้อม workflow_id", function () {
+    expect(res.getStatus()).to.equal(202);
+    expect(res.getBody().workflow_id).to.match(/^bruno-failing-/);
+  });
+}

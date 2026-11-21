@@ -12,6 +12,7 @@
 package workflow
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 
@@ -31,6 +32,11 @@ type Step struct {
 	// ทำงานนานกว่า 30 วินาทีที่เป็นค่าเริ่มต้นของทั้งระบบมาก ต้องกำหนดได้ต่อ step แทนที่จะ
 	// บังคับใช้ค่าเดียวกันทุก step ในทุก workflow (ดู EXTERNAL-JOB-BOT-TODO.md)
 	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
+	// MaxAttempts คือจำนวน Attempt สูงสุดของ step นี้ (≥ 1) ก่อนจะกลายเป็น Failed Step — nil
+	// (ไม่ได้ระบุมา) Execute (internal/external/temporal/workflow.go) ใช้ค่าเริ่มต้น 3 แทน เป็น
+	// pointer ไม่ใช่ int เฉยๆ เพราะต้องแยก "ไม่ส่งมา" ออกจาก "ส่ง 0 มา" ซึ่งเป็นค่าที่ไม่ถูกต้อง
+	// และต้องตอบ 400 (ดู ValidateSteps)
+	MaxAttempts *int `json:"max_attempts,omitempty"`
 	// TaskQueue คือชื่อ Temporal Task Queue ที่ Activity ของ step นี้จะถูกส่งไปให้รัน — ถ้า
 	// เป็นค่าว่าง (ไม่ได้ระบุมา) ใช้ task queue เดียวกับตัว workflow เอง (TaskQueueName คงที่
 	// "bop-workflows") ซึ่งมีแค่ cmd/bop-worker เป็นคน poll อยู่ ทำให้ Activities.RunStep
@@ -85,6 +91,10 @@ type K8sJobSpec struct {
 // ทั้งหมด ผู้ถือสำเนาแก้ค่าได้โดยไม่กระทบต้นฉบับ
 func (s Step) Clone() Step {
 	s.Config = maps.Clone(s.Config)
+	if s.MaxAttempts != nil {
+		n := *s.MaxAttempts
+		s.MaxAttempts = &n
+	}
 	if s.K8sJob != nil {
 		k := *s.K8sJob
 		k.Command = slices.Clone(k.Command)
@@ -93,6 +103,18 @@ func (s Step) Clone() Step {
 		s.K8sJob = &k
 	}
 	return s
+}
+
+// ValidateSteps ตรวจค่าต่อ Step ที่ client ส่งมา ใช้ร่วมกันทั้ง Schedule และ ad-hoc Workflow Run
+// เพื่อให้กฎเดียวกันทั้งสองทาง — ตอนนี้ตรวจแค่ max_attempts (ถ้าส่งมาต้อง ≥ 1) เพราะ 0 หรือติดลบ
+// จะถูก Temporal ตีความเป็น "ลองใหม่ไม่จำกัด" ซึ่งคือปัญหาที่ field นี้มาแก้พอดี
+func ValidateSteps(steps []Step) error {
+	for i, s := range steps {
+		if s.MaxAttempts != nil && *s.MaxAttempts < 1 {
+			return fmt.Errorf("steps[%d].max_attempts ต้องมากกว่าหรือเท่ากับ 1", i)
+		}
+	}
+	return nil
 }
 
 // Workflow คือลำดับของ Step ที่ต้องรันเรียงกันตามลำดับ (step แรกสุดในลิสต์รันก่อนเสมอ)

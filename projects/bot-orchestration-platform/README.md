@@ -16,7 +16,7 @@ Phase 0 (`Golang: สร้าง Bot Execution Engine`) ทำแล้ว: `Bo
 
 - [ ] Bot ตัวที่สองที่ใช้ `chromedp` (headless browser) พิสูจน์ว่า interface รองรับ implementation ที่ซับซ้อนกว่า HTTP GET ธรรมดา
 - [ ] แยก error type retryable/non-retryable ด้วย `errors.Is`/`errors.As` (ตอนนี้ error จาก bot แค่ถูกเก็บเป็น string ธรรมดา)
-- [ ] PostgreSQL implementation ของ `job.Repository` (ตอนนี้มีแค่ in-memory)
+- [x] PostgreSQL implementation ของ `job.Repository` (`internal/repository/postgres` — ดูหัวข้อ "PostgreSQL ของ BOP")
 - [ ] Table-driven test ของ logic parse ข้อมูล + `httptest.Server` mock (มี test ของ worker pool/workflow runner/scheduler แล้ว แต่ยังไม่มีของ logic parse ข้อมูลจริงจัง เพราะยังไม่มี bot ที่ parse อะไรซับซ้อน)
 
 ## สถาปัตยกรรม
@@ -34,7 +34,7 @@ cmd/bop-worker/main.go   composition root ของ Temporal Worker process — 
    │   ├── job          Job entity + Repository + Executor port (json tag snake_case)
    │   ├── logger       Logger interface (persist + live-subscribe ในตัวเดียว)
    │   ├── workflow     Workflow/Step/StepResult (input schema ของ Temporal workflow) + Engine port
-   │   ├── schedule     Definition + Repository + Spec/Overlap (กฎ validate) + Scheduler port
+   │   ├── schedule     Spec/Overlap/Policy (กฎ validate) + Scheduler port
    │   └── apperr       ประเภท error กลาง (Invalid/NotFound/Conflict) ที่ HTTP แปลงเป็น status code
    │
    ├── internal/usecase               application logic — รู้จักแค่ port ใน domain
@@ -92,6 +92,26 @@ go run ./cmd/bop run --bot=http-status-checker --url=https://example.com
 go run ./cmd/bop-worker   # Temporal Worker — รัน workflow/activity จริง + สร้าง Schedule
 go run ./cmd/bop          # HTTP API ที่ :8080 — ให้ dashboard เรียก, อ่านสถานะ workflow ผ่าน Temporal
 ```
+
+### PostgreSQL ของ BOP (Job อยู่รอดข้าม restart)
+
+ตั้ง `BOP_DATABASE_URL` แล้ว bop-api เก็บ Job ใน PostgreSQL และรัน migration เองตอน start (bop-worker ไม่รัน migration) ไม่ตั้ง = เก็บใน memory แบบเดิม ข้อมูลหายเมื่อ restart และ log เตือนตอน start
+
+BOP ใช้ PostgreSQL ตัวเดียวกับ Temporal แต่แยก database `bop` และ user `bop` — compose ที่ root ตั้ง `BOP_DATABASE_URL=postgres://bop:bop@postgresql:5432/bop?sslmode=disable` ให้ทั้ง bop-api และ bop-worker (**รหัสผ่าน `bop` เป็นค่า dev ห้ามใช้ใน production**)
+
+- **volume ใหม่**: init script [`db/init/01-create-bop-database.sql`](db/init/01-create-bop-database.sql) สร้าง database/user ให้เองตอน `compose up` ครั้งแรก
+- **volume เดิม** (มีข้อมูล Temporal อยู่แล้ว init script ไม่รันซ้ำ): รันคำสั่งนี้ครั้งเดียวจาก root ของ repo ก่อน start bop-api เวอร์ชันนี้ ไม่งั้น bop-api start ไม่ได้เพราะไม่มี database `bop`
+
+```bash
+docker compose up -d postgresql
+docker compose exec -T postgresql psql -v ON_ERROR_STOP=1 -U temporal -d postgres \
+  < projects/bot-orchestration-platform/db/init/01-create-bop-database.sql
+docker compose up -d bop-api bop-worker
+```
+
+บน Mini PC ใช้ compose ของระบบ `/usr/libexec/docker/cli-plugins/docker-compose` แทน `docker compose` (ตัวที่ shadow อยู่เป็นเวอร์ชันเก่า) และขออนุญาตเจ้าของเครื่องก่อนรัน เพราะเป็นการแก้ PostgreSQL ที่ใช้ร่วมกับ Temporal
+
+ตอน `go run ./cmd/bop` บนเครื่อง ชี้ไปที่ PostgreSQL ที่มี database `bop` อยู่แล้ว เช่น `BOP_DATABASE_URL=postgres://bop:bop@localhost:5432/bop?sslmode=disable go run ./cmd/bop` (`docker-compose.yml` ในโฟลเดอร์นี้ไม่ได้เปิด port 5432 ออกมา)
 
 ตัวอย่างเรียก API ด้วย curl (response ทั้งหมดเป็น JSON แบบ snake_case สม่ำเสมอกันทั้ง API):
 

@@ -18,6 +18,10 @@ services:
       POSTGRES_PASSWORD: temporal
     volumes:
       - temporal-postgres:/var/lib/postgresql/data
+      # instance นี้ใช้ร่วมกันระหว่าง Temporal กับ BOP (database/user `bop` แยกกัน) — init
+      # script สร้าง database `bop` ให้เฉพาะตอนสร้าง volume ใหม่เท่านั้น volume เดิมต้องรัน
+      # คำสั่งครั้งเดียวตาม projects/bot-orchestration-platform/README.md หัวข้อ "PostgreSQL ของ BOP"
+      - ./projects/bot-orchestration-platform/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U temporal"]
       interval: 5s
@@ -80,6 +84,8 @@ services:
     depends_on:
       temporal:
         condition: service_healthy
+      postgresql:
+        condition: service_healthy
     # ต่างจาก K8s ที่ restart Pod ที่ crash ให้อัตโนมัติเสมอ (CrashLoopBackOff) — Compose
     # container ที่ exit จะ "ตายค้าง" เฉยๆ ถ้าไม่ตั้ง restart policy ไว้ ถึงจะมี
     # depends_on...service_healthy กัน race แรกสุดแล้ว ก็ยังใส่ไว้เป็นชั้นป้องกันซ้ำ (เช่น
@@ -90,6 +96,9 @@ services:
       # เองในเครือข่ายภายในของ compose (ต่างจากตอน `go run` บนเครื่องที่ใช้ localhost:7233)
       TEMPORAL_HOST_PORT: temporal:7233
       BOP_HTTP_ADDR: ":8080"
+      # database `bop` บน service postgresql (สร้างโดย db/init) — bop-api รัน migration เองตอน
+      # start รหัสผ่าน `bop` เป็นค่า dev **ห้ามใช้ค่านี้ใน production**
+      BOP_DATABASE_URL: "postgres://bop:bop@postgresql:5432/bop?sslmode=disable"
       # ค่า dev fallback เดียวกับที่ internal/api/http/handler.go มี hardcode ไว้อยู่แล้ว —
       # เขียนไว้ตรงนี้ให้เห็นชัดเจนแทนที่จะพึ่ง fallback เงียบๆ **ห้ามใช้ค่านี้ใน production**
       BOP_JWT_SECRET: "bop-dev-secret-change-me-before-deploying"
@@ -108,9 +117,13 @@ services:
     depends_on:
       temporal:
         condition: service_healthy
+      postgresql:
+        condition: service_healthy
     restart: on-failure
     environment:
       TEMPORAL_HOST_PORT: temporal:7233
+      # ค่าเดียวกับ bop-api (ค่า dev **ห้ามใช้ใน production**) — worker ไม่รัน migration
+      BOP_DATABASE_URL: "postgres://bop:bop@postgresql:5432/bop?sslmode=disable"
       # K8s Job hybrid execution จะ skip ตัวเองอัตโนมัติ (best-effort — ดู comment ใน
       # cmd/bop-worker/main.go) เพราะ container ธรรมดาไม่มี K8s ServiceAccount token ให้อ่าน
       # ไม่ใช่ error ที่ต้องแก้ แค่ฟีเจอร์นั้นใช้ไม่ได้ตอนรันนอก K8s เท่านั้น

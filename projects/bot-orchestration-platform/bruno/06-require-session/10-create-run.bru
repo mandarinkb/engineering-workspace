@@ -1,0 +1,25 @@
+meta {
+  name: Create workflow run without session
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{baseUrl}}/workflow-runs
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: 
+}
+
+body:json {
+  {}
+}
+
+tests {
+  test("ตอบ 401 เมื่อไม่มี session", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

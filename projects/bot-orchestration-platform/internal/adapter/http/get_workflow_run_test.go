@@ -45,13 +45,14 @@ func (noStepsEngine) CheckHealth(context.Context) error { return nil }
 func TestGetWorkflowRun_NoFinishedStepReturnsEmptyList(t *testing.T) {
 	repo := memory.NewJobRepository()
 	log := memlogger.New()
+	auth := authuc.NewService([]byte(testSecret), testUsername, testPassword)
 	srv := apihttp.NewServer(
 		jobuc.NewService(repo, worker.NewPool(1, time.Second, repo, log), log),
 		workflowrunuc.NewService(noStepsEngine{}),
 		scheduleuc.NewService(temporal.NewScheduler(nil)),
-		authuc.NewService([]byte("test-secret"), "admin", "changeme"),
+		auth,
 	)
-	ts := httptest.NewServer(srv)
+	ts := httptest.NewServer(withSession(t, auth, srv))
 	t.Cleanup(ts.Close)
 
 	resp, err := http.Get(ts.URL + "/workflow-runs/wf-1")

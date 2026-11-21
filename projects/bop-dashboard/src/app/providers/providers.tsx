@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { ToastProvider } from "@/shared/ui";
 import { WatchedJobsProvider } from "@/features/watch-job";
-import { createQueryClient } from "@/shared/api";
+import { createQueryClient, redirectToLogin } from "@/shared/api";
 
 import { ThemeProvider } from "@/shared/lib/theme";
 
@@ -21,13 +21,14 @@ import { ThemeProvider } from "@/shared/lib/theme";
 // QueryClient (และ cache ข้างใน) ตัวเดียวกันโดยไม่ตั้งใจ ซึ่งเสี่ยงข้อมูลของ user คนหนึ่ง
 // รั่วไปโผล่ในของอีกคน — useState ทำให้แต่ละ component tree (แต่ละ request/แต่ละ client)
 // ได้ QueryClient ของตัวเองเสมอ ฟังก์ชันใน useState เรียกแค่ครั้งเดียวตอน mount ครั้งแรก
-// (lazy initialization) ไม่ใช่ทุกครั้งที่ re-render
+// (lazy initialization) ไม่ใช่ทุกครั้งที่ re-render — 401 จาก query/mutation ไหนก็ตาม
+// (session หมดอายุระหว่างใช้งาน) พาไปหน้า login ผ่าน redirectToLogin
 // ลำดับการซ้อน provider มีผล: WatchedJobsProvider เรียก useToast() ข้างใน (ดู
 // watched-jobs-provider.tsx) จึงต้องอยู่ "ใต้" ToastProvider เสมอ (ห่อทับด้วย
 // ToastProvider ก่อน) มิฉะนั้น useToast() จะหา context ไม่เจอแล้ว throw ตอน mount —
 // ส่วน ThemeProvider/QueryClientProvider ไม่ผูกกับตัวไหนเลย ลำดับจึงไม่มีผลกับสองตัวนี้
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => createQueryClient());
+  const [queryClient] = useState(() => createQueryClient({ onUnauthorized: redirectToLogin }));
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
