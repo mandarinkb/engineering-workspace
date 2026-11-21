@@ -50,3 +50,12 @@ type Logger interface {
 	// roadmap Phase 1.5
 	Subscribe(jobID string) (lines <-chan Line, unsubscribe func())
 }
+
+// Pruner คือ port ของ storage ที่ลบ log เก่าได้ — แยกจาก Logger เพราะ worker pool และ handler
+// ไม่เคยลบ log มีแค่งานลบ log ตามอายุ (usecase/logretention) ใน bop-api ที่ใช้ ส่วน logger แบบ
+// memory ไม่ implement เพราะข้อมูลหายเองทุกครั้งที่ restart อยู่แล้ว
+type Pruner interface {
+	// DeleteBefore ลบ log line ทุกบรรทัดที่เวลาเก่ากว่า cutoff (ไม่แตะ Job เจ้าของ log)
+	// แล้วคืนจำนวนบรรทัดที่ลบ
+	DeleteBefore(ctx context.Context, cutoff time.Time) (int64, error)
+}

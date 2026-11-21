@@ -213,7 +213,7 @@ func assertTimePtrEqual(t *testing.T, name string, got, want *time.Time) {
 	}
 }
 
-// openCleanDatabase รัน migration แบบเดียวกับตอน bop-api start แล้วล้างตาราง Job ให้แต่ละ
+// openCleanDatabase รัน migration แบบเดียวกับตอน bop-api start แล้วล้างตาราง Job และ log ให้แต่ละ
 // test เริ่มจากศูนย์ (test ใน package นี้ไม่รันขนานกันจึงล้างร่วม database เดียวกันได้)
 func openCleanDatabase(t *testing.T, url string) *pgxpool.Pool {
 	t.Helper()
@@ -225,8 +225,8 @@ func openCleanDatabase(t *testing.T, url string) *pgxpool.Pool {
 		t.Fatalf("Connect: %v", err)
 	}
 	t.Cleanup(db.Close)
-	if _, err := db.Exec(context.Background(), "TRUNCATE jobs"); err != nil {
-		t.Fatalf("truncate jobs: %v", err)
+	if _, err := db.Exec(context.Background(), "TRUNCATE jobs, log_lines"); err != nil {
+		t.Fatalf("truncate: %v", err)
 	}
 	return db
 }

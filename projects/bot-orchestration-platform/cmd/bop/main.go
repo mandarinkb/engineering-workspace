@@ -30,6 +30,7 @@ import (
 	apihttp "bop/internal/adapter/http" // ตั้งชื่อ alias เพราะ package นี้ก็ชื่อ "http" เหมือน net/http
 	"bop/internal/adapter/worker"
 	"bop/internal/domain/job"
+	"bop/internal/domain/logger"
 	"bop/internal/external/bots/externaljob"
 	"bop/internal/external/bots/httpstatus"
 	"bop/internal/external/temporal"
@@ -38,6 +39,7 @@ import (
 	"bop/internal/repository/postgres"
 	authuc "bop/internal/usecase/auth"
 	jobuc "bop/internal/usecase/job"
+	"bop/internal/usecase/logretention"
 	scheduleuc "bop/internal/usecase/schedule"
 	workflowrunuc "bop/internal/usecase/workflowrun"
 )
@@ -59,10 +61,10 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// ขั้นตอนที่ 1: สร้าง dependency พื้นฐานทั้งหมด — ตั้ง BOP_DATABASE_URL = เก็บ Job ใน
-	// PostgreSQL (database `bop`) ให้อยู่รอดข้าม restart ไม่ตั้ง = in-memory แบบเดิมพร้อมคำเตือน
-	// (ดู openDatabase) logger ยังเป็น in-memory จนกว่าจะทำ log persistence — ทุกที่อ้างอิงผ่าน
-	// interface (job.Repository, logger.Logger) จึงสลับ implementation ได้ที่นี่ที่เดียว
+	// ขั้นตอนที่ 1: สร้าง dependency พื้นฐานทั้งหมด — ตั้ง BOP_DATABASE_URL = เก็บ Job และ log
+	// ของ Job ใน PostgreSQL (database `bop`) ให้อยู่รอดข้าม restart ไม่ตั้ง = in-memory แบบเดิม
+	// พร้อมคำเตือน (ดู openDatabase) — ทุกที่อ้างอิงผ่าน interface (job.Repository, logger.Logger)
+	// จึงสลับ implementation ได้ที่นี่ที่เดียว
 	db, err := openDatabase(ctx, os.Getenv("BOP_DATABASE_URL"))
 	if err != nil {
 		return err
@@ -72,7 +74,7 @@ func run() error {
 		defer db.Close()
 	}
 	repo := newJobRepository(db)
-	appLogger := memlogger.New()
+	appLogger := newLogger(db)
 
 	// ขั้นตอนที่ 2: สร้าง worker pool — จำกัดให้รันได้พร้อมกันสูงสุด 4 job และแต่ละ job
 	// มีเวลาไม่เกิน 30 วินาที ก่อนจะถูกตัดจบอัตโนมัติ (ป้องกัน bot ที่ค้างไม่รู้จบ)
@@ -127,6 +129,11 @@ func run() error {
 		getenv("BOP_ADMIN_PASSWORD", "changeme"),
 	)
 
+	// งานลบ log ที่เก่ากว่า 30 วันรันเฉพาะใน HTTP API server (process ที่อยู่ยาว) และเฉพาะเมื่อ
+	// log อยู่ใน PostgreSQL — stopRetention ต้องรันก่อน db.Close ด้านบน (defer ทำงานย้อนลำดับ)
+	stopRetention := startLogRetention(ctx, appLogger)
+	defer stopRetention()
+
 	// ถ้าไม่ใช่ CLI mode ให้เปิด HTTP API server ตามปกติ (ค่า default ของโปรแกรมนี้)
 	if err := serve(ctx, apihttp.NewServer(jobs, runs, schedules, auth)); err != nil {
 		return err
@@ -150,7 +157,7 @@ func run() error {
 // (ข้อมูลหายเมื่อ restart) ผู้เรียกต้อง Close pool ที่ได้เอง
 func openDatabase(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if databaseURL == "" {
-		log.Printf("warning: BOP_DATABASE_URL not set, using in-memory storage (jobs are lost on restart)")
+		log.Printf("warning: BOP_DATABASE_URL not set, using in-memory storage (jobs and logs are lost on restart)")
 		return nil, nil
 	}
 	if err := postgres.Migrate(databaseURL); err != nil {
@@ -160,7 +167,7 @@ func openDatabase(ctx context.Context, databaseURL string) (*pgxpool.Pool, error
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("using PostgreSQL job storage")
+	log.Printf("using PostgreSQL job and log storage")
 	return db, nil
 }
 
@@ -170,6 +177,33 @@ func newJobRepository(db *pgxpool.Pool) job.Repository {
 		return memory.NewJobRepository()
 	}
 	return postgres.NewJobRepository(db)
+}
+
+// newLogger เลือก implementation ของ logger.Logger ตาม pool ที่ openDatabase คืนมา
+func newLogger(db *pgxpool.Pool) logger.Logger {
+	if db == nil {
+		return memlogger.New()
+	}
+	return postgres.NewLogger(db)
+}
+
+// startLogRetention เริ่มงานลบ log ตามอายุใน goroutine ถ้า l ลบ log ได้ (PostgreSQL) แล้วคืน
+// ฟังก์ชันที่หยุดงานและรอจน goroutine จบ — logger แบบ memory ไม่มีอะไรให้ลบ คืน no-op
+func startLogRetention(ctx context.Context, l logger.Logger) (stop func()) {
+	pruner, ok := l.(logger.Pruner)
+	if !ok {
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		logretention.NewService(pruner).Run(ctx)
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 // runCLI คือโหมดสำหรับทดสอบ engine โดยไม่ต้องเปิด server หรือมี UI เลย ใช้แบบนี้:

@@ -16,9 +16,11 @@ bru run --env local      # stack บนเครื่องตัวเอง (
 bru run 05-schedules --env minipc   # เฉพาะโฟลเดอร์เดียว (ต้อง login ก่อน: รัน 01-auth คู่กัน)
 ```
 
-### ทดสอบว่า Job อยู่รอดหลัง restart
+### ทดสอบว่า Job และ log อยู่รอดหลัง restart
 
-Bruno สั่ง restart container เองไม่ได้ `run-with-restart.sh` จึงรันชุดหลัก → recreate bop-api ด้วยคำสั่งใน `RESTART_CMD` → รันโฟลเดอร์ `after-restart` โดยส่ง `runMarker` เดียวกันให้ทั้งสองรอบ (`after-restart` หา Job จากรอบก่อนด้วย `bruno-run=<runMarker>` ใน url ของ config)
+Bruno สั่ง restart container เองไม่ได้ `run-with-restart.sh` จึงรันชุดหลัก → recreate bop-api ด้วยคำสั่งใน `RESTART_CMD` → รันโฟลเดอร์ `after-restart` (Job และ log แบบ REST) โดยส่ง `runMarker` เดียวกันให้ทั้งสองรอบ (`after-restart` หา Job จากรอบก่อนด้วย `bruno-run=<runMarker>` ใน url ของ config) → เปิด SSE stream ของ Job เดียวกันด้วย curl แล้วตรวจว่ามี log จากรอบก่อน (Bruno CLI อ่าน stream ที่เปิดค้างไม่ได้ ต้องมี `curl` และ `node`)
+
+การลบ log ที่เก่ากว่า 30 วันทดสอบด้วย Go test (`internal/repository/logger_test.go`) เพราะ Bruno ย้อนเวลาไม่ได้
 
 ```bash
 RESTART_CMD="ssh minipc 'cd <โฟลเดอร์ที่ deploy> && /usr/libexec/docker/cli-plugins/docker-compose up -d --force-recreate --no-deps bop-api'" \

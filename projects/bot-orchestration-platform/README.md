@@ -93,9 +93,11 @@ go run ./cmd/bop-worker   # Temporal Worker — รัน workflow/activity จ�
 go run ./cmd/bop          # HTTP API ที่ :8080 — ให้ dashboard เรียก, อ่านสถานะ workflow ผ่าน Temporal
 ```
 
-### PostgreSQL ของ BOP (Job อยู่รอดข้าม restart)
+### PostgreSQL ของ BOP (Job และ log อยู่รอดข้าม restart)
 
-ตั้ง `BOP_DATABASE_URL` แล้ว bop-api เก็บ Job ใน PostgreSQL และรัน migration เองตอน start (bop-worker ไม่รัน migration) ไม่ตั้ง = เก็บใน memory แบบเดิม ข้อมูลหายเมื่อ restart และ log เตือนตอน start
+ตั้ง `BOP_DATABASE_URL` แล้ว bop-api เก็บ Job และ log ของ Job ใน PostgreSQL และรัน migration เองตอน start (bop-worker ไม่รัน migration) ไม่ตั้ง = เก็บใน memory แบบเดิม ข้อมูลหายเมื่อ restart และ log เตือนตอน start
+
+bop-api ลบ log line ที่เก่ากว่า 30 วันทันทีตอน start แล้ววันละครั้ง (Job ไม่ถูกลบ ยังเห็นสถานะและ summary)
 
 BOP ใช้ PostgreSQL ตัวเดียวกับ Temporal แต่แยก database `bop` และ user `bop` — compose ที่ root ตั้ง `BOP_DATABASE_URL=postgres://bop:bop@postgresql:5432/bop?sslmode=disable` ให้ทั้ง bop-api และ bop-worker (**รหัสผ่าน `bop` เป็นค่า dev ห้ามใช้ใน production**)
 
