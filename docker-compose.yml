@@ -25,7 +25,9 @@ services:
       retries: 10
 
   temporal:
-    image: temporalio/auto-setup:latest
+    # pin เวอร์ชันแทน latest: latest ที่ cache ไว้ในแต่ละเครื่องไม่อัปเดตเอง ทำให้แต่ละเครื่องได้
+    # คนละเวอร์ชัน (1.29.3 = digest เดียวกับ latest ที่รันอยู่บน Mini PC ตอน pin)
+    image: temporalio/auto-setup:1.29.3
     depends_on:
       postgresql:
         condition: service_healthy
@@ -61,7 +63,8 @@ services:
       start_period: 15s
 
   temporal-ui:
-    image: temporalio/ui:latest
+    # latest ที่ค้างในเครื่องตั้งแต่ ก.พ. 2025 โดน CSP ของตัวเองบล็อก JS ใน Chrome รุ่นใหม่ หน้าว่าง
+    image: temporalio/ui:2.58.1
     depends_on:
       - temporal
     environment:

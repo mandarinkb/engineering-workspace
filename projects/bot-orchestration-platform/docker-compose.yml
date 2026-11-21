@@ -27,7 +27,7 @@ services:
   # worker service) ไว้ใน image เดียว พร้อมสร้าง schema + namespace "default" ให้อัตโนมัติ
   # ตอน container เริ่มครั้งแรก — เหมาะกับ local dev มากกว่าแยก image ทีละ service เอง
   temporal:
-    image: temporalio/auto-setup:latest
+    image: temporalio/auto-setup:1.29.3 # pin ตรงกับ docker-compose.yml ที่ root
     depends_on:
       postgresql:
         condition: service_healthy
@@ -41,7 +41,7 @@ services:
       - "7233:7233" # gRPC endpoint ที่ Temporal Go SDK (client.Dial) เชื่อมต่อ
 
   temporal-ui:
-    image: temporalio/ui:latest
+    image: temporalio/ui:2.58.1 # pin ตรงกับ docker-compose.yml ที่ root
     depends_on:
       - temporal
     environment:
