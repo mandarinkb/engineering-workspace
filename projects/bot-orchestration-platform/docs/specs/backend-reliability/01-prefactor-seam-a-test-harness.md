@@ -8,7 +8,7 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Status:** done
 
-**Verified:** deploy integration branch (commit 3247052) ขึ้น Mini PC แล้ว `bru run --env minipc` ผ่านทั้งชุด 86 request / 98 test, `bruno/run-with-restart.sh` ผ่าน (after-restart 5/5 + stream ของ log), ตรวจหน้า dashboard ด้วย Playwright — 2026-11-21
+**Verified:** deploy integration branch (commit 311a6d2) ขึ้น Mini PC แล้ว `bru run --env minipc` ผ่านทั้งชุด 88 request / 101 test, `bruno/run-with-restart.sh` ผ่าน (after-restart 5/5 + stream ของ log), ตรวจหน้า dashboard ด้วย Playwright — 2026-11-21
 
 - [x] Bruno collection ใน repo ครอบ auth, bots, jobs, workflow runs และ schedules พร้อม environment `minipc` และ `local`
 - [x] login เก็บ cookie แล้วส่งต่อทุก request; ข้อมูลที่สร้างขึ้นต้นด้วย `bruno-` และ Schedule ถูกลบเองตอนจบ
