@@ -6,7 +6,9 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** 03 (Attempt และ Failed Step), 07 (log ของ Job ลง PostgreSQL และลบอัตโนมัติเมื่อเกิน 30 วัน)
 
-**Status:** implemented
+**Status:** done
+
+**Verified:** deploy integration branch (commit 3247052) ขึ้น Mini PC แล้ว `bru run --env minipc` ผ่านทั้งชุด 86 request / 98 test, `bruno/run-with-restart.sh` ผ่าน (after-restart 5/5 + stream ของ log), ตรวจหน้า dashboard ด้วย Playwright — 2026-11-21
 
 - [x] bop-worker เขียน log ของ Step ลง PostgreSQL ผูกกับ workflow ID + ลำดับ Step + หมายเลข Attempt
 - [x] `GET /workflow-runs/{id}/steps/{index}/logs` คืน log ทุก Attempt เรียงตามเวลา แต่ละบรรทัดมี `attempt`
@@ -14,6 +16,6 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [x] seam A: Step ที่ล้มเหลว 3 Attempt มี log ของทั้ง 3 Attempt
 - [x] log ของ Step อยู่ภายใต้กฎลบเมื่อเกิน 30 วันเดียวกัน
 - [x] golangci-lint ผ่าน
-- [ ] Bruno: log ของ Step ที่ล้มเหลวมีครบ 3 Attempt, ลำดับ Step ที่ไม่มีจริงได้ 404
+- [x] Bruno: log ของ Step ที่ล้มเหลวมีครบ 3 Attempt, ลำดับ Step ที่ไม่มีจริงได้ 404
 - [x] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
-- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)
+- [x] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

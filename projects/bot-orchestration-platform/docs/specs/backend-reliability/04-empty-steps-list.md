@@ -6,11 +6,13 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** None (can start immediately)
 
-**Status:** implemented
+**Status:** done
+
+**Verified:** deploy integration branch (commit 3247052) ขึ้น Mini PC แล้ว `bru run --env minipc` ผ่านทั้งชุด 86 request / 98 test, `bruno/run-with-restart.sh` ผ่าน (after-restart 5/5 + stream ของ log), ตรวจหน้า dashboard ด้วย Playwright — 2026-11-21
 
 - [x] รายละเอียด Workflow Run ที่ยังไม่มี Step จบตอบ `"steps": []`
 - [x] มี test ที่ครอบกรณีนี้
 - [x] golangci-lint ผ่าน
-- [ ] Bruno: อ่าน Workflow Run ทันทีหลังสั่งรัน (ก่อน Step แรกจบ) ได้ `steps` เป็น array
+- [x] Bruno: อ่าน Workflow Run ทันทีหลังสั่งรัน (ก่อน Step แรกจบ) ได้ `steps` เป็น array
 - [x] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
-- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)
+- [x] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

@@ -6,7 +6,9 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** 06 (PostgreSQL และ persistence ของ Job)
 
-**Status:** implemented
+**Status:** done
+
+**Verified:** deploy integration branch (commit 3247052) ขึ้น Mini PC แล้ว `bru run --env minipc` ผ่านทั้งชุด 86 request / 98 test, `bruno/run-with-restart.sh` ผ่าน (after-restart 5/5 + stream ของ log), ตรวจหน้า dashboard ด้วย Playwright — 2026-11-21
 
 - [x] seam A: log ของ Job อ่านได้หลัง restart bop-api ทั้งแบบ REST และ stream
 - [x] งานลบรันวันละครั้งใน bop-api ลบเฉพาะ log line ที่เก่ากว่า 30 วัน ไม่ลบ Job
@@ -15,4 +17,4 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [x] golangci-lint ผ่าน
 - [x] Bruno: `after-restart` ตรวจว่า log ของ Job จากรอบก่อนยังอ่านได้ (การลบเมื่อเกิน 30 วันทดสอบด้วย Go test เพราะ Bruno ย้อนเวลาไม่ได้)
 - [x] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
-- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)
+- [x] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

@@ -6,7 +6,9 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** 01 (Prefactor: Bruno collection ของ seam A)
 
-**Status:** implemented
+**Status:** done
+
+**Verified:** deploy integration branch (commit 3247052) ขึ้น Mini PC แล้ว `bru run --env minipc` ผ่านทั้งชุด 86 request / 98 test, `bruno/run-with-restart.sh` ผ่าน (after-restart 5/5 + stream ของ log), ตรวจหน้า dashboard ด้วย Playwright — 2026-11-21
 
 - [x] ทุก endpoint ข้อมูลตอบ 401 เมื่อไม่มี cookie หรือ token ไม่ถูกต้อง/หมดอายุ
 - [x] `/login`, `/logout`, `/healthz`, `/readyz` และ preflight `OPTIONS` ยังเรียกได้โดยไม่ต้อง login
@@ -15,4 +17,4 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [x] dashboard: ได้ 401 ระหว่างใช้งาน (เช่น session หมดอายุ) แล้วพาไปหน้า login แทนการแสดง error ค้าง
 - [x] Bruno: โฟลเดอร์ทดสอบว่าทุก endpoint ข้อมูลตอบ 401 เมื่อไม่มี session (ส่ง header `Cookie` ว่าง) และ request เดิมทั้งหมดยังผ่านเพราะส่ง cookie อยู่แล้ว
 - [x] golangci-lint, vitest และ eslint ผ่าน
-- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด
+- [x] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด

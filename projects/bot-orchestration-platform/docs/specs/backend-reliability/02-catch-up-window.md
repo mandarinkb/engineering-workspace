@@ -6,15 +6,17 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** 01 (Prefactor: test harness ของ seam A)
 
-**Status:** implemented
+**Status:** done
+
+**Verified:** deploy integration branch (commit 3247052) ขึ้น Mini PC แล้ว `bru run --env minipc` ผ่านทั้งชุด 86 request / 98 test, `bruno/run-with-restart.sh` ผ่าน (after-restart 5/5 + stream ของ log), ตรวจหน้า dashboard ด้วย Playwright — 2026-11-21
 
 - [x] สร้าง/แก้ไข Schedule รับ `catchup_window_seconds` แบบ optional: ไม่ส่ง = 3600, น้อยกว่า 10 = 400 พร้อมข้อความที่ชัด
-- [ ] รายละเอียด Schedule ส่ง `catchup_window_seconds` ที่ตั้งอยู่จริงใน Temporal Schedule กลับมา (พิสูจน์ด้วย seam A)
+- [x] รายละเอียด Schedule ส่ง `catchup_window_seconds` ที่ตั้งอยู่จริงใน Temporal Schedule กลับมา (พิสูจน์ด้วย seam A)
 - [x] แก้ไข Schedule เดิมที่ไม่เคยตั้งค่า ได้ค่า default
 - [x] example Schedule ที่ worker สร้างมี Catch-up Window 1 ชั่วโมง
 - [x] ฟอร์ม Schedule ใน dashboard มีช่อง Catch-up Window (วินาที, ค่าเริ่มต้น 3600) ทั้งสร้างและแก้ไข และหน้ารายละเอียดแสดงค่า
 - [x] Backfill ไม่เปลี่ยนพฤติกรรม
 - [x] golangci-lint, vitest และ eslint ผ่าน
-- [ ] Bruno: สร้าง Schedule โดยไม่ส่งค่าได้ `catchup_window_seconds` = 3600, ส่ง 120 อ่านกลับได้ 120, ส่ง 5 ได้ 400, แก้ไขแล้วค่ายังอยู่
+- [x] Bruno: สร้าง Schedule โดยไม่ส่งค่าได้ `catchup_window_seconds` = 3600, ส่ง 120 อ่านกลับได้ 120, ส่ง 5 ได้ 400, แก้ไขแล้วค่ายังอยู่
 - [x] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
-- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)
+- [x] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)
