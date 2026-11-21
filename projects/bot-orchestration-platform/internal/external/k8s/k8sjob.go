@@ -125,7 +125,7 @@ func (a *JobActivities) RunKubernetesJob(ctx context.Context, spec workflow.K8sJ
 // buildJobObject สร้าง batchv1.Job object จาก workflow.K8sJobSpec — RestartPolicyNever คู่กับ
 // BackoffLimit=0 (ไม่ใช่ OnFailure) เพราะไม่ต้องการให้ K8s พยายามรัน container ซ้ำเองเลย
 // แม้แต่ครั้งเดียวถ้า fail — retry decision ทั้งหมดเป็นหน้าที่ของ Temporal RetryPolicy
-// (nonRetryableErrorTypes ด้านบนไฟล์ internal/external/temporal/workflow.go) แต่ผู้เดียว ถ้าปล่อยให้ K8s Job มี
+// (stepRetryPolicy ใน internal/external/temporal/workflow.go) แต่ผู้เดียว ถ้าปล่อยให้ K8s Job มี
 // BackoffLimit>0 ด้วย จะเกิด retry ซ้อนกัน 2 ชั้น (K8s retry ข้างในหนึ่ง Activity attempt,
 // Temporal retry ทั้ง Activity อีกชั้น) ซึ่ง debug ยากมากว่า "ทำไม job นี้รันไปแล้วกี่รอบ"
 func buildJobObject(name, namespace string, spec workflow.K8sJobSpec) *batchv1.Job {

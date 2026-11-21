@@ -23,7 +23,9 @@ func TestScheduleValidation_RejectsBadRequestsBeforeTouchingTemporal(t *testing.
 		{"missing steps", `{"id":"s1","workflow_name":"wf","steps":[],"spec":{"interval_seconds":60}}`},
 		{"missing spec", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}]}`},
 		{"both interval and cron", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60,"cron_expression":"* * * * *"}}`},
-		{"bad overlap policy", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60},"overlap":"not-a-policy"}`},
+		{"max_attempts zero", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{},"max_attempts":0}],"spec":{"interval_seconds":60}}`},
+		{"max_attempts negative", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{},"max_attempts":-2}],"spec":{"interval_seconds":60}}`},
+		{"bad overlap policy",`{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60},"overlap":"not-a-policy"}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

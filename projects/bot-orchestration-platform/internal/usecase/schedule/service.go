@@ -40,6 +40,9 @@ func (in Input) validate() (schedule.Overlap, error) {
 	if len(in.Steps) == 0 {
 		return "", apperr.Invalid("steps must not be empty")
 	}
+	if err := workflow.ValidateSteps(in.Steps); err != nil {
+		return "", apperr.WrapInvalid(err)
+	}
 	if err := in.Spec.Validate(); err != nil {
 		return "", apperr.WrapInvalid(err)
 	}

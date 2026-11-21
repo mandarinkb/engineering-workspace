@@ -31,3 +31,15 @@ func TestStepClone_DoesNotShareK8sJob(t *testing.T) {
 		t.Errorf("original step changed through clone: %+v %+v", orig, *orig.K8sJob)
 	}
 }
+
+func TestStepClone_DoesNotShareMaxAttempts(t *testing.T) {
+	n := 3
+	orig := workflow.Step{BotName: "b", MaxAttempts: &n}
+
+	cp := orig.Clone()
+	*cp.MaxAttempts = 7
+
+	if *orig.MaxAttempts != 3 {
+		t.Errorf("original MaxAttempts changed through clone: %d", *orig.MaxAttempts)
+	}
+}

@@ -42,6 +42,9 @@ func (s *Service) Start(ctx context.Context, workflowName string, steps []workfl
 	if len(steps) == 0 {
 		return nil, apperr.Invalid("steps must not be empty")
 	}
+	if err := workflow.ValidateSteps(steps); err != nil {
+		return nil, apperr.WrapInvalid(err)
+	}
 
 	workflowID := fmt.Sprintf("%s-%s", workflowName, idgen.New())
 	runID, err := s.engine.Start(ctx, workflowID, workflow.Workflow{Name: workflowName, Steps: steps})

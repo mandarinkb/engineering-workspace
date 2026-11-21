@@ -22,6 +22,9 @@ func TestCreateWorkflowRun_RejectsBadRequestsBeforeTouchingTemporal(t *testing.T
 		{"missing workflow_name", `{"steps":[{"bot_name":"stub-bot","config":{}}]}`},
 		{"missing steps", `{"workflow_name":"wf","steps":[]}`},
 		{"invalid json", `not json`},
+		{"max_attempts zero", `{"workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{},"max_attempts":0}]}`},
+		{"max_attempts negative", `{"workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{},"max_attempts":-1}]}`},
+		{"max_attempts not integer", `{"workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{},"max_attempts":1.5}]}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
