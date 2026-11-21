@@ -75,7 +75,8 @@ export function WorkflowRunTable() {
         <table className="w-full border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-gray-500 dark:border-gray-700">
-              <th className="py-2 pr-4">Workflow ID</th>
+              {/* กว้าง 60% ให้ ID เต็มของ run จาก schedule (ราว 40 ตัวอักษร) ไม่โดนตัดตรงส่วนเวลา ซึ่งเป็นส่วนที่แยกแต่ละ run */}
+              <th className="w-3/5 py-2 pr-4">Workflow ID</th>
               <th className="py-2 pr-4">Status</th>
               <th className="py-2 pr-4">เริ่มเมื่อ</th>
             </tr>
