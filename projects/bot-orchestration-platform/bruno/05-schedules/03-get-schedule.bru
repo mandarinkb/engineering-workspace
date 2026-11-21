@@ -19,6 +19,10 @@ tests {
     expect(s.steps[0].config.url).to.equal("http://bop-api:8080/healthz");
   });
 
+  test("workflow_name เป็นชื่อที่ผู้ใช้ตั้ง ไม่ใช่ workflow type (Execute)", function () {
+    expect(res.getBody().workflow_name).to.equal("bruno-schedule");
+  });
+
   test("Catch-up Window ที่ตั้งอยู่จริงใน Temporal Schedule เป็น 3600", function () {
     expect(res.getBody().catchup_window_seconds).to.equal(3600);
   });

@@ -186,3 +186,45 @@ func TestScheduledSteps_ErrorWhenArgsCannotBeDecoded(t *testing.T) {
 		t.Error("expected an error for an Execute action whose args are not a workflow")
 	}
 }
+
+func TestScheduledWorkflowName(t *testing.T) {
+	tests := []struct {
+		name   string
+		action client.ScheduleAction
+		want   string
+	}{
+		{"name from args", scheduledAction(t, "Execute", wfdomain.Workflow{Name: "check-example-com"}), "check-example-com"},
+		{"empty name falls back to type", scheduledAction(t, "Execute", wfdomain.Workflow{}), "Execute"},
+		{"args not a workflow falls back to type", scheduledAction(t, "Execute", "not a workflow"), "Execute"},
+		{"no args falls back to type", scheduledAction(t, "Execute"), "Execute"},
+		{"other workflow type keeps its type", scheduledAction(t, "SomeoneElsesWorkflow", wfdomain.Workflow{Name: "x"}), "SomeoneElsesWorkflow"},
+		{"not a workflow action", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := scheduledWorkflowName(tt.action); got != tt.want {
+				t.Errorf("scheduledWorkflowName = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// round trip: ชื่อที่อ่านจาก Describe แล้วส่งกลับใน PUT ต้องสร้าง action ที่มี Action ID และ
+// ชื่อใน args เท่าเดิม
+func TestScheduledWorkflowName_RoundTripKeepsActionID(t *testing.T) {
+	original := wfdomain.Workflow{Name: "uiwalk", Steps: []wfdomain.Step{{BotName: "b"}}}
+	payload, err := converter.GetDefaultDataConverter().ToPayload(original)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	described := &client.ScheduleWorkflowAction{ID: "uiwalk", Workflow: "Execute", Args: []interface{}{payload}}
+
+	updated := workflowAction(wfdomain.Workflow{Name: scheduledWorkflowName(described), Steps: original.Steps})
+
+	if updated.ID != "uiwalk" {
+		t.Errorf("action ID = %q, want uiwalk", updated.ID)
+	}
+	if got := updated.Args[0].(wfdomain.Workflow).Name; got != "uiwalk" {
+		t.Errorf("name in args = %q, want uiwalk", got)
+	}
+}

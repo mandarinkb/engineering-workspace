@@ -11,6 +11,8 @@ get {
 }
 
 tests {
+  // workflow_name ของรายการไม่ถูกตรวจ: ListSchedules ของ Temporal ไม่ส่ง action args จึงได้ชื่อ
+  // workflow type ("Execute") ชื่อที่ผู้ใช้ตั้งอ่านได้จาก GET /schedules/{id} เท่านั้น
   test("รายการมี Schedule ที่เพิ่งสร้าง", function () {
     expect(res.getStatus()).to.equal(200);
     expect(res.getBody().map((s) => s.id)).to.include(bru.getVar("scheduleId"));

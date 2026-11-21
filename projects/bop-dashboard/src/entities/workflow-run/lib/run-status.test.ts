@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isFailedRunStatus, normalizeRunStatus } from "./run-status";
+import { isFailedRunStatus, isRunInProgress, normalizeRunStatus } from "./run-status";
 
 describe("normalizeRunStatus", () => {
   it("รับชื่อสั้นที่ backend ส่งมาจริง", () => {
@@ -29,5 +29,23 @@ describe("isFailedRunStatus", () => {
       false,
       false,
     ]);
+  });
+});
+
+describe("isRunInProgress", () => {
+  it("running ต้องดึงข้อมูลซ้ำ ทั้งชื่อสั้นและชื่อ enum ยาว", () => {
+    expect(isRunInProgress("Running")).toBe(true);
+    expect(isRunInProgress("WORKFLOW_EXECUTION_STATUS_RUNNING")).toBe(true);
+  });
+
+  it("สถานะที่จบแล้วทุกแบบไม่ต้องดึงซ้ำ", () => {
+    for (const status of ["Completed", "Failed", "Canceled", "Terminated", "TimedOut", "ContinuedAsNew"]) {
+      expect(isRunInProgress(status), status).toBe(false);
+    }
+  });
+
+  it("สถานะที่ไม่รู้จักหรือยังไม่มีข้อมูลไม่ดึงซ้ำ", () => {
+    expect(isRunInProgress("Unspecified")).toBe(false);
+    expect(isRunInProgress(undefined)).toBe(false);
   });
 });

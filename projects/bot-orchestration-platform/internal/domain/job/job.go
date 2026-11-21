@@ -142,6 +142,12 @@ type Repository interface {
 	Get(ctx context.Context, id string) (*Job, error)
 	// List คืนรายการ job ทั้งหมดในระบบ
 	List(ctx context.Context) ([]*Job, error)
+	// FailInterrupted ตั้ง Job ที่ยัง pending/running ทุกตัวเป็น failed พร้อม error = reason และ
+	// ended_at = now แล้วคืนจำนวนที่แก้ — เรียกตอน bop-api start เท่านั้น (Job ที่ค้างมาจาก process
+	// ก่อนหน้าที่ตายกลางทาง ไม่มี goroutine ไหนเขียนสถานะสุดท้ายให้แล้ว) ถือว่า bop-api รันตัวเดียว
+	// (ดู ARCHITECTURE.md) Job ที่จบแล้วไม่ถูกแตะ memory implementation คืน 0 เพราะข้อมูลหายตอน
+	// restart อยู่แล้ว
+	FailInterrupted(ctx context.Context, reason string, now time.Time) (int, error)
 }
 
 // Executor คือ port ของ "ตัวรัน job เดี่ยว" ที่ usecase ใช้ — ตอนนี้ implement โดย

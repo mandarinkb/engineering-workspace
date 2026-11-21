@@ -1,0 +1,26 @@
+meta {
+  name: Triggered run keeps the schedule's workflow name
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs?schedule_id={{scheduleId}}&page_size=20
+  body: none
+  auth: none
+}
+
+params:query {
+  schedule_id: {{scheduleId}}
+  page_size: 20
+}
+
+tests {
+  // ถ้า PUT ด้วยชื่อที่อ่านจาก GET เปลี่ยน Action ID run นี้จะขึ้นต้นด้วย Execute- แทน
+  test("run ที่ trigger หลัง round trip มี workflow ID ขึ้นต้นด้วยชื่อที่ตั้ง", function () {
+    expect(res.getStatus()).to.equal(200);
+    const runs = res.getBody().runs;
+    expect(runs).to.be.an("array").that.is.not.empty;
+    runs.forEach((r) => expect(r.workflow_id).to.match(/^bruno-schedule-/));
+  });
+}

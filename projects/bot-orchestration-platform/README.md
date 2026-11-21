@@ -99,6 +99,8 @@ go run ./cmd/bop          # HTTP API ที่ :8080 — ให้ dashboard เ
 
 bop-api ลบ log line ที่เก่ากว่า 30 วันทันทีตอน start แล้ววันละครั้ง (Job ไม่ถูกลบ ยังเห็นสถานะและ summary)
 
+**Job ที่ถูกขัดจังหวะโดย restart**: Pool รันอยู่ใน process ของ bop-api ถ้า process ตายตอน Job ยัง pending/running แถวนั้นจะไม่มีใครเขียนสถานะสุดท้ายให้ ตอน start bop-api จึงตั้ง Job เหล่านั้นเป็น `failed` (error `interrupted: bop-api restarted`, มี `ended_at`) ก่อนเปิดรับ request แล้ว log จำนวนที่แก้ (`reconcile interrupted jobs: marked N job(s) as failed`) — ข้อจำกัด: **ต้องรัน bop-api ตัวเดียว** ถ้ามีหลายตัว ตัวที่ start ทีหลังจะทำให้ Job ที่อีกตัวกำลังรันล้มผิดๆ ปิดการกวาดด้วย `BOP_RECONCILE_INTERRUPTED_JOBS=false` (ไม่ตั้ง = เปิด) ใน memory mode ไม่มีอะไรให้กวาด
+
 BOP ใช้ PostgreSQL ตัวเดียวกับ Temporal แต่แยก database `bop` และ user `bop` — compose ที่ root ตั้ง `BOP_DATABASE_URL=postgres://bop:bop@postgresql:5432/bop?sslmode=disable` ให้ทั้ง bop-api และ bop-worker (**รหัสผ่าน `bop` เป็นค่า dev ห้ามใช้ใน production**)
 
 - **volume ใหม่**: init script [`db/init/01-create-bop-database.sql`](db/init/01-create-bop-database.sql) สร้าง database/user ให้เองตอน `compose up` ครั้งแรก

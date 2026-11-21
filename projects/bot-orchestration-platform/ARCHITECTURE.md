@@ -97,6 +97,7 @@ internal/
 
 - `Pool` implement `job.Executor` ด้วย goroutine pool ใน process เดียวกับ HTTP server (จำกัด concurrency, timeout ต่อ job, ยกเลิกกลางทาง)
 - เปลี่ยนสถานะ job ผ่าน method ของ entity (`Start`, `Succeed`, `Fail`, `Cancel`) เท่านั้น ห้ามตั้ง `Status` เอง เพราะกฎการเปลี่ยนสถานะอยู่ใน `domain/job`
+- **รัน `bop-api` ตัวเดียวเท่านั้น** (ข้อจำกัดที่ตัดสินใจแล้ว ticket 14): Pool อยู่ใน process เดียวกับ API ถ้า process ตายกลางทาง Job ที่ pending/running ค้างอยู่ใน database ตอน start `cmd/bop` จึงเรียก `job.Repository.FailInterrupted` ก่อนเปิด HTTP server และก่อน Pool รับงาน ตั้ง Job เหล่านั้นเป็น `failed` (error `interrupted: bop-api restarted`, มี `ended_at`) และ log จำนวนที่แก้ ถ้ารันหลายตัวพร้อมกัน การกวาดของตัวที่ start ทีหลังจะทำให้ Job ที่อีกตัวกำลังรันอยู่ล้มผิดๆ — ต้องตั้ง `BOP_RECONCILE_INTERRUPTED_JOBS=false` (ค่าเริ่มต้นเปิด) หรือเปลี่ยนไปใช้ owner/lease ต่อ Job (ต้องเขียน ADR) CLI mode (`bop run`) ไม่กวาด
 - `Pool.Shutdown(ctx)` หยุดรับ job ใหม่แล้วรอ job ที่ค้างอยู่ให้จบ ถ้า ctx หมดก่อนจะยกเลิก job ที่เหลือ (สถานะ cancelled) `cmd/bop` เรียกหลังปิด HTTP server ตอนได้รับ SIGINT/SIGTERM
 - copy job ด้วย `job.Job.Clone()` ทุกครั้งที่ส่งข้าม goroutine เพราะ `*j` ไม่ได้ copy map `Config`
 
@@ -108,7 +109,7 @@ internal/
 ### `repository`
 
 - implement `Repository` port ของ domain ทุกตัวที่เกี่ยวกับการเก็บข้อมูล
-- implementation ทุกตัวต้อง copy ค่าเข้า-ออกเสมอ ห้ามคืน pointer ที่ map ภายในถืออยู่ (ดูเหตุผลใน `repository/memory/job_repository.go`)
+- implementation ทุกตัวต้อง copy ค่าเข้า-ออกเสมอ ห้ามคืน pointer ที่ map ภายในถืออยู่ (ดูเหตุผลใน `repository/memory/job_repository.go`) — `FailInterrupted` ของ memory คืน 0 เสมอเพราะ Job หายตอน restart อยู่แล้ว
 - PostgreSQL implementation อยู่ที่ `repository/postgres/` (`Connect` เปิด pool ที่ทุก repository/logger ใช้ร่วมกัน, `Migrate` รันเฉพาะใน bop-api) แล้วสลับในขั้นประกอบ dependency ของ `cmd/bop/main.go`
 - contract test ของ `job.Repository` อยู่ที่ `repository/job_repository_test.go` และของ `logger.Logger` อยู่ที่ `repository/logger_test.go` รันชุดเดียวกันกับทุก implementation (ส่วน PostgreSQL รันเมื่อตั้ง `BOP_TEST_DATABASE_URL`)
 - ตาราง `log_lines` มีเจ้าของได้ 2 แบบตาม spec: Job (`job_id`) หรือ Step (`workflow_id` + `step_index` + `attempt`) บังคับด้วย CHECK ให้มีแบบเดียวพอดี — log ของ Step เขียนโดย bop-worker (ไม่รัน migration) แล้ว bop-api อ่านผ่าน `GET /workflow-runs/{id}/steps/{index}/logs`

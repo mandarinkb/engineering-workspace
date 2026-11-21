@@ -1,0 +1,18 @@
+meta {
+  name: Get schedule after round trip
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/schedules/{{scheduleId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("workflow_name เท่าเดิมหลัง PUT ด้วยค่าที่อ่านจาก GET", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().workflow_name).to.equal("bruno-schedule");
+  });
+}
