@@ -9,6 +9,8 @@ export interface CreateScheduleInput {
   steps: ScheduleStep[];
   spec: ScheduleSpecInput;
   overlap?: OverlapPolicy;
+  // ไม่ส่ง = backend ตั้งค่าเริ่มต้น 3600 วินาที
+  catchup_window_seconds?: number;
 }
 
 // useCreateSchedule เรียก POST /schedules — invalidate query "schedules" (list) ให้

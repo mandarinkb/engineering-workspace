@@ -71,6 +71,9 @@ export interface ScheduleAction {
 // internal/schedule/schedule.go ฝั่ง backend
 export interface ScheduleDetail extends ScheduleSummary {
   overlap: OverlapPolicy;
+  // catchup_window_seconds คือ Catch-up Window ที่ตั้งอยู่จริงใน Temporal Schedule — 0 =
+  // Schedule เดิมที่ไม่เคยตั้ง (จะได้ค่าเริ่มต้น 3600 เมื่อถูกแก้ไขครั้งถัดไป)
+  catchup_window_seconds: number;
   steps?: ScheduleStep[];
   recent_actions?: ScheduleAction[];
   created_at?: string;
