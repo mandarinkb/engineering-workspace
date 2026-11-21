@@ -39,7 +39,7 @@ func newCountingTestServer(t *testing.T, counts map[workflow.RunStatusFilter]int
 	auth := authuc.NewService([]byte(testSecret), testUsername, testPassword)
 	srv := apihttp.NewServer(
 		jobuc.NewService(repo, worker.NewPool(1, time.Second, repo, log), log),
-		workflowrunuc.NewService(countingEngine{counts: counts}),
+		workflowrunuc.NewService(countingEngine{counts: counts}, log),
 		scheduleuc.NewService(temporal.NewScheduler(nil)),
 		auth,
 	)

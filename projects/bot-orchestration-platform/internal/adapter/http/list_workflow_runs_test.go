@@ -78,7 +78,7 @@ func TestListWorkflowRuns_FiltersBySchedule(t *testing.T) {
 	auth := authuc.NewService([]byte(testSecret), testUsername, testPassword)
 	srv := apihttp.NewServer(
 		jobuc.NewService(repo, worker.NewPool(1, time.Second, repo, log), log),
-		workflowrunuc.NewService(scheduledRunsEngine{got: &got}),
+		workflowrunuc.NewService(scheduledRunsEngine{got: &got}, log),
 		scheduleuc.NewService(temporal.NewScheduler(nil)),
 		auth,
 	)
