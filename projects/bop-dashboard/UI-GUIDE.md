@@ -190,14 +190,14 @@ log ของ Job เก็บใน PostgreSQL นาน 30 วัน หลั
 
 ## 1.12 Workflow Run detail (`/workflow-runs/{id}`)
 
+หน้านี้ดึงสถานะใหม่ทุก 2 วินาทีขณะ run ยังรันอยู่ และหยุดเมื่อ run จบ (ป้ายสถานะกับ Pipeline เปลี่ยนเอง ไม่ต้อง reload)
+
 | ปุ่ม / ส่วน | หน้าที่ |
 |---|---|
 | ป้ายสถานะ + "เริ่มเมื่อ" | สถานะของ run (running, succeeded, failed, terminated, timed out, cancelled) |
 | **เปิดใน Temporal ↗** | เปิดประวัติ event ของ run นี้ใน Temporal UI ในแท็บใหม่ |
 | **Pipeline** | ผังแนวนอน แต่ละกล่องคือ 1 step (ลำดับ, สถานะ, ชื่อ Bot, summary หรือ error) ถ้ายังรันอยู่จะมีกล่อง "กำลังทำงาน..." ต่อท้าย |
 | **List** | แสดงผลของแต่ละ step เป็นรายการ อ่านง่ายกว่าเมื่อ summary หรือ error ยาว |
-
-> **ข้อควรระวัง (ยังไม่มี ticket):** หน้านี้ไม่ดึงข้อมูลใหม่เอง ถ้าเปิดตอน run ยังรันอยู่ สถานะจะค้างที่ "running" แม้ run จบแล้ว ต้อง reload หน้าเอง (หน้า Job ดึงใหม่ทุก 2 วินาที แต่หน้านี้ไม่) ยังไม่ได้เปิดเป็น ticket
 
 ## 1.13 ช่วงรีเฟรชอัตโนมัติ
 
@@ -206,7 +206,7 @@ log ของ Job เก็บใน PostgreSQL นาน 30 วัน หลั
 | Overview, Jobs, Schedules, Workflow Runs (รายการ) | 10 (หยุดตอนแท็บไม่ได้เปิดอยู่) |
 | Job detail | 2 (เฉพาะตอน Job ยังไม่จบ) |
 | ไฟสถานะระบบใน sidebar | 15 |
-| Workflow Run detail | ไม่รีเฟรช |
+| Workflow Run detail | 2 (เฉพาะตอน run ยังรันอยู่) |
 
 ---
 

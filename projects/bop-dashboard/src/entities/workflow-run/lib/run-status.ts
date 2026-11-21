@@ -36,3 +36,10 @@ export function normalizeRunStatus(raw: string): RunStatus {
 export function isFailedRunStatus(status: RunStatus): boolean {
   return status === "failed" || status === "terminated" || status === "timed_out";
 }
+
+// isRunInProgress บอกว่า run ยังไม่จบ ต้องดึงข้อมูลใหม่ต่อไหม — เฉพาะ running เท่านั้น ส่วน
+// ไม่มีข้อมูล (ยังโหลดอยู่หรือ error) หรือสถานะที่ไม่รู้จัก ไม่ดึงซ้ำ เพราะไม่รู้ว่าจะจบเมื่อไหร่
+// และไม่อยากยิง API วนไม่หยุดเมื่อมีปัญหา
+export function isRunInProgress(status: string | undefined): boolean {
+  return status !== undefined && normalizeRunStatus(status) === "running";
+}
