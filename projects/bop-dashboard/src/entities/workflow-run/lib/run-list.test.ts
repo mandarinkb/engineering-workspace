@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WorkflowRunSummary } from "../model/types";
-import { flattenRunPages, nextRunPageToken, runListPath } from "./run-list";
+import { flattenRunPages, nextRunPageToken, runCountPath, runListPath } from "./run-list";
 
 function run(workflow_id: string, run_id = "r"): WorkflowRunSummary {
   return { workflow_id, run_id, workflow_name: "Execute", status: "Running", started_at: "2026-11-21T03:46:00Z" };
@@ -30,6 +30,17 @@ describe("runListPath", () => {
 
   it("schedule ว่างคือทุก run รวมที่สั่งเอง ไม่ส่ง param", () => {
     expect(runListPath({ scheduleId: "" })).toBe("/workflow-runs");
+  });
+});
+
+describe("runCountPath", () => {
+  it("ไม่ระบุสถานะ = นับทุกสถานะ ไม่ส่ง param", () => {
+    expect(runCountPath()).toBe("/workflow-runs/count");
+    expect(runCountPath("")).toBe("/workflow-runs/count");
+  });
+
+  it("ส่ง status เป็น query string", () => {
+    expect(runCountPath("running")).toBe("/workflow-runs/count?status=running");
   });
 });
 

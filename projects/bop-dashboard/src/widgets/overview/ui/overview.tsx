@@ -5,27 +5,35 @@ import Link from "next/link";
 import { StatCard } from "@/shared/ui";
 import { useJobs } from "@/entities/job";
 import { useSchedules } from "@/entities/schedule";
-import { useWorkflowRunPage, WorkflowStatusBadge } from "@/entities/workflow-run";
+import { useWorkflowRunCount, useWorkflowRunPage, WorkflowStatusBadge } from "@/entities/workflow-run";
 
 import { computeOverviewStats } from "../lib/overview-stats";
 
+// RECENT_FAILED_LIMIT คือจำนวน Workflow Run ที่ล้มเหลวล่าสุดที่แสดงใน panel (ขอเป็น page_size
+// ตรง ๆ ไม่ต้องตัดเองฝั่ง client)
+const RECENT_FAILED_LIMIT = 5;
+
 // Overview คือหน้าแรกของ dashboard — สรุปสถานะจาก /jobs, /schedules และ /workflow-runs
 // ไว้ในหน้าเดียว ใช้ query key เดียวกับหน้าอื่น (useJobs/useSchedules) จึงแชร์ cache กัน
-// กดเข้าไปหน้า Jobs ต่อจะไม่ต้องโหลดใหม่ — workflow run ใช้แค่หน้าแรก (50 ตัวล่าสุด) ตัวเลข
-// "กำลังรัน" และรายการล้มเหลวจึงมาจากหน้านั้นเท่านั้น
+// กดเข้าไปหน้า Jobs ต่อจะไม่ต้องโหลดใหม่ — workflow run นับและกรองฝั่ง server ทั้งคู่ ตัวเลข
+// จึงถูกต้องไม่ว่าจะมี run กี่หน้า: "กำลังรัน" มาจาก GET /workflow-runs/count?status=running
+// และรายการล้มเหลวคือหน้าแรกของ status=failed ขนาด 5 (backend เรียงใหม่สุดก่อนให้แล้ว)
 export function Overview() {
   const jobs = useJobs();
   const schedules = useSchedules();
-  const runs = useWorkflowRunPage();
+  const runningRuns = useWorkflowRunCount("running");
+  const failedRuns = useWorkflowRunPage({ status: "failed", pageSize: RECENT_FAILED_LIMIT });
 
   const failedSources = [
     jobs.isError && "jobs",
     schedules.isError && "schedules",
-    runs.isError && "workflow runs",
+    (runningRuns.isError || failedRuns.isError) && "workflow runs",
   ].filter(Boolean);
-  const loading = jobs.isLoading || schedules.isLoading || runs.isLoading;
+  const loading = jobs.isLoading || schedules.isLoading || runningRuns.isLoading || failedRuns.isLoading;
 
-  const stats = computeOverviewStats(jobs.data ?? [], schedules.data ?? [], runs.data?.runs ?? [], new Date());
+  const stats = computeOverviewStats(jobs.data ?? [], schedules.data ?? [], new Date());
+  const runningRunCount = runningRuns.data?.count ?? 0;
+  const recentFailedRuns = failedRuns.data?.runs ?? [];
   const rate = stats.successRate7dPercent;
 
   return (
@@ -44,7 +52,7 @@ export function Overview() {
           value={loading ? "…" : rate === null ? "-" : `${rate}%`}
           tone={rate === null ? "gray" : rate >= 80 ? "green" : "red"}
         />
-        <StatCard label="Workflow กำลังรัน" value={loading ? "…" : stats.runningRuns} tone={stats.runningRuns > 0 ? "yellow" : "gray"} />
+        <StatCard label="Workflow กำลังรัน" value={loading ? "…" : runningRunCount} tone={runningRunCount > 0 ? "yellow" : "gray"} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -62,10 +70,10 @@ export function Overview() {
         </Panel>
 
         <Panel title="Workflow run ที่ล้มเหลวล่าสุด" moreHref="/workflow-runs">
-          {stats.recentFailedRuns.length === 0 ? (
+          {recentFailedRuns.length === 0 ? (
             <Empty loading={loading}>ไม่มี workflow run ที่ล้มเหลว</Empty>
           ) : (
-            stats.recentFailedRuns.map((run) => (
+            recentFailedRuns.map((run) => (
               <Row key={`${run.workflow_id}/${run.run_id}`} href={`/workflow-runs/${encodeURIComponent(run.workflow_id)}`}>
                 <span className="flex min-w-0 items-center gap-2">
                   <WorkflowStatusBadge status={run.status} />

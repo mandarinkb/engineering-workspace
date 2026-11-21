@@ -110,6 +110,19 @@ func (e *Engine) ListRuns(ctx context.Context, q wfdomain.RunQuery) (wfdomain.Ru
 	}, nil
 }
 
+// CountRuns นับผ่าน CountWorkflowExecutions ของ Visibility API ด้วย visibilityQuery ตัวเดียวกับ
+// ListRuns ตัวเลขจึงตรงกับจำนวนที่ได้จากการเดินหน้า ListRuns ด้วย filter เดียวกันจนหมด
+func (e *Engine) CountRuns(ctx context.Context, status wfdomain.RunStatusFilter) (int64, error) {
+	resp, err := e.c.CountWorkflow(ctx, &workflowservice.CountWorkflowExecutionsRequest{
+		Namespace: Namespace,
+		Query:     visibilityQuery(wfdomain.RunFilter{Status: status}),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return resp.GetCount(), nil
+}
+
 // GetRun ดึงสถานะโดยรวมผ่าน DescribeWorkflowExecution และดึงผลลัพธ์ทีละ step ผ่าน
 // QueryWorkflow เรียก query handler ชื่อ "steps" ที่ประกาศไว้ใน Execute (workflow.go) —
 // ใช้ได้ทั้งตอน workflow ยังรันอยู่และจบไปแล้ว

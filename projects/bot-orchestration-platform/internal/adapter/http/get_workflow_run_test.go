@@ -32,6 +32,10 @@ func (noStepsEngine) ListRuns(context.Context, workflow.RunQuery) (workflow.RunP
 	return workflow.RunPage{}, nil
 }
 
+func (noStepsEngine) CountRuns(context.Context, workflow.RunStatusFilter) (int64, error) {
+	return 0, nil
+}
+
 func (noStepsEngine) GetRun(_ context.Context, id string) (*workflow.RunDetail, error) {
 	return &workflow.RunDetail{
 		RunSummary: workflow.RunSummary{WorkflowID: id, Status: "Running", StartedAt: time.Now()},
