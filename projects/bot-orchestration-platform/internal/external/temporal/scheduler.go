@@ -57,8 +57,9 @@ func (s *Scheduler) Create(ctx context.Context, id string, spec schedule.Spec, p
 	return err
 }
 
-// List ใช้ List() ของ Temporal ตรงๆ (ไม่ยิง Describe ทีละตัวเพิ่ม เพราะ ListSchedules ให้
-// ข้อมูลพอสำหรับหน้า list อยู่แล้ว เร็วกว่ามากถ้ามี schedule จำนวนมาก)
+// List ใช้ List() ของ Temporal ตรงๆ (ไม่ยิง Describe ทีละตัวเพิ่ม เร็วกว่ามากถ้ามี schedule
+// จำนวนมาก) ScheduleListEntry ไม่มี action args มีแค่ WorkflowType จึงได้ชื่อ workflow type
+// ("Execute") ใน workflow_name — ชื่อที่ผู้ใช้ตั้งมีเฉพาะใน Describe (GET /schedules/{id})
 func (s *Scheduler) List(ctx context.Context) ([]schedule.Summary, error) {
 	iter, err := s.c.ScheduleClient().List(ctx, client.ScheduleListOptions{})
 	if err != nil {
@@ -96,15 +97,7 @@ func (s *Scheduler) Describe(ctx context.Context, id string) (*schedule.Detail, 
 		return nil, fmt.Errorf("schedule %s: %w", id, err)
 	}
 
-	// หลัง Describe เสมอ Schedule.Action จะเป็น *client.ScheduleWorkflowAction ที่มี
-	// field Workflow ถูก resolve เป็นชื่อ workflow type (string) แล้ว ไม่ใช่ function
-	// reference แบบตอนสร้าง (ดู comment ของ ScheduleWorkflowAction.Workflow ใน SDK)
-	workflowName := ""
-	if action, ok := desc.Schedule.Action.(*client.ScheduleWorkflowAction); ok {
-		if name, ok := action.Workflow.(string); ok {
-			workflowName = name
-		}
-	}
+	workflowName := scheduledWorkflowName(desc.Schedule.Action)
 
 	overlap := schedule.OverlapSkip
 	var catchupWindow time.Duration
@@ -215,6 +208,35 @@ func scheduledSteps(action client.ScheduleAction) ([]wfdomain.Step, error) {
 		return []wfdomain.Step{}, nil
 	}
 	return wf.Steps, nil
+}
+
+// scheduledWorkflowName คืนชื่อ Workflow ที่ผู้ใช้ตั้งตอนสร้าง (Workflow.Name ใน action args)
+// ไม่ใช่ชื่อ workflow type ซึ่งเป็น "Execute" เสมอ — ถ้าคืน type name ฟอร์มแก้ไขจะได้ "Execute"
+// แล้ว PUT กลับไปเปลี่ยน Action ID ของ Schedule ทุกครั้งที่บันทึก
+//
+// Schedule ที่ไม่ใช่รูปแบบของ BOP (type อื่น, ไม่มี args, ถอดรหัสไม่ได้ หรือชื่อว่าง) ย้อนกลับ
+// ไปใช้ชื่อ workflow type เหมือนเดิม ส่วน Execute ที่ถอดรหัสไม่ได้ scheduledSteps รายงาน
+// error อยู่แล้ว จึงไม่ต้องซ้ำที่นี่
+func scheduledWorkflowName(action client.ScheduleAction) string {
+	wfAction, ok := action.(*client.ScheduleWorkflowAction)
+	if !ok {
+		return ""
+	}
+	// หลัง Describe Workflow ถูก resolve เป็นชื่อ type (string) แล้ว ไม่ใช่ function reference
+	// แบบตอนสร้าง (ดู comment ของ ScheduleWorkflowAction.Workflow ใน SDK)
+	typeName, _ := wfAction.Workflow.(string)
+	if typeName != executeWorkflowType || len(wfAction.Args) == 0 {
+		return typeName
+	}
+	payload, ok := wfAction.Args[0].(*commonpb.Payload)
+	if !ok {
+		return typeName
+	}
+	var wf wfdomain.Workflow
+	if err := converter.GetDefaultDataConverter().FromPayload(payload, &wf); err != nil || wf.Name == "" {
+		return typeName
+	}
+	return wf.Name
 }
 
 // translate แปลง "ไม่เจอ schedule นี้" ของ Temporal เป็น apperr.ErrNotFound (ข้อความเดิม)

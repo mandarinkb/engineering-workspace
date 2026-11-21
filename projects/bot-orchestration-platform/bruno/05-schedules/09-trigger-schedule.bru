@@ -1,13 +1,18 @@
 meta {
   name: Trigger schedule (Run Now)
   type: http
-  seq: 12
+  seq: 14
 }
 
 post {
   url: {{baseUrl}}/schedules/{{scheduleId}}/trigger
   body: none
   auth: none
+}
+
+script:post-response {
+  // รอให้ Temporal เริ่ม run ที่ trigger และ visibility index ทัน ก่อน request ถัดไปตรวจ workflow ID
+  await bru.sleep(3000);
 }
 
 tests {

@@ -10,7 +10,16 @@ get {
   auth: none
 }
 
+script:post-response {
+  // เก็บชื่อที่อ่านได้ไว้ส่งกลับใน PUT ของ request ถัดไป (round trip แบบที่ฟอร์มแก้ไขทำ)
+  bru.setVar("readWorkflowName", res.getBody().workflow_name);
+}
+
 tests {
+  test("workflow_name ยังเป็นชื่อที่ตั้ง ไม่ใช่ Execute หลัง PUT", function () {
+    expect(res.getBody().workflow_name).to.equal("bruno-schedule");
+  });
+
   test("Catch-up Window ที่แก้เป็น 120 ยังอยู่ใน Temporal Schedule", function () {
     expect(res.getStatus()).to.equal(200);
     expect(res.getBody().catchup_window_seconds).to.equal(120);
