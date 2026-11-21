@@ -35,4 +35,8 @@ tests {
     expect(s.interval_seconds).to.equal(3600);
     expect(s.next_action_times).to.be.an("array").that.is.not.empty;
   });
+
+  test("ไม่ส่ง catchup_window_seconds ได้ค่าเริ่มต้น 3600", function () {
+    expect(res.getBody().catchup_window_seconds).to.equal(3600);
+  });
 }

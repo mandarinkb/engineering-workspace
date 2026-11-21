@@ -2,7 +2,9 @@ package http_test
 
 import (
 	"bytes"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -24,6 +26,7 @@ func TestScheduleValidation_RejectsBadRequestsBeforeTouchingTemporal(t *testing.
 		{"missing spec", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}]}`},
 		{"both interval and cron", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60,"cron_expression":"* * * * *"}}`},
 		{"bad overlap policy", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60},"overlap":"not-a-policy"}`},
+		{"catch-up window shorter than 10 seconds", `{"id":"s1","workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60},"catchup_window_seconds":5}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -36,5 +39,32 @@ func TestScheduleValidation_RejectsBadRequestsBeforeTouchingTemporal(t *testing.
 				t.Fatalf("expected 400, got %d", resp.StatusCode)
 			}
 		})
+	}
+}
+
+// TestUpdateSchedule_RejectsShortCatchupWindowBeforeTouchingTemporal ทดสอบว่า PUT
+// ปฏิเสธ Catch-up Window ที่สั้นกว่า 10 วินาทีพร้อมข้อความที่บอกชื่อ field ก่อนแตะ
+// Temporal client (เป็น nil ใน newTestServer)
+func TestUpdateSchedule_RejectsShortCatchupWindowBeforeTouchingTemporal(t *testing.T) {
+	ts := newTestServer(t)
+	body := `{"workflow_name":"wf","steps":[{"bot_name":"stub-bot","config":{}}],"spec":{"interval_seconds":60},"catchup_window_seconds":5}`
+
+	req, err := http.NewRequest(http.MethodPut, ts.URL+"/schedules/s1", bytes.NewBufferString(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT /schedules/s1: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	msg, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(msg), "catchup_window_seconds") {
+		t.Errorf("expected error message to name catchup_window_seconds, got %q", msg)
 	}
 }

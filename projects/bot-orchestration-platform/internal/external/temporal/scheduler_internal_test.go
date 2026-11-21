@@ -84,12 +84,16 @@ func TestOverlapPolicyName_CoversAllKnownValues(t *testing.T) {
 func TestReplaceSchedule_NilStateAndPolicy(t *testing.T) {
 	// schedule ที่ Temporal ส่งมาอาจไม่มี State/Policy — ผลลัพธ์ต้องมีทั้งคู่เสมอ เพราะ SDK
 	// อ่าน State.Note ตรงๆ (เดิม PUT /schedules panic ด้วยเหตุนี้)
-	got := replaceSchedule(client.Schedule{}, client.ScheduleSpec{}, enumspb.SCHEDULE_OVERLAP_POLICY_SKIP, &client.ScheduleWorkflowAction{ID: "wf"})
+	policy := schedule.Policy{Overlap: schedule.OverlapSkip, CatchupWindow: time.Hour}
+	got := replaceSchedule(client.Schedule{}, client.ScheduleSpec{}, policy, &client.ScheduleWorkflowAction{ID: "wf"})
 	if got.State == nil {
 		t.Fatal("expected non-nil State")
 	}
 	if got.Policy == nil || got.Policy.Overlap != enumspb.SCHEDULE_OVERLAP_POLICY_SKIP {
 		t.Fatalf("expected Policy with overlap SKIP, got %+v", got.Policy)
+	}
+	if got.Policy.CatchupWindow != time.Hour {
+		t.Errorf("expected catch-up window 1h, got %v", got.Policy.CatchupWindow)
 	}
 }
 
@@ -98,14 +102,16 @@ func TestReplaceSchedule_KeepsUntouchedFields(t *testing.T) {
 		Action: &client.ScheduleWorkflowAction{ID: "old"},
 		Spec:   &client.ScheduleSpec{CronExpressions: []string{"0 9 * * *"}},
 		Policy: &client.SchedulePolicies{
-			Overlap:       enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
-			CatchupWindow: time.Hour,
+			Overlap:        enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
+			CatchupWindow:  time.Hour,
+			PauseOnFailure: true,
 		},
 		State: &client.ScheduleState{Paused: true, Note: "maintenance"},
 	}
 	spec := client.ScheduleSpec{Intervals: []client.ScheduleIntervalSpec{{Every: 2 * time.Hour}}}
 
-	got := replaceSchedule(current, spec, enumspb.SCHEDULE_OVERLAP_POLICY_BUFFER_ONE, &client.ScheduleWorkflowAction{ID: "new"})
+	policy := schedule.Policy{Overlap: schedule.OverlapBufferOne, CatchupWindow: 2 * time.Minute}
+	got := replaceSchedule(current, spec, policy, &client.ScheduleWorkflowAction{ID: "new"})
 
 	if action, ok := got.Action.(*client.ScheduleWorkflowAction); !ok || action.ID != "new" {
 		t.Errorf("expected new action, got %+v", got.Action)
@@ -116,8 +122,11 @@ func TestReplaceSchedule_KeepsUntouchedFields(t *testing.T) {
 	if got.Policy.Overlap != enumspb.SCHEDULE_OVERLAP_POLICY_BUFFER_ONE {
 		t.Errorf("expected overlap BUFFER_ONE, got %v", got.Policy.Overlap)
 	}
-	if got.Policy.CatchupWindow != time.Hour {
-		t.Errorf("expected catch-up window kept at 1h, got %v", got.Policy.CatchupWindow)
+	if got.Policy.CatchupWindow != 2*time.Minute {
+		t.Errorf("expected catch-up window replaced by 2m, got %v", got.Policy.CatchupWindow)
+	}
+	if !got.Policy.PauseOnFailure {
+		t.Error("expected PauseOnFailure kept")
 	}
 	if !got.State.Paused || got.State.Note != "maintenance" {
 		t.Errorf("expected paused state and note kept, got %+v", got.State)

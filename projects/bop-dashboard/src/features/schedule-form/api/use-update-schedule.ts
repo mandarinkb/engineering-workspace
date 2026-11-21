@@ -8,6 +8,8 @@ export interface UpdateScheduleInput {
   steps: ScheduleStep[];
   spec: ScheduleSpecInput;
   overlap?: OverlapPolicy;
+  // ไม่ส่ง = backend ตั้งค่าเริ่มต้น 3600 วินาที
+  catchup_window_seconds?: number;
 }
 
 // useUpdateSchedule เรียก PUT /schedules/{id} — full replace เสมอ (ไม่ใช่ partial patch

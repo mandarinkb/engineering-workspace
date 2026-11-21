@@ -78,6 +78,35 @@ func ParseOverlap(name string) (Overlap, error) {
 	}
 }
 
+// ค่าของ Catch-up Window — Missed Run ที่เก่ากว่าระยะนี้ถูกข้ามเมื่อระบบกลับมา (กัน
+// Schedule ค้างเพราะไล่รันย้อนหลังหลายเดือน เหตุการณ์จริง "Buffer too large") ส่วน
+// Backfill ไม่ถูกจำกัดด้วยค่านี้
+const (
+	// DefaultCatchupWindow ใช้เมื่อ client ไม่ระบุ
+	DefaultCatchupWindow = time.Hour
+	// MinCatchupWindow คือค่าต่ำสุดที่ Temporal ยอมรับ ต่ำกว่านี้ Temporal ปฏิเสธ Schedule
+	MinCatchupWindow = 10 * time.Second
+)
+
+// ParseCatchupWindow แปลงจำนวนวินาทีที่ client ส่งมาเป็น Catch-up Window — nil (ไม่ระบุ)
+// ได้ DefaultCatchupWindow ส่วนค่าที่สั้นกว่า MinCatchupWindow ถูกปฏิเสธตั้งแต่ต้น แทนที่จะ
+// ปล่อยให้ Temporal ปฏิเสธทีหลังด้วยข้อความที่ operator อ่านไม่เข้าใจ
+func ParseCatchupWindow(seconds *int64) (time.Duration, error) {
+	if seconds == nil {
+		return DefaultCatchupWindow, nil
+	}
+	if *seconds < int64(MinCatchupWindow/time.Second) {
+		return 0, errors.New("catchup_window_seconds ต้องไม่น้อยกว่า 10 วินาที")
+	}
+	return time.Duration(*seconds) * time.Second, nil
+}
+
+// Policy คือกฎการรันของ Schedule ที่ตั้งตอนสร้างและแก้ไข (คู่กับ Spec ที่บอกว่า "เมื่อไหร่")
+type Policy struct {
+	Overlap       Overlap
+	CatchupWindow time.Duration
+}
+
 // Summary คือข้อมูล schedule หนึ่งตัวเท่าที่ engine ให้มาได้จากการ list (ไม่ต้อง describe
 // ทีละตัว)
 type Summary struct {
@@ -101,6 +130,7 @@ type Action struct {
 type Detail struct {
 	Summary
 	Overlap       Overlap
+	CatchupWindow time.Duration
 	Steps         []workflow.Step
 	RecentActions []Action
 	CreatedAt     time.Time
@@ -113,10 +143,10 @@ type Detail struct {
 // error ที่คืนจาก implementation: schedule ไม่มีอยู่ต้องตรงกับ apperr.ErrNotFound และ
 // สร้างซ้ำต้องตรงกับ apperr.ErrConflict
 type Scheduler interface {
-	Create(ctx context.Context, id string, spec Spec, overlap Overlap, wf workflow.Workflow) error
+	Create(ctx context.Context, id string, spec Spec, policy Policy, wf workflow.Workflow) error
 	List(ctx context.Context) ([]Summary, error)
 	Describe(ctx context.Context, id string) (*Detail, error)
-	Update(ctx context.Context, id string, spec Spec, overlap Overlap, wf workflow.Workflow) error
+	Update(ctx context.Context, id string, spec Spec, policy Policy, wf workflow.Workflow) error
 	Delete(ctx context.Context, id string) error
 	Pause(ctx context.Context, id, note string) error
 	Unpause(ctx context.Context, id, note string) error
