@@ -1,8 +1,8 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { apiClient, LIST_REFETCH_INTERVAL_MS } from "@/shared/api";
-import { nextRunPageToken, runListPath } from "../lib/run-list";
-import type { WorkflowRunListParams, WorkflowRunPage } from "../model/types";
+import { nextRunPageToken, runCountPath, runListPath } from "../lib/run-list";
+import type { RunStatusFilter, WorkflowRunCount, WorkflowRunListParams, WorkflowRunPage } from "../model/types";
 
 // GET /workflow-runs query ตรงไปที่ Temporal Visibility API ทีละหน้า (ไม่ได้อ่านจาก database
 // ของ BOP เอง) และกรองสถานะฝั่ง server — query key ทุกตัวขึ้นต้นด้วย "workflow-runs" เพื่อให้
@@ -28,6 +28,16 @@ export function useWorkflowRunPage(params: WorkflowRunListParams = {}) {
   return useQuery({
     queryKey: ["workflow-runs", "page", params],
     queryFn: () => apiClient<WorkflowRunPage>(runListPath(params)),
+    refetchInterval: LIST_REFETCH_INTERVAL_MS,
+  });
+}
+
+// useWorkflowRunCount นับ Workflow Run ตามสถานะฝั่ง server (GET /workflow-runs/count) — ถูกต้อง
+// ไม่ว่าจะมี run กี่หน้า ต่างจากการนับจากหน้าแรกของรายการ
+export function useWorkflowRunCount(status: RunStatusFilter = "") {
+  return useQuery({
+    queryKey: ["workflow-runs", "count", status],
+    queryFn: () => apiClient<WorkflowRunCount>(runCountPath(status)),
     refetchInterval: LIST_REFETCH_INTERVAL_MS,
   });
 }

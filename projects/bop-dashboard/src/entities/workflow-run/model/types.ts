@@ -19,6 +19,11 @@ export interface WorkflowRunPage {
   next_page_token: string;
 }
 
+// WorkflowRunCount คือ response ของ GET /workflow-runs/count
+export interface WorkflowRunCount {
+  count: number;
+}
+
 // RunStatusFilter คือค่า status ที่ GET /workflow-runs กรองฝั่ง server ได้ ("" = ทุกสถานะ)
 // "failed" รวม failed/terminated/timed out ไว้ด้วยกันตั้งแต่ backend
 export type RunStatusFilter = "" | "running" | "completed" | "failed" | "canceled";

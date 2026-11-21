@@ -1,4 +1,4 @@
-import type { WorkflowRunListParams, WorkflowRunPage, WorkflowRunSummary } from "../model/types";
+import type { RunStatusFilter, WorkflowRunListParams, WorkflowRunPage, WorkflowRunSummary } from "../model/types";
 
 // runListPath สร้าง path ของ GET /workflow-runs — page_token เป็น opaque string จาก backend
 // (base64 ของ NextPageToken ของ Temporal) ส่งกลับไปตามเดิมเท่านั้น ห้าม parse
@@ -9,6 +9,12 @@ export function runListPath(params: WorkflowRunListParams, pageToken?: string): 
   if (pageToken) query.set("page_token", pageToken);
   const qs = query.toString();
   return qs ? `/workflow-runs?${qs}` : "/workflow-runs";
+}
+
+// runCountPath สร้าง path ของ GET /workflow-runs/count — backend นับด้วย query สถานะชุดเดียวกับ
+// รายการ ตัวเลขจึงตรงกับจำนวนที่ได้จากการโหลดทุกหน้าด้วย filter เดียวกัน
+export function runCountPath(status: RunStatusFilter = ""): string {
+  return status ? `/workflow-runs/count?status=${encodeURIComponent(status)}` : "/workflow-runs/count";
 }
 
 // nextRunPageToken ใช้เป็น getNextPageParam ของ useInfiniteQuery — undefined = หน้าสุดท้าย
