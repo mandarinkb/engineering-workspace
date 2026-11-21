@@ -26,20 +26,32 @@ type countingEngine struct {
 	noStepsEngine
 
 	counts map[workflow.RunStatusFilter]int64
+	// gotFilter จับ filter ที่ engine ได้รับ เพื่อยืนยันว่า schedule_id ไปถึง engine
+	gotFilter *workflow.RunFilter
 }
 
-func (e countingEngine) CountRuns(_ context.Context, status workflow.RunStatusFilter) (int64, error) {
-	return e.counts[status], nil
+func (e countingEngine) CountRuns(_ context.Context, f workflow.RunFilter) (int64, error) {
+	if e.gotFilter != nil {
+		*e.gotFilter = f
+	}
+	return e.counts[f.Status], nil
 }
 
 func newCountingTestServer(t *testing.T, counts map[workflow.RunStatusFilter]int64) *httptest.Server {
+	t.Helper()
+	return newFilterCapturingCountServer(t, counts, nil)
+}
+
+func newFilterCapturingCountServer(
+	t *testing.T, counts map[workflow.RunStatusFilter]int64, gotFilter *workflow.RunFilter,
+) *httptest.Server {
 	t.Helper()
 	repo := memory.NewJobRepository()
 	log := memlogger.New()
 	auth := authuc.NewService([]byte(testSecret), testUsername, testPassword)
 	srv := apihttp.NewServer(
 		jobuc.NewService(repo, worker.NewPool(1, time.Second, repo, log), log),
-		workflowrunuc.NewService(countingEngine{counts: counts}, log),
+		workflowrunuc.NewService(countingEngine{counts: counts, gotFilter: gotFilter}, log),
 		scheduleuc.NewService(temporal.NewScheduler(nil)),
 		auth,
 	)
@@ -100,5 +112,25 @@ func TestCountWorkflowRuns_RejectsUnknownStatusBeforeTouchingTemporal(t *testing
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+// TestCountWorkflowRuns_PassesScheduleIDToEngine ยืนยันว่า ?schedule_id= ถึง engine พร้อม status
+// เหมือน GET /workflow-runs (ไม่งั้นได้ตัวเลขรวมทุก Schedule แบบเงียบๆ)
+func TestCountWorkflowRuns_PassesScheduleIDToEngine(t *testing.T) {
+	var got workflow.RunFilter
+	ts := newFilterCapturingCountServer(t, map[workflow.RunStatusFilter]int64{workflow.RunStatusFailed: 4}, &got)
+
+	resp, err := http.Get(ts.URL + "/workflow-runs/count?schedule_id=nightly&status=failed")
+	if err != nil {
+		t.Fatalf("GET /workflow-runs/count: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	want := workflow.RunFilter{Status: workflow.RunStatusFailed, ScheduleID: "nightly"}
+	if got != want {
+		t.Errorf("engine filter = %+v, want %+v", got, want)
 	}
 }

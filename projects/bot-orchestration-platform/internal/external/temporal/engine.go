@@ -112,10 +112,10 @@ func (e *Engine) ListRuns(ctx context.Context, q wfdomain.RunQuery) (wfdomain.Ru
 
 // CountRuns นับผ่าน CountWorkflowExecutions ของ Visibility API ด้วย visibilityQuery ตัวเดียวกับ
 // ListRuns ตัวเลขจึงตรงกับจำนวนที่ได้จากการเดินหน้า ListRuns ด้วย filter เดียวกันจนหมด
-func (e *Engine) CountRuns(ctx context.Context, status wfdomain.RunStatusFilter) (int64, error) {
+func (e *Engine) CountRuns(ctx context.Context, filter wfdomain.RunFilter) (int64, error) {
 	resp, err := e.c.CountWorkflow(ctx, &workflowservice.CountWorkflowExecutionsRequest{
 		Namespace: Namespace,
-		Query:     visibilityQuery(wfdomain.RunFilter{Status: status}),
+		Query:     visibilityQuery(filter),
 	})
 	if err != nil {
 		return 0, err
