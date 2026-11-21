@@ -13,4 +13,7 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [ ] seam A: Schedule ที่สร้างตรงผ่าน Temporal client (นอก API) แสดง steps ได้
 - [ ] seam A: steps ยังถูกต้องหลัง restart bop-api
 - [ ] ลบ repository ของ Schedule และ implementation แบบ memory ออก
-- [ ] golangci-lint ผ่าน; deploy ขึ้น Mini PC แล้วหน้ารายละเอียดของ check-example-com-schedule แสดง steps
+- [ ] golangci-lint ผ่าน
+- [ ] Bruno: รายละเอียดของ `check-example-com-schedule` (สร้างโดย worker นอก API) มี steps
+- [ ] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
+- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

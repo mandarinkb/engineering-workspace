@@ -13,4 +13,7 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [ ] ลำดับ Step ที่ไม่มีจริง = 404
 - [ ] seam A: Step ที่ล้มเหลว 3 Attempt มี log ของทั้ง 3 Attempt
 - [ ] log ของ Step อยู่ภายใต้กฎลบเมื่อเกิน 30 วันเดียวกัน
-- [ ] golangci-lint ผ่าน; deploy ขึ้น Mini PC แล้วเรียก endpoint ได้จริง
+- [ ] golangci-lint ผ่าน
+- [ ] Bruno: log ของ Step ที่ล้มเหลวมีครบ 3 Attempt, ลำดับ Step ที่ไม่มีจริงได้ 404
+- [ ] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
+- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

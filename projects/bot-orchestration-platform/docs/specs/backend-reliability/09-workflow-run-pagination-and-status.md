@@ -14,4 +14,7 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [ ] dashboard: หน้า Workflow Runs ใช้ปุ่ม "โหลดเพิ่ม" แทน pager และส่ง filter สถานะไป server
 - [ ] dashboard: auto-refresh ทุก 10 วินาทีไม่ทำให้แถวที่โหลดเพิ่มไว้หายและเห็น run ใหม่
 - [ ] Overview ยังทำงานได้กับ response รูปแบบใหม่
-- [ ] golangci-lint, vitest และ eslint ผ่าน; deploy ขึ้น Mini PC แล้วทดสอบผ่าน browser
+- [ ] golangci-lint, vitest และ eslint ผ่าน
+- [ ] Bruno: แก้ `04-workflow-runs/04-list-runs` ให้รับ response แบบ object, ตรวจ 2 หน้าแรกด้วย `page_size` เล็ก (ไม่เดินทุกหน้า เพราะ Mini PC มี run สะสมหลายพันตัว) ว่าไม่ซ้ำกัน, filter สถานะ, `page_size` เกิน 200 ถูกปัดลง
+- [ ] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
+- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

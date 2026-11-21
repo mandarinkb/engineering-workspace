@@ -6,9 +6,10 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **Blocked by:** None (can start immediately)
 
-**Status:** in-progress — collection ครอบ endpoint ปัจจุบันแล้ว เหลือ bug `PUT /schedules` ที่ทำให้ test ล้ม
+**Status:** done — collection ครอบ endpoint ปัจจุบัน และแก้ bug `PUT /schedules` แล้ว (ยืนยันผ่านครบทั้งชุดตอน orchestrator deploy ครั้งแรก)
 
 - [x] Bruno collection ใน repo ครอบ auth, bots, jobs, workflow runs และ schedules พร้อม environment `minipc` และ `local`
 - [x] login เก็บ cookie แล้วส่งต่อทุก request; ข้อมูลที่สร้างขึ้นต้นด้วย `bruno-` และ Schedule ถูกลบเองตอนจบ
 - [x] README อธิบายการติดตั้งและการรัน
-- [ ] `bru run --env minipc` ผ่านทั้งชุด (ตอนนี้ `PUT /schedules/{id}` ทำ bop-api panic เพราะไม่ส่ง Schedule.State ให้ SDK)
+- [x] แก้ `PUT /schedules/{id}` ที่ทำ bop-api panic (ไม่ส่ง Schedule.State ให้ SDK)
+- [ ] `bru run --env minipc` ผ่านทั้งชุด — ยืนยันตอน orchestrator deploy ครั้งแรก

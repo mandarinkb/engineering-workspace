@@ -12,4 +12,7 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [ ] งานลบรันวันละครั้งใน bop-api ลบเฉพาะ log line ที่เก่ากว่า 30 วัน ไม่ลบ Job
 - [ ] มี test ที่พิสูจน์ว่า log เก่ากว่า 30 วันถูกลบ และ log ใหม่กว่าไม่ถูกลบ
 - [ ] implementation ใหม่เป็นไปตาม interface ของ logger เดิม; ไม่ตั้งฐานข้อมูล = แบบ memory เดิม
-- [ ] golangci-lint ผ่าน; deploy ขึ้น Mini PC แล้วทดสอบ
+- [ ] golangci-lint ผ่าน
+- [ ] Bruno: `after-restart` ตรวจว่า log ของ Job จากรอบก่อนยังอ่านได้ (การลบเมื่อเกิน 30 วันทดสอบด้วย Go test เพราะ Bruno ย้อนเวลาไม่ได้)
+- [ ] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
+- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)

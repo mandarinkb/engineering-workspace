@@ -15,4 +15,7 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 - [ ] compose ที่ root: init script สร้าง database/user `bop` (รหัสผ่าน dev `bop` พร้อมคำเตือนห้ามใช้ production) และตั้ง `BOP_DATABASE_URL` ให้ API และ worker
 - [ ] README มีคำสั่งสร้าง database/user ครั้งเดียวสำหรับ volume เดิม
 - [ ] บน Mini PC: ขออนุญาตผู้ใช้ก่อนรันคำสั่งสร้าง database/user บน volume เดิม
-- [ ] golangci-lint ผ่าน; deploy ขึ้น Mini PC แล้ว Job ยังอยู่หลัง recreate container bop-api
+- [ ] golangci-lint ผ่าน
+- [ ] Bruno: โฟลเดอร์ `after-restart` ที่รันหลัง recreate container bop-api ตรวจว่า Job จากรอบก่อนยังอยู่ พร้อมสคริปต์ที่รันชุดหลัก → recreate bop-api → รัน `after-restart` (Bruno สั่ง restart เองไม่ได้)
+- [ ] เพิ่ม request และ test ของพฤติกรรมใหม่ลงใน Bruno collection (`bruno/`) ตามหลักใน `bruno/README.md` และแก้ test เดิมที่พฤติกรรมเปลี่ยน
+- [ ] orchestrator deploy integration branch แล้ว `bru run --env minipc` ผ่านทั้งชุด (implementer ไม่ deploy และไม่รัน Bruno กับ Mini PC เอง)
