@@ -132,19 +132,14 @@ func (s *Scheduler) Describe(ctx context.Context, id string) (*schedule.Detail, 
 	}, nil
 }
 
-// Update แทนที่ schedule ทั้งก้อน — DoUpdate callback ของ SDK ส่ง input.Description
-// (สถานะปัจจุบัน) มาให้ แต่ไม่อ่านมันเลยโดยตั้งใจ เพราะ full replace ไม่จำเป็นต้องรู้ค่าเดิม
+// Update แทนที่ workflow (steps), ตารางเวลา และ overlap policy ของ schedule — ส่วนอื่นคงค่า
+// เดิมที่ Temporal ส่งมาใน input.Description ดู replaceSchedule
 func (s *Scheduler) Update(ctx context.Context, id string, spec schedule.Spec, overlap schedule.Overlap, wf wfdomain.Workflow) error {
 	sdkSpec := toScheduleSpec(spec)
 	err := s.c.ScheduleClient().GetHandle(ctx, id).Update(ctx, client.ScheduleUpdateOptions{
-		DoUpdate: func(client.ScheduleUpdateInput) (*client.ScheduleUpdate, error) {
-			return &client.ScheduleUpdate{
-				Schedule: &client.Schedule{
-					Action: workflowAction(wf),
-					Spec:   &sdkSpec,
-					Policy: &client.SchedulePolicies{Overlap: overlapPolicyByName[overlap]},
-				},
-			}, nil
+		DoUpdate: func(in client.ScheduleUpdateInput) (*client.ScheduleUpdate, error) {
+			updated := replaceSchedule(in.Description.Schedule, sdkSpec, overlapPolicyByName[overlap], workflowAction(wf))
+			return &client.ScheduleUpdate{Schedule: &updated}, nil
 		},
 	})
 	return translate(err)
@@ -225,6 +220,41 @@ func fromScheduleSpec(spec *client.ScheduleSpec) schedule.Spec {
 // จริงของ Temporal — ค่าว่าง (ไม่ระบุ) map เป็น UNSPECIFIED ซึ่ง Temporal ตีความว่า "ใช้
 // policy default ของ schedule เอง" ตอน trigger/backfill (usecase แปลงค่าว่างเป็น skip ให้
 // แล้วตอนสร้าง/แก้ schedule)
+// replaceSchedule สร้าง schedule ชุดใหม่สำหรับ Update จาก schedule ปัจจุบัน โดยแทนที่แค่
+// action, spec และ overlap policy
+//
+// ต้องเริ่มจากค่าปัจจุบัน ไม่ใช่ client.Schedule เปล่า เพราะ:
+//   - SDK อ่าน schedule.State.Note ตรงๆ ตอนแปลงเป็น protobuf (sdk-go v1.47.0
+//     internal_schedule_client.go) ถ้า State เป็น nil จะ panic — เดิม PUT /schedules ทำ
+//     bop-api panic ทุกครั้งด้วยเหตุนี้ (เจอจาก Bruno collection)
+//   - การแก้ steps หรือตารางเวลาไม่ควรล้างค่าที่ผู้ใช้ไม่ได้แตะ เช่นสถานะ pause, note และ
+//     catch-up window
+func replaceSchedule(
+	current client.Schedule,
+	spec client.ScheduleSpec,
+	overlap enumspb.ScheduleOverlapPolicy,
+	action client.ScheduleAction,
+) client.Schedule {
+	updated := current
+	updated.Action = action
+	updated.Spec = &spec
+
+	var policy client.SchedulePolicies
+	if current.Policy != nil {
+		policy = *current.Policy
+	}
+	policy.Overlap = overlap
+	updated.Policy = &policy
+
+	var state client.ScheduleState
+	if current.State != nil {
+		state = *current.State
+	}
+	updated.State = &state
+
+	return updated
+}
+
 var overlapPolicyByName = map[schedule.Overlap]enumspb.ScheduleOverlapPolicy{
 	schedule.OverlapUnspecified:    enumspb.SCHEDULE_OVERLAP_POLICY_UNSPECIFIED,
 	schedule.OverlapSkip:           enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,

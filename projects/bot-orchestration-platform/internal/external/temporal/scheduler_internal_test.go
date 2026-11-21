@@ -9,6 +9,7 @@ import (
 	"time"
 
 	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/sdk/client"
 
 	"bop/internal/domain/schedule"
 )
@@ -77,5 +78,51 @@ func TestOverlapPolicyName_CoversAllKnownValues(t *testing.T) {
 		if _, ok := overlapPolicyName[policy]; !ok {
 			t.Errorf("overlapPolicyName missing entry for policy %v (name %q)", policy, name)
 		}
+	}
+}
+
+func TestReplaceSchedule_NilStateAndPolicy(t *testing.T) {
+	// schedule ที่ Temporal ส่งมาอาจไม่มี State/Policy — ผลลัพธ์ต้องมีทั้งคู่เสมอ เพราะ SDK
+	// อ่าน State.Note ตรงๆ (เดิม PUT /schedules panic ด้วยเหตุนี้)
+	got := replaceSchedule(client.Schedule{}, client.ScheduleSpec{}, enumspb.SCHEDULE_OVERLAP_POLICY_SKIP, &client.ScheduleWorkflowAction{ID: "wf"})
+	if got.State == nil {
+		t.Fatal("expected non-nil State")
+	}
+	if got.Policy == nil || got.Policy.Overlap != enumspb.SCHEDULE_OVERLAP_POLICY_SKIP {
+		t.Fatalf("expected Policy with overlap SKIP, got %+v", got.Policy)
+	}
+}
+
+func TestReplaceSchedule_KeepsUntouchedFields(t *testing.T) {
+	current := client.Schedule{
+		Action: &client.ScheduleWorkflowAction{ID: "old"},
+		Spec:   &client.ScheduleSpec{CronExpressions: []string{"0 9 * * *"}},
+		Policy: &client.SchedulePolicies{
+			Overlap:       enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,
+			CatchupWindow: time.Hour,
+		},
+		State: &client.ScheduleState{Paused: true, Note: "maintenance"},
+	}
+	spec := client.ScheduleSpec{Intervals: []client.ScheduleIntervalSpec{{Every: 2 * time.Hour}}}
+
+	got := replaceSchedule(current, spec, enumspb.SCHEDULE_OVERLAP_POLICY_BUFFER_ONE, &client.ScheduleWorkflowAction{ID: "new"})
+
+	if action, ok := got.Action.(*client.ScheduleWorkflowAction); !ok || action.ID != "new" {
+		t.Errorf("expected new action, got %+v", got.Action)
+	}
+	if len(got.Spec.Intervals) != 1 || len(got.Spec.CronExpressions) != 0 {
+		t.Errorf("expected spec replaced by the 2h interval, got %+v", got.Spec)
+	}
+	if got.Policy.Overlap != enumspb.SCHEDULE_OVERLAP_POLICY_BUFFER_ONE {
+		t.Errorf("expected overlap BUFFER_ONE, got %v", got.Policy.Overlap)
+	}
+	if got.Policy.CatchupWindow != time.Hour {
+		t.Errorf("expected catch-up window kept at 1h, got %v", got.Policy.CatchupWindow)
+	}
+	if !got.State.Paused || got.State.Note != "maintenance" {
+		t.Errorf("expected paused state and note kept, got %+v", got.State)
+	}
+	if current.Policy.Overlap != enumspb.SCHEDULE_OVERLAP_POLICY_SKIP {
+		t.Error("expected the current schedule's policy not to be mutated")
 	}
 }
