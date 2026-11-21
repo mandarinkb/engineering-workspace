@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"bop/internal/domain/job"
+	"bop/internal/domain/logger"
+	memlogger "bop/internal/pkg/logger"
 	"bop/internal/repository/memory"
 )
 
@@ -31,6 +33,9 @@ func TestOpenDatabase_WithoutURLWarnsAndUsesMemory(t *testing.T) {
 	}
 	if _, ok := newJobRepository(db).(*memory.JobRepository); !ok {
 		t.Error("job repository without database is not the memory implementation")
+	}
+	if _, ok := newLogger(db).(*memlogger.Logger); !ok {
+		t.Error("logger without database is not the memory implementation")
 	}
 	if !strings.Contains(buf.String(), "BOP_DATABASE_URL") {
 		t.Errorf("log = %q, want a warning that mentions BOP_DATABASE_URL", buf.String())
@@ -63,6 +68,20 @@ func TestOpenDatabase_MigratesOnStart(t *testing.T) {
 	}
 	if _, err := repo.Get(ctx, j.ID); err != nil {
 		t.Fatalf("Get after openDatabase: %v", err)
+	}
+
+	// log ของ Job ต้องเก็บลง database เดียวกันได้ทันทีเช่นกัน
+	l := newLogger(db)
+	l.Log(ctx, j.ID, logger.LevelInfo, "stored")
+	lines, err := l.History(ctx, j.ID)
+	if err != nil {
+		t.Fatalf("History after openDatabase: %v", err)
+	}
+	if len(lines) != 1 || lines[0].Message != "stored" {
+		t.Errorf("History = %+v, want the stored line", lines)
+	}
+	if _, ok := l.(logger.Pruner); !ok {
+		t.Error("PostgreSQL logger cannot be pruned by the log retention job")
 	}
 }
 

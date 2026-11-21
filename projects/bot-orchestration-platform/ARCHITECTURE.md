@@ -31,7 +31,7 @@ internal/
     apperr/                ประเภท error กลาง: ErrInvalid, ErrNotFound, ErrConflict
     bot/                   Bot interface, Config, Result, ConfigError
     job/                   Job entity, Repository port, Executor port
-    logger/                Logger port, Line, Level
+    logger/                Logger port, Pruner port, Line, Level
     workflow/              Workflow, Step, StepResult, RunSummary/RunDetail, Engine port
     schedule/              Spec, Overlap, Policy, Detail, Scheduler port (ไม่มี Repository ดู ADR 0001)
 
@@ -40,6 +40,7 @@ internal/
     workflowrun/           สั่งรัน workflow แบบ ad-hoc + ดูสถานะ run + readiness
     schedule/              validate + เรียก scheduler
     auth/                  ตรวจ credential + ออก/ตรวจ token
+    logretention/          งานลบ log ที่เก่ากว่า 30 วัน วันละครั้ง (รันใน bop-api)
 
   adapter/
     http/                  ขาเข้า: HTTP handler แปลง JSON <-> usecase เท่านั้น (1 ไฟล์ต่อ 1 endpoint)
@@ -52,7 +53,7 @@ internal/
 
   repository/              ขาออก: implement Repository port (storage)
     memory/                job repository แบบ in-memory
-    postgres/              job repository บน PostgreSQL + Connect/Migrate (migration ฝังใน binary)
+    postgres/              job repository + logger บน PostgreSQL + Connect/Migrate (migration ฝังใน binary)
 
   pkg/                     library ที่ใช้ร่วมกัน
     jwt/                   JWT HS256 เขียนเอง (ไม่รู้จัก domain)
@@ -72,7 +73,8 @@ internal/
 |---|---|---|
 | `job.Repository` | `domain/job` | `repository/memory.JobRepository`, `repository/postgres.JobRepository` (เลือกตาม `BOP_DATABASE_URL` ใน `cmd/bop`) |
 | `job.Executor` | `domain/job` | `adapter/worker.Pool` |
-| `logger.Logger` | `domain/logger` | `pkg/logger.Logger` |
+| `logger.Logger` | `domain/logger` | `pkg/logger.Logger`, `repository/postgres.Logger` (เลือกตาม `BOP_DATABASE_URL` ใน `cmd/bop`) |
+| `logger.Pruner` | `domain/logger` | `repository/postgres.Logger` (ใช้โดย `usecase/logretention`) |
 | `schedule.Scheduler` | `domain/schedule` | `external/temporal.Scheduler` |
 | `workflow.Engine` | `domain/workflow` | `external/temporal.Engine` |
 | `bot.Bot` | `domain/bot` | `external/bots/httpstatus`, `external/bots/externaljob` |
@@ -107,12 +109,13 @@ internal/
 - implement `Repository` port ของ domain ทุกตัวที่เกี่ยวกับการเก็บข้อมูล
 - implementation ทุกตัวต้อง copy ค่าเข้า-ออกเสมอ ห้ามคืน pointer ที่ map ภายในถืออยู่ (ดูเหตุผลใน `repository/memory/job_repository.go`)
 - PostgreSQL implementation อยู่ที่ `repository/postgres/` (`Connect` เปิด pool ที่ทุก repository/logger ใช้ร่วมกัน, `Migrate` รันเฉพาะใน bop-api) แล้วสลับในขั้นประกอบ dependency ของ `cmd/bop/main.go`
-- contract test ของ `job.Repository` อยู่ที่ `repository/job_repository_test.go` รันชุดเดียวกันกับทุก implementation (ส่วน PostgreSQL รันเมื่อตั้ง `BOP_TEST_DATABASE_URL`)
+- contract test ของ `job.Repository` อยู่ที่ `repository/job_repository_test.go` และของ `logger.Logger` อยู่ที่ `repository/logger_test.go` รันชุดเดียวกันกับทุก implementation (ส่วน PostgreSQL รันเมื่อตั้ง `BOP_TEST_DATABASE_URL`)
+- ตาราง `log_lines` มีเจ้าของได้ 2 แบบตาม spec: Job (`job_id`) หรือ Step (`workflow_id` + `step_index` + `attempt`) บังคับด้วย CHECK ให้มีแบบเดียวพอดี
 
 ### `pkg`
 
 - `jwt` และ `idgen` เป็น library ทั่วไปที่ไม่รู้จัก domain
-- `logger` เป็นข้อยกเว้นที่ import `domain` อยู่ เพราะ implement port ของ domain ถ้าวันหนึ่ง logger ย้ายไปเก็บใน PostgreSQL หรือ OpenSearch ให้สร้าง implementation ใหม่ที่ `repository/` แทน
+- `logger` เป็นข้อยกเว้นที่ import `domain` อยู่ เพราะ implement port ของ domain — implementation บน PostgreSQL อยู่ที่ `repository/postgres` (ถ้าวันหนึ่งย้ายไป OpenSearch ก็สร้างที่ `repository/` เช่นกัน)
 
 ### `cmd` (composition root)
 

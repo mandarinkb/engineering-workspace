@@ -1,0 +1,35 @@
+meta {
+  name: Get job logs from previous run
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/jobs/{{previousJobId}}/logs
+  body: none
+  auth: none
+}
+
+tests {
+  // ถ้าเก็บ log ใน memory รายการจะว่างหลัง recreate container — ผ่านได้เมื่อเก็บใน PostgreSQL เท่านั้น
+  test("log ของ Job จากรอบก่อนยังอ่านได้ครบตั้งแต่เริ่มจนจบ", function () {
+    expect(res.getStatus()).to.equal(200);
+    const lines = res.getBody();
+    expect(lines).to.be.an("array").that.is.not.empty;
+    lines.forEach((l) => expect(l.job_id).to.equal(bru.getVar("previousJobId")));
+    expect(lines[0].message).to.include("job started");
+    expect(lines[lines.length - 1].message).to.include("job succeeded");
+  });
+
+  test("log เรียงตามเวลา", function () {
+    const times = res.getBody().map((l) => Date.parse(l.time));
+    for (let i = 1; i < times.length; i++) {
+      expect(times[i]).to.be.at.least(times[i - 1]);
+    }
+  });
+}
+
+docs {
+  stream (`/jobs/{id}/logs/stream`) ของ Job เดียวกันตรวจใน `run-with-restart.sh` ด้วย curl หลังโฟลเดอร์นี้
+  เพราะ Bruno CLI อ่าน SSE ที่เปิดค้างไม่ได้ (รอจน timeout แล้วไม่มี response ให้ test)
+}
