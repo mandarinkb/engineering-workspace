@@ -1,0 +1,25 @@
+meta {
+  name: Update schedule without session
+  type: http
+  seq: 14
+}
+
+put {
+  url: {{baseUrl}}/schedules/bruno-missing
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: 
+}
+
+body:json {
+  {}
+}
+
+tests {
+  test("ตอบ 401 เมื่อไม่มี session", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

@@ -55,7 +55,11 @@ func getenv(key, fallback string) string {
 // การอนุญาต credentials แบบนี้ "ห้าม" ใช้ Access-Control-Allow-Origin: "*" เด็ดขาด ต้องระบุ
 // origin ที่อนุญาตตรงๆ เท่านั้น) request แบบ OPTIONS (preflight ที่เบราว์เซอร์ส่งมาก่อน
 // request จริงเองอัตโนมัติเวลามี custom header อย่าง Authorization) ตอบ 204 ทันทีโดยไม่ต้อง
-// ส่งต่อให้ mux เลย เพราะไม่มี route ไหนใน routes() รองรับ method OPTIONS ตรงๆ
+// ส่งต่อให้ mux เลย เพราะไม่มี route ไหนใน routes() รองรับ method OPTIONS ตรงๆ (และ
+// เบราว์เซอร์ไม่แนบ cookie ไปกับ preflight จึงต้องตอบก่อนบังคับ login)
+//
+// request อื่นทั้งหมดผ่าน requireSession ก่อนถึง mux — ทุก route ต้องมี session เป็นค่า
+// เริ่มต้น ยกเว้นที่อยู่ใน publicRoutes (ดู require_session.go)
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", dashboardOrigin)
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -63,6 +67,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	r, ok := s.requireSession(w, r)
+	if !ok {
 		return
 	}
 	s.mux.ServeHTTP(w, r)

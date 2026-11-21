@@ -1,0 +1,21 @@
+meta {
+  name: Get workflow run without session
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/bruno-missing
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: 
+}
+
+tests {
+  test("ตอบ 401 เมื่อไม่มี session", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}
