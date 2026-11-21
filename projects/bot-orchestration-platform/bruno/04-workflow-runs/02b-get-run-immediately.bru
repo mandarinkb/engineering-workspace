@@ -1,0 +1,18 @@
+meta {
+  name: Get workflow run (immediately, before any Step finishes)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/workflow-runs/{{workflowId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("steps เป็น array เสมอ แม้ยังไม่มี Step ไหนจบ (ไม่ใช่ null)", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().steps).to.be.an("array");
+  });
+}
