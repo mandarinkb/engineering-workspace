@@ -1,0 +1,21 @@
+meta {
+  name: Healthz without session
+  type: http
+  seq: 21
+}
+
+get {
+  url: {{baseUrl}}/healthz
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: 
+}
+
+tests {
+  test("ตอบ 200 โดยไม่ต้อง login", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+}

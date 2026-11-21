@@ -1,0 +1,21 @@
+meta {
+  name: Unpause schedule without session
+  type: http
+  seq: 17
+}
+
+post {
+  url: {{baseUrl}}/schedules/bruno-missing/unpause
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: 
+}
+
+tests {
+  test("ตอบ 401 เมื่อไม่มี session", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}

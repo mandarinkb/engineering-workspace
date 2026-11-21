@@ -11,7 +11,7 @@ import (
 // TestAuthFlow ทดสอบเส้นทางเต็มของ login: username/password ผิด -> 401, ถูก -> ได้
 // cookie กลับมาแล้ว GET /me ต้องเห็น username เดียวกัน, logout แล้ว /me ต้อง 401 อีกครั้ง
 func TestAuthFlow(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newAnonymousTestServer(t)
 
 	jar, err := cookiejar.New(nil)
 	if err != nil {

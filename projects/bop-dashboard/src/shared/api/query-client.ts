@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "./api-error";
 
@@ -13,8 +13,23 @@ export const LIST_REFETCH_INTERVAL_MS = 10_000;
 // QueryClient ใหม่ทุกครั้งที่ Providers component (src/app/providers/providers.tsx) mount ป้องกันไม่ให้
 // request ของ user คนหนึ่งไปแชร์ cache กับ user อีกคนโดยไม่ตั้งใจตอนรันบน server ที่มีหลาย
 // request พร้อมกัน (ทุก request ควรได้ QueryClient ของตัวเอง)
-export function createQueryClient(): QueryClient {
+//
+// onUnauthorized ถูกเรียกทุกครั้งที่ query หรือ mutation ไหนก็ตามได้ 401 กลับมา — backend
+// บังคับ login กับทุก endpoint ข้อมูล 401 ระหว่างใช้งานจึงแปลว่า session หมดอายุหรือ cookie
+// ใช้ไม่ได้แล้ว Providers ใช้ค่านี้พาไปหน้า login แทนการปล่อยให้แต่ละหน้าแสดง error ค้าง
+export interface CreateQueryClientOptions {
+  onUnauthorized?: () => void;
+}
+
+export function createQueryClient(options: CreateQueryClientOptions = {}): QueryClient {
+  const handleError = (error: unknown) => {
+    if (error instanceof ApiError && error.status === 401) {
+      options.onUnauthorized?.();
+    }
+  };
   return new QueryClient({
+    queryCache: new QueryCache({ onError: handleError }),
+    mutationCache: new MutationCache({ onError: handleError }),
     defaultOptions: {
       queries: {
         // staleTime 30 วินาที: ข้อมูล (เช่น job list) ที่เพิ่งโหลดมาไม่ถึง 30 วินาที
