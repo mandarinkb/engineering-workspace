@@ -4,7 +4,7 @@ Spec: [backend-reliability.md](../backend-reliability.md)
 
 **What to build:** `GET /schedules/{id}` และ `GET /schedules` ส่ง `workflow_name` เป็นชื่อที่ผู้ใช้ตั้งตอนสร้าง (ชื่อที่เก็บอยู่ใน args ของ action ซึ่งถอดรหัสได้อยู่แล้วตาม [ADR 0001](../../adr/0001-temporal-is-source-of-truth-for-schedules.md)) แทนชื่อ workflow type ของ Temporal ซึ่งเป็น `Execute` เสมอ เพื่อให้อ่านแล้วส่งกลับด้วย `PUT` ไม่เปลี่ยนชื่อ
 
-**ที่มา (พบตอน deploy ticket 01-12 บน Mini PC):** อ่าน `check-example-com-schedule` ได้ `workflow_name: "Execute"` แล้วส่งค่านั้นกลับใน `PUT` ผลคือ Action ID ของ workflow ที่ schedule สั่งเปลี่ยนจาก `check-example-com` เป็น `Execute` ทำให้ run ถัดไปมี ID ขึ้นต้นด้วย `Execute-` ฟอร์มแก้ไข Schedule ใน dashboard เติมค่าจาก `GET` เดียวกัน จึงน่าจะเกิดเหตุเดียวกันเมื่อกดบันทึก (ยังไม่ได้ลองกดจริง — ให้พิสูจน์ในขั้นทำ ticket นี้)
+**ที่มา (พบตอน deploy ticket 01-12 บน Mini PC):** อ่าน `check-example-com-schedule` ได้ `workflow_name: "Execute"` แล้วส่งค่านั้นกลับใน `PUT` ผลคือ Action ID ของ workflow ที่ schedule สั่งเปลี่ยนจาก `check-example-com` เป็น `Execute` ทำให้ run ถัดไปมี ID ขึ้นต้นด้วย `Execute-` ฟอร์มแก้ไข Schedule ใน dashboard เติมค่าจาก `GET` เดียวกัน — **ยืนยันแล้วด้วย browser (2026-11-21):** สร้าง Schedule ด้วยชื่อ workflow `uiwalk` แล้วเปิดฟอร์มแก้ไข ช่องชื่อถูกเติมเป็น `Execute` กดบันทึกโดยไม่แก้อะไร Action ID ใน Temporal กลายเป็น `Execute` และ run ถัดไปได้ ID `Execute-…` แทน `uiwalk-…` จึงเกิดกับทุกคนที่เปิดฟอร์มแก้ไขแล้วบันทึกโดยไม่เปลี่ยนชื่อ
 
 **Blocked by:** None (can start immediately)
 
