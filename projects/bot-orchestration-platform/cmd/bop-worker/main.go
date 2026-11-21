@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"bop/internal/domain/bot"
+	"bop/internal/domain/schedule"
 	"bop/internal/domain/workflow"
 	"bop/internal/external/bots/externaljob"
 	"bop/internal/external/bots/httpstatus"
@@ -192,6 +193,9 @@ func ensureExampleSchedule(ctx context.Context, c client.Client) error {
 		Spec: client.ScheduleSpec{
 			Intervals: []client.ScheduleIntervalSpec{{Every: time.Minute}},
 		},
+		// Catch-up Window เดียวกับ Schedule ที่สร้างผ่าน API — เดิมไม่ได้ตั้ง หลังระบบหยุด 3
+		// เดือน Temporal ไล่รัน Missed Run รายนาทีย้อนหลังจน "Buffer too large" แล้ว Schedule ค้าง
+		CatchupWindow: schedule.DefaultCatchupWindow,
 		Action: &client.ScheduleWorkflowAction{
 			ID:        "check-example-com",
 			Workflow:  temporal.Execute,

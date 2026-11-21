@@ -4,6 +4,7 @@ package schedule_test
 
 import (
 	"testing"
+	"time"
 
 	"bop/internal/domain/schedule"
 )
@@ -40,6 +41,38 @@ func TestSpecValidate_RejectsNonPositiveInterval(t *testing.T) {
 	zero := int64(0)
 	if err := (schedule.Spec{IntervalSeconds: &zero}).Validate(); err == nil {
 		t.Fatal("expected error for interval_seconds <= 0")
+	}
+}
+
+func TestParseCatchupWindow(t *testing.T) {
+	seconds := func(n int64) *int64 { return &n }
+	tests := []struct {
+		name string
+		give *int64
+		want time.Duration
+	}{
+		{"not set uses 1 hour default", nil, time.Hour},
+		{"explicit value", seconds(120), 2 * time.Minute},
+		{"minimum 10 seconds", seconds(10), 10 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := schedule.ParseCatchupWindow(tt.give)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("ParseCatchupWindow = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseCatchupWindow_RejectsShorterThan10Seconds(t *testing.T) {
+	for _, give := range []int64{9, 5, 0, -1} {
+		if _, err := schedule.ParseCatchupWindow(&give); err == nil {
+			t.Errorf("ParseCatchupWindow(%d): expected error", give)
+		}
 	}
 }
 

@@ -18,6 +18,9 @@ type createScheduleRequest struct {
 	Steps        []workflow.Step     `json:"steps"`
 	Spec         scheduleSpecRequest `json:"spec"`
 	Overlap      string              `json:"overlap,omitempty"`
+	// CatchupWindowSeconds เป็น pointer เพื่อแยก "ไม่ส่ง" (ได้ค่า default) ออกจาก "ส่ง 0"
+	// (ต้องถูกปฏิเสธ)
+	CatchupWindowSeconds *int64 `json:"catchup_window_seconds,omitempty"`
 }
 
 // handleCreateSchedule สร้าง schedule ใหม่ตาม spec ที่ระบุ — ดูลำดับ "สร้างที่ scheduler
@@ -30,10 +33,11 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	detail, err := s.schedules.Create(r.Context(), req.ID, scheduleuc.Input{
-		WorkflowName: req.WorkflowName,
-		Steps:        req.Steps,
-		Spec:         req.Spec.toDomain(),
-		Overlap:      req.Overlap,
+		WorkflowName:         req.WorkflowName,
+		Steps:                req.Steps,
+		Spec:                 req.Spec.toDomain(),
+		Overlap:              req.Overlap,
+		CatchupWindowSeconds: req.CatchupWindowSeconds,
 	})
 	if err != nil {
 		writeScheduleError(w, err)

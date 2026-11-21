@@ -40,12 +40,13 @@ func workflowAction(wf wfdomain.Workflow) *client.ScheduleWorkflowAction {
 }
 
 // Create สร้าง Temporal Schedule ใหม่ คืน apperr.ErrConflict ถ้า id นี้มีอยู่แล้ว
-func (s *Scheduler) Create(ctx context.Context, id string, spec schedule.Spec, overlap schedule.Overlap, wf wfdomain.Workflow) error {
+func (s *Scheduler) Create(ctx context.Context, id string, spec schedule.Spec, policy schedule.Policy, wf wfdomain.Workflow) error {
 	_, err := s.c.ScheduleClient().Create(ctx, client.ScheduleOptions{
-		ID:      id,
-		Spec:    toScheduleSpec(spec),
-		Overlap: overlapPolicyByName[overlap],
-		Action:  workflowAction(wf),
+		ID:            id,
+		Spec:          toScheduleSpec(spec),
+		Overlap:       overlapPolicyByName[policy.Overlap],
+		CatchupWindow: policy.CatchupWindow,
+		Action:        workflowAction(wf),
 	})
 	if errors.Is(err, sdktemporal.ErrScheduleAlreadyRunning) {
 		return apperr.Conflict("schedule already exists")
@@ -98,8 +99,10 @@ func (s *Scheduler) Describe(ctx context.Context, id string) (*schedule.Detail, 
 	}
 
 	overlap := schedule.OverlapSkip
+	var catchupWindow time.Duration
 	if desc.Schedule.Policy != nil {
 		overlap = overlapPolicyName[desc.Schedule.Policy.Overlap]
+		catchupWindow = desc.Schedule.Policy.CatchupWindow
 	}
 
 	paused, note := false, ""
@@ -127,18 +130,19 @@ func (s *Scheduler) Describe(ctx context.Context, id string) (*schedule.Detail, 
 			NextActionTimes: desc.Info.NextActionTimes,
 		},
 		Overlap:       overlap,
+		CatchupWindow: catchupWindow,
 		RecentActions: actions,
 		CreatedAt:     desc.Info.CreatedAt,
 	}, nil
 }
 
-// Update แทนที่ workflow (steps), ตารางเวลา และ overlap policy ของ schedule — ส่วนอื่นคงค่า
-// เดิมที่ Temporal ส่งมาใน input.Description ดู replaceSchedule
-func (s *Scheduler) Update(ctx context.Context, id string, spec schedule.Spec, overlap schedule.Overlap, wf wfdomain.Workflow) error {
+// Update แทนที่ workflow (steps), ตารางเวลา, overlap policy และ Catch-up Window ของ
+// schedule — ส่วนอื่นคงค่าเดิมที่ Temporal ส่งมาใน input.Description ดู replaceSchedule
+func (s *Scheduler) Update(ctx context.Context, id string, spec schedule.Spec, policy schedule.Policy, wf wfdomain.Workflow) error {
 	sdkSpec := toScheduleSpec(spec)
 	err := s.c.ScheduleClient().GetHandle(ctx, id).Update(ctx, client.ScheduleUpdateOptions{
 		DoUpdate: func(in client.ScheduleUpdateInput) (*client.ScheduleUpdate, error) {
-			updated := replaceSchedule(in.Description.Schedule, sdkSpec, overlapPolicyByName[overlap], workflowAction(wf))
+			updated := replaceSchedule(in.Description.Schedule, sdkSpec, policy, workflowAction(wf))
 			return &client.ScheduleUpdate{Schedule: &updated}, nil
 		},
 	})
@@ -216,35 +220,33 @@ func fromScheduleSpec(spec *client.ScheduleSpec) schedule.Spec {
 	return schedule.Spec{}
 }
 
-// overlapPolicyByName/overlapPolicyName คือ mapping ระหว่าง schedule.Overlap กับ enum ตัว
-// จริงของ Temporal — ค่าว่าง (ไม่ระบุ) map เป็น UNSPECIFIED ซึ่ง Temporal ตีความว่า "ใช้
-// policy default ของ schedule เอง" ตอน trigger/backfill (usecase แปลงค่าว่างเป็น skip ให้
-// แล้วตอนสร้าง/แก้ schedule)
 // replaceSchedule สร้าง schedule ชุดใหม่สำหรับ Update จาก schedule ปัจจุบัน โดยแทนที่แค่
-// action, spec และ overlap policy
+// action, spec, overlap policy และ Catch-up Window (usecase ส่งค่า default มาเสมอถ้า client
+// ไม่ระบุ Schedule เดิมที่ไม่เคยตั้งจึงได้ค่า default ตอนถูกแก้ไขครั้งถัดไป)
 //
 // ต้องเริ่มจากค่าปัจจุบัน ไม่ใช่ client.Schedule เปล่า เพราะ:
 //   - SDK อ่าน schedule.State.Note ตรงๆ ตอนแปลงเป็น protobuf (sdk-go v1.47.0
 //     internal_schedule_client.go) ถ้า State เป็น nil จะ panic — เดิม PUT /schedules ทำ
 //     bop-api panic ทุกครั้งด้วยเหตุนี้ (เจอจาก Bruno collection)
 //   - การแก้ steps หรือตารางเวลาไม่ควรล้างค่าที่ผู้ใช้ไม่ได้แตะ เช่นสถานะ pause, note และ
-//     catch-up window
+//     policy อื่น เช่น PauseOnFailure
 func replaceSchedule(
 	current client.Schedule,
 	spec client.ScheduleSpec,
-	overlap enumspb.ScheduleOverlapPolicy,
+	policy schedule.Policy,
 	action client.ScheduleAction,
 ) client.Schedule {
 	updated := current
 	updated.Action = action
 	updated.Spec = &spec
 
-	var policy client.SchedulePolicies
+	var policies client.SchedulePolicies
 	if current.Policy != nil {
-		policy = *current.Policy
+		policies = *current.Policy
 	}
-	policy.Overlap = overlap
-	updated.Policy = &policy
+	policies.Overlap = overlapPolicyByName[policy.Overlap]
+	policies.CatchupWindow = policy.CatchupWindow
+	updated.Policy = &policies
 
 	var state client.ScheduleState
 	if current.State != nil {
@@ -255,6 +257,10 @@ func replaceSchedule(
 	return updated
 }
 
+// overlapPolicyByName/overlapPolicyName คือ mapping ระหว่าง schedule.Overlap กับ enum ตัว
+// จริงของ Temporal — ค่าว่าง (ไม่ระบุ) map เป็น UNSPECIFIED ซึ่ง Temporal ตีความว่า "ใช้
+// policy default ของ schedule เอง" ตอน trigger/backfill (usecase แปลงค่าว่างเป็น skip ให้
+// แล้วตอนสร้าง/แก้ schedule)
 var overlapPolicyByName = map[schedule.Overlap]enumspb.ScheduleOverlapPolicy{
 	schedule.OverlapUnspecified:    enumspb.SCHEDULE_OVERLAP_POLICY_UNSPECIFIED,
 	schedule.OverlapSkip:           enumspb.SCHEDULE_OVERLAP_POLICY_SKIP,

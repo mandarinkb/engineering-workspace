@@ -32,25 +32,33 @@ type Input struct {
 	Steps        []workflow.Step
 	Spec         schedule.Spec
 	Overlap      string // ชื่อ policy จาก client ค่าว่าง = skip
+	// CatchupWindowSeconds คือ Catch-up Window เป็นวินาที nil = schedule.DefaultCatchupWindow
+	// ใช้ทั้งตอนสร้างและแก้ไข Schedule เดิมที่ไม่เคยตั้งจึงได้ค่า default เมื่อถูกแก้ไข
+	CatchupWindowSeconds *int64
 }
 
-// validate ตรวจ input ตามลำดับเดิมของ API (steps -> spec -> overlap) แล้วคืน overlap ที่
-// แปลงค่าว่างเป็น skip แล้ว — error ทุกตัวเป็น apperr.ErrInvalid
-func (in Input) validate() (schedule.Overlap, error) {
+// validate ตรวจ input ตามลำดับเดิมของ API (steps -> spec -> overlap -> catch-up window)
+// แล้วคืน policy ที่เติมค่า default แล้ว (overlap ว่าง = skip, Catch-up Window ว่าง = 1
+// ชั่วโมง) — error ทุกตัวเป็น apperr.ErrInvalid
+func (in Input) validate() (schedule.Policy, error) {
 	if len(in.Steps) == 0 {
-		return "", apperr.Invalid("steps must not be empty")
+		return schedule.Policy{}, apperr.Invalid("steps must not be empty")
 	}
 	if err := in.Spec.Validate(); err != nil {
-		return "", apperr.WrapInvalid(err)
+		return schedule.Policy{}, apperr.WrapInvalid(err)
 	}
 	overlap, err := schedule.ParseOverlap(in.Overlap)
 	if err != nil {
-		return "", apperr.WrapInvalid(err)
+		return schedule.Policy{}, apperr.WrapInvalid(err)
 	}
 	if overlap == schedule.OverlapUnspecified {
 		overlap = schedule.OverlapSkip
 	}
-	return overlap, nil
+	catchupWindow, err := schedule.ParseCatchupWindow(in.CatchupWindowSeconds)
+	if err != nil {
+		return schedule.Policy{}, apperr.WrapInvalid(err)
+	}
+	return schedule.Policy{Overlap: overlap, CatchupWindow: catchupWindow}, nil
 }
 
 // Create สร้าง schedule ใหม่ที่ scheduler แล้วเก็บ workflow definition ไว้ใน repository
@@ -65,13 +73,13 @@ func (s *Service) Create(ctx context.Context, id string, in Input) (*schedule.De
 	if id == "" {
 		return nil, apperr.Invalid("id is required")
 	}
-	overlap, err := in.validate()
+	policy, err := in.validate()
 	if err != nil {
 		return nil, err
 	}
 
 	wf := workflow.Workflow{Name: in.WorkflowName, Steps: in.Steps}
-	if err := s.scheduler.Create(ctx, id, in.Spec, overlap, wf); err != nil {
+	if err := s.scheduler.Create(ctx, id, in.Spec, policy, wf); err != nil {
 		if errors.Is(err, apperr.ErrConflict) {
 			return nil, err
 		}
@@ -112,13 +120,13 @@ func (s *Service) Get(ctx context.Context, id string) (*schedule.Detail, error) 
 
 // Update แทนที่ schedule ทั้งก้อนด้วยค่าใหม่ (full replace ไม่ใช่ partial patch)
 func (s *Service) Update(ctx context.Context, id string, in Input) (*schedule.Detail, error) {
-	overlap, err := in.validate()
+	policy, err := in.validate()
 	if err != nil {
 		return nil, err
 	}
 
 	wf := workflow.Workflow{Name: in.WorkflowName, Steps: in.Steps}
-	if err := s.scheduler.Update(ctx, id, in.Spec, overlap, wf); err != nil {
+	if err := s.scheduler.Update(ctx, id, in.Spec, policy, wf); err != nil {
 		return nil, err
 	}
 
