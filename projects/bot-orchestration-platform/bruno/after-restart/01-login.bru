@@ -1,0 +1,31 @@
+meta {
+  name: Login after restart
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {"username": "{{username}}", "password": "{{password}}"}
+}
+
+script:post-response {
+  // โฟลเดอร์นี้รันแยกเป็นรอบที่สองหลัง recreate bop-api จึงต้อง login เองใหม่
+  const raw = res.getHeader("set-cookie");
+  const cookies = Array.isArray(raw) ? raw : [raw];
+  const session = cookies.map((c) => String(c).split(";")[0]).find((c) => c.startsWith("bop_session="));
+  if (session) {
+    bru.setVar("session", session.slice("bop_session=".length));
+  }
+}
+
+tests {
+  test("ตอบ 204", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

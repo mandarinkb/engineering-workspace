@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.temporal.io/sdk/client"
 
 	apihttp "bop/internal/adapter/http" // ตั้งชื่อ alias เพราะ package นี้ก็ชื่อ "http" เหมือน net/http
@@ -34,6 +35,7 @@ import (
 	"bop/internal/external/temporal"
 	memlogger "bop/internal/pkg/logger"
 	"bop/internal/repository/memory"
+	"bop/internal/repository/postgres"
 	authuc "bop/internal/usecase/auth"
 	jobuc "bop/internal/usecase/job"
 	scheduleuc "bop/internal/usecase/schedule"
@@ -57,12 +59,19 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// ขั้นตอนที่ 1: สร้าง dependency พื้นฐานทั้งหมด — ตอนนี้ใช้ in-memory implementation
-	// ทั้งคู่ (repository และ logger) เพราะยังไม่ได้ทำ PostgreSQL/OpenSearch จริง
-	// (ดู roadmap Phase 0.4 และ Phase 2.2) การสลับไปใช้ implementation จริงในอนาคต
-	// จะแก้แค่ 2 บรรทัดนี้เท่านั้น โค้ดส่วนอื่นทั้งหมดไม่ต้องแตะเลย เพราะทุกที่อ้างอิง
-	// ผ่าน interface (job.Repository, logger.Logger) ไม่เคยอ้างอิง concrete type ตรงๆ
-	repo := memory.NewJobRepository()
+	// ขั้นตอนที่ 1: สร้าง dependency พื้นฐานทั้งหมด — ตั้ง BOP_DATABASE_URL = เก็บ Job ใน
+	// PostgreSQL (database `bop`) ให้อยู่รอดข้าม restart ไม่ตั้ง = in-memory แบบเดิมพร้อมคำเตือน
+	// (ดู openDatabase) logger ยังเป็น in-memory จนกว่าจะทำ log persistence — ทุกที่อ้างอิงผ่าน
+	// interface (job.Repository, logger.Logger) จึงสลับ implementation ได้ที่นี่ที่เดียว
+	db, err := openDatabase(ctx, os.Getenv("BOP_DATABASE_URL"))
+	if err != nil {
+		return err
+	}
+	if db != nil {
+		// defer ตัวนี้รันหลัง pool.Shutdown ด้านล่าง เพราะ job ที่ถูกยกเลิกตอนปิดยังต้องบันทึกสถานะ
+		defer db.Close()
+	}
+	repo := newJobRepository(db)
 	appLogger := memlogger.New()
 
 	// ขั้นตอนที่ 2: สร้าง worker pool — จำกัดให้รันได้พร้อมกันสูงสุด 4 job และแต่ละ job
@@ -131,6 +140,36 @@ func run() error {
 		return fmt.Errorf("shutdown worker pool: %w", err)
 	}
 	return nil
+}
+
+// openDatabase เตรียม PostgreSQL ของ BOP ตอน start: รัน migration ก่อน (bop-api เป็น process
+// เดียวที่รัน migration — bop-worker แค่ postgres.Connect เพื่อไม่ให้สอง process แข่งกันแก้
+// schema) แล้วเปิด connection pool ที่ repository/logger ทุกตัวใช้ร่วมกัน
+//
+// databaseURL ว่าง = คืน pool เป็น nil พร้อม log เตือน ให้ `go run` แบบไม่มี database ยังใช้ได้
+// (ข้อมูลหายเมื่อ restart) ผู้เรียกต้อง Close pool ที่ได้เอง
+func openDatabase(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	if databaseURL == "" {
+		log.Printf("warning: BOP_DATABASE_URL not set, using in-memory storage (jobs are lost on restart)")
+		return nil, nil
+	}
+	if err := postgres.Migrate(databaseURL); err != nil {
+		return nil, err
+	}
+	db, err := postgres.Connect(ctx, databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("using PostgreSQL job storage")
+	return db, nil
+}
+
+// newJobRepository เลือก implementation ของ job.Repository ตาม pool ที่ openDatabase คืนมา
+func newJobRepository(db *pgxpool.Pool) job.Repository {
+	if db == nil {
+		return memory.NewJobRepository()
+	}
+	return postgres.NewJobRepository(db)
 }
 
 // runCLI คือโหมดสำหรับทดสอบ engine โดยไม่ต้องเปิด server หรือมี UI เลย ใช้แบบนี้:

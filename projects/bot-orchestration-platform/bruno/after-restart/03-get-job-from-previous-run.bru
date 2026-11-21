@@ -1,0 +1,20 @@
+meta {
+  name: Get job from previous run
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/jobs/{{previousJobId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("อ่าน Job จากรอบก่อนได้พร้อมสถานะ succeeded", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().id).to.equal(bru.getVar("previousJobId"));
+    expect(res.getBody().status).to.equal("succeeded");
+    expect(res.getBody().ended_at).to.be.a("string");
+  });
+}
