@@ -345,3 +345,37 @@ func TestLogRetention_DeletesOldStepLines(t *testing.T) {
 		t.Errorf("remaining Step lines = %+v, want only the 29-day-old line", lines)
 	}
 }
+
+// ข้อความที่มี NUL หรือ UTF-8 เสียทำให้ INSERT ลง text column พลาด — Postgres logger ต้องล้างก่อน
+// เก็บ ไม่งั้นบรรทัดหายเงียบๆ (รวมบรรทัด error สุดท้ายของ Failed Step) เลยไม่อยู่ใน contract กลาง
+// เพราะ memory logger ไม่มีข้อจำกัดนี้
+func TestLoggerPostgres_SanitisesNULAndInvalidUTF8(t *testing.T) {
+	url := testDatabaseURL(t)
+	l := postgres.NewLogger(openCleanDatabase(t, url))
+	ctx := context.Background()
+	const dirty = "before\x00mid\xff\xfeafter"
+	const clean = "beforemid�after"
+
+	t.Run("Job line", func(t *testing.T) {
+		l.Log(ctx, "job-a", logger.LevelError, dirty)
+		lines, err := l.History(ctx, "job-a")
+		if err != nil {
+			t.Fatalf("History: %v", err)
+		}
+		if len(lines) != 1 || lines[0].Message != clean {
+			t.Fatalf("History = %+v, want one line %q", lines, clean)
+		}
+	})
+
+	t.Run("Step line", func(t *testing.T) {
+		step := logger.StepAttempt{WorkflowID: "wf-a", StepIndex: 0, Attempt: 1}
+		l.LogStep(ctx, step, logger.LevelError, dirty)
+		lines, err := l.StepHistory(ctx, "wf-a", 0)
+		if err != nil {
+			t.Fatalf("StepHistory: %v", err)
+		}
+		if len(lines) != 1 || lines[0].Message != clean {
+			t.Fatalf("StepHistory = %+v, want one line %q", lines, clean)
+		}
+	})
+}
