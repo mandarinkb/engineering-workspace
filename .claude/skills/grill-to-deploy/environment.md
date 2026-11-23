@@ -6,6 +6,8 @@
 
 รัน Go, lint และ Node ใน container ชั่วคราวบน Mini PC โดยส่งซอร์สผ่าน tar ทาง stdin ไม่คัดลอกไฟล์ลงดิสก์ของ Mini PC ใช้ `golangci-lint` เวอร์ชันเดียวกับ Jenkins (`v2.15.0`)
 
+**ใช้ `verify.sh` ในโฟลเดอร์ของ skill นี้แทนคำสั่งยาวด้านล่าง:** `.claude/skills/grill-to-deploy/verify.sh <go|dashboard|all> [--log DIR]` รวมการรอ container ว่าง, การรัน, และสรุปผลสั้นๆ (ผลเต็มอยู่ใน log) ถือว่าผ่านก็ต่อเมื่อเห็นบรรทัดยืนยันของทุกขั้นเท่านั้น · คำสั่งด้านล่างเก็บไว้เป็นอ้างอิงว่าสคริปต์ทำอะไร · ทดสอบกับ Mini PC แล้ว 2026-11-23 (รัน `all` บน `main` ผ่านทั้งชุด ~5 นาที; ทำไฟล์ Go format ผิดแล้วสคริปต์จับได้และ `golangci-lint fmt --diff` exit 1 เมื่อมีความต่าง) ยังไม่เคยเห็น timeout เกิดจริง · test ที่ใช้ PostgreSQL จริงไม่รวมในสคริปต์
+
 ```bash
 # Go: vet + test + lint + format (จาก root ของ repo)
 (cd projects/bot-orchestration-platform && COPYFILE_DISABLE=1 tar --no-mac-metadata --exclude bruno --exclude docs -cf - .) \
