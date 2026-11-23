@@ -29,7 +29,7 @@
 
 ## การตรวจ (Mac ไม่มี Go และ Docker)
 
-รันทุกอย่างใน container ชั่วคราวบน Mini PC ตามคำสั่งใน `environment.md` ของ skill `grill-to-deploy` (Go + lint + format, dashboard, PostgreSQL ชั่วคราว) ภาระ: หนึ่ง container ต่อครั้ง และรอเมื่อมี container ตรวจงานตั้งแต่ 3 ตัว ลบทุกอย่างที่สร้าง (container, network) แม้ล้ม รวม lint และ test Go ไว้ใน container เดียวได้
+รันด้วย `.claude/skills/grill-to-deploy/verify.sh <go|dashboard|all> --log <โฟลเดอร์ใน scratchpad>` (รอ container ว่างให้เอง สรุปผลสั้นๆ และเก็บผลเต็มใน log รายงานโดยอ้าง path ของ log ไม่แปะผลเต็ม; ผ่านก็ต่อเมื่อสคริปต์พิมพ์ "ผ่านทุกขั้นที่รัน") ส่วน test ที่ใช้ PostgreSQL จริงไม่อยู่ในสคริปต์ ให้ทำตาม `environment.md` · ทุกอย่างรันใน container ชั่วคราวบน Mini PC ตามคำสั่งใน `environment.md` ของ skill `grill-to-deploy` (Go + lint + format, dashboard, PostgreSQL ชั่วคราว) ภาระ: หนึ่ง container ต่อครั้ง และรอเมื่อมี container ตรวจงานตั้งแต่ 3 ตัว ลบทุกอย่างที่สร้าง (container, network) แม้ล้ม รวม lint และ test Go ไว้ใน container เดียวได้
 
 ## กฎเหล็ก
 

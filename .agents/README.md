@@ -9,7 +9,7 @@
 | `.claude/agents/spec-reviewer.md` | ตรวจ change เทียบ ticket ทีละ AC พร้อม `file:line` ไม่แก้โค้ด ใช้เฉพาะ ticket เสี่ยง ticket ปกติให้ lead ตรวจเอง (ดู "ระดับความเสี่ยงและผู้ตรวจโค้ด" ใน `ticket.md`) |
 | `.claude/agents/backend.md` | implement ticket (Go, test-first) เฉพาะโค้ดใน `public/` `private/` `utility/` ไม่แตะ `bruno/` ไม่ commit |
 | `.claude/agents/qa.md` | เขียน Bruno จาก ticket (ไม่ดูโค้ด) ใต้ `bruno/Regression/<Folder>/` และรันเฉพาะโฟลเดอร์นั้นเมื่อสั่ง |
-| `.agents/templates/` | `brief.md`, `evidence.md`, `spec-review.md`, `fix-task.md`, `decision-request.md`, `db-check.md` |
+| `.agents/templates/` | `brief.md`, `digest.md`, `evidence.md`, `spec-review.md`, `fix-task.md`, `decision-request.md`, `db-check.md` |
 
 ## ขั้นตอนทำงานเป็นทีม
 ดู `.agents/workflows/ticket.md` — lead + backend + qa (+ spec-reviewer เฉพาะ ticket เสี่ยง) ทำ implement → Bruno → รัน local → แก้วน → อัปเดต ticket (commit เมื่อผู้ใช้สั่ง)

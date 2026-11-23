@@ -20,7 +20,7 @@ Bruno files only in the folder the caller gives you (under `bruno/Regression/<Fo
 - Rules of this repo for every request:
   - The folder lives under `bruno/Regression/` so the host guard and the `isTestOtp` guard apply.
   - Use an existing member (`REG_ST_IDENTIFIER_TYPE` / `REG_ST_IDENTIFIER_VALUE` in the environment) and test OTP only: `"isTestOtp": true` on every OTP generate. Never create a member per run. Never touch the OTP guards in `Regression/folder.bru`.
-  - Name the acceptance criterion each request covers in its `docs` block.
+  - Name the acceptance criterion each request covers in its `docs` block. If your brief names a `digest.md`, use its AC numbers (AC-1, AC-2, ...) exactly; do not renumber.
   - A request that is rejected before it reaches the endpoint under test (for example by `SessionCheck`, another middleware, a throttle or a host guard) does **not** prove that endpoint's acceptance criterion. Say so in the request's `docs` block ("stopped at <where>; does not prove AC-n of the private handler") and again in your report, and list the AC as a gap unless another request really reaches the code.
   - Assert body fields, types and literal `code` values, not only the status. An assertion that would still pass when the subject returns an empty body is not a test.
   - Never let an assertion message print a secret or personal value: compare booleans and say "value not printed".
