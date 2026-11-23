@@ -4,6 +4,7 @@
 - **Step:** <fill: ขั้นใน `.agents/workflows/ticket.md` เช่น "2 implement", "2 write Bruno", "3 contract", "4 run", "4 review", "5 fix">
 - **Ticket:** <fill: path ของ ticket>
 - **Round:** <fill: รอบที่ ต่อประเด็น>
+- **Digest:** <fill: path ของ `digest.md` ของ ticket นี้ — ใช้เลข AC ตามไฟล์นั้น>
 - **Evidence folder:** <fill: `.scratch/<feature-slug>/reviews/<ticket>/r<n>/`>
 - **Revision / change:** <fill: สิ่งที่ต้องตรวจ เช่น diff เทียบ `git log --oneline -1` ตอนเริ่ม, รายการไฟล์ หรือไฟล์ diff>
 
