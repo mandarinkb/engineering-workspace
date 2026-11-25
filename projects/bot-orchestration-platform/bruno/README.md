@@ -40,3 +40,4 @@ RESTART_CMD="ssh minipc 'cd <โฟลเดอร์ที่ deploy> && /usr/l
 - ข้อมูลที่สร้างขึ้นต้นด้วย `bruno-` Schedule ถูกลบเองตอนจบ ส่วน Job และ Workflow Run ลบผ่าน API ไม่ได้ จึงสะสมบน stack ที่ใช้รัน
 - request ที่ต้องรอให้งาน async จบใช้ `bru.sleep()` ใน pre-request script
 - test เขียนตามพฤติกรรมจริงของ API ตอนนี้ — ถ้าตั้งใจเปลี่ยนพฤติกรรม ให้แก้ test ในรอบเดียวกัน
+- รันโฟลเดอร์ `TemporalUiGateway` กับ gateway ที่พอร์ตอื่นด้วย `--env-var`: `bru run TemporalUiGateway -r --env minipc --env-var gatewayUrl=http://192.168.1.46:18233` (ตรวจด้วย `--reporter-json` ว่า URL ที่ยิงจริงเป็นพอร์ตที่ตั้ง)

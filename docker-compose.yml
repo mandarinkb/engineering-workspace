@@ -81,19 +81,48 @@ services:
     expose:
       - "8080"
 
-  # ด่านหน้า Temporal UI: ให้เฉพาะผู้ที่ login BOP เข้าได้ (ADR 0002)
-  # image pin เวอร์ชันตาม spike; route อยู่ใน docker/temporal-ui-gateway/apisix.yaml
+  # ด่านหน้า Temporal UI: ให้เฉพาะผู้ที่ login BOP เข้าได้ (ADR 0002) route เก็บใน etcd และ seed จาก
+  # docker/temporal-ui-gateway/routes/*.json ด้วย seed.sh ทุกครั้งที่ deploy (ADR 0003)
+  # ต้องตั้ง APISIX_ADMIN_KEY (ไฟล์ ~/Workspace/apisix-admin.env บน Mini PC ส่งด้วย --env-file)
+  # ถ้าไม่ตั้ง gateway จะหยุดและ Temporal UI เปิดไม่ได้ (fail closed ไม่ใช่เปิดโล่ง)
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.21
+    command:
+      - etcd
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+    volumes:
+      - etcd-data:/etcd-data # route ที่แก้ผ่าน dashboard อยู่ที่นี่ ต้องไม่หายเมื่อ recreate
+
   temporal-ui-gateway:
     image: apache/apisix:3.21.0-debian
     restart: on-failure # เป็นทางเข้าเดียวของ Temporal UI ต้องกลับมาเองเมื่อ crash (ตาม bop-api)
     depends_on:
+      - etcd
       - temporal-ui
       - bop-api
+    environment:
+      # ตั้งบน Mini PC นอก repo (ห้าม commit) ถ้าไม่ตั้ง container จะหยุดพร้อมข้อความอธิบาย
+      # ไม่ใช้ ${VAR:?} ระดับ compose เพราะจะทำให้ `up` ของ service อื่นล้มด้วยเมื่อไม่ได้ตั้งตัวแปร
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:-}
     volumes:
-      - ./docker/temporal-ui-gateway/config.yaml:/usr/local/apisix/conf/config.yaml:ro
-      - ./docker/temporal-ui-gateway/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./docker/temporal-ui-gateway/config-etcd.yaml:/config-etcd.template.yaml:ro
+    # แทนค่า key ลง config ตอนเริ่ม แล้วส่งต่อให้ entrypoint เดิมของ image ($$ = $ ของ shell ใน container)
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        if [[ ! "$${APISIX_ADMIN_KEY:-}" =~ ^[A-Za-z0-9]{24,}$$ ]]; then
+          echo "ต้องตั้ง APISIX_ADMIN_KEY เป็นตัวอักษร/ตัวเลข 24 ตัวขึ้นไป" >&2
+          exit 1
+        fi
+        sed "s|__APISIX_ADMIN_KEY__|$${APISIX_ADMIN_KEY}|" /config-etcd.template.yaml > /usr/local/apisix/conf/config.yaml
+        exec /docker-entrypoint.sh docker-start
     ports:
       - "8233:9080" # เปิดดูที่ http://localhost:8233
+      - "127.0.0.1:9180:9180" # Admin API + dashboard เข้าได้จากโฮสต์เท่านั้น (ใช้ ssh -L จากเครื่องอื่น)
 
   bop-api:
     build:
@@ -164,3 +193,4 @@ services:
 
 volumes:
   temporal-postgres:
+  etcd-data:

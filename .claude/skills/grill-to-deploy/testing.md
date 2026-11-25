@@ -7,7 +7,7 @@
 ```bash
 cd projects/bot-orchestration-platform/bruno
 bru run --env minipc                       # ทั้งชุด (CLI: npm i -g @usebruno/cli@4.3.0)
-RESTART_CMD="ssh -o BatchMode=yes minipc 'cd ~/Workspace/engineering-workspace && /usr/libexec/docker/cli-plugins/docker-compose -f docker-compose.yml -f ../bop-lan.override.yml up -d --force-recreate --no-deps bop-api'" ./run-with-restart.sh minipc
+RESTART_CMD="ssh -o BatchMode=yes minipc 'cd ~/Workspace/engineering-workspace && /usr/libexec/docker/cli-plugins/docker-compose --env-file ~/Workspace/apisix-admin.env -f docker-compose.yml -f ../bop-lan.override.yml up -d --force-recreate --no-deps bop-api'" ./run-with-restart.sh minipc
 ```
 
 - ชุดนี้ใช้เวลานาน รันเบื้องหลังแล้วอ่านไฟล์ผลทั้งไฟล์ ดึงรายการที่ล้มด้วย `bru run --reporter-json <ไฟล์>` แล้วอ่านฟิลด์ `error` และ `testResults` ของแต่ละ request

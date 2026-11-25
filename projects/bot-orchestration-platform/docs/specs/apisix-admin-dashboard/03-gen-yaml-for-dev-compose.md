@@ -1,0 +1,17 @@
+# 03: gen-yaml สำหรับชุด dev
+
+Spec: [apisix-admin-dashboard.md](../apisix-admin-dashboard.md) · Decisions ข้อ 1
+
+**What to build:** ชุด dev ของโปรเจกต์ยังใช้ gateway โหมดไฟล์ (`apisix.yaml`) แต่ route ตรวจ session ตอนนี้มีแหล่งจริงเป็นไฟล์ JSON ใน `routes/` งานนี้ทำให้ `apisix.yaml` ถูกสร้างจาก JSON อัตโนมัติ และมีขั้นตรวจว่าไฟล์ที่ commit ตรงกับที่สร้างใหม่ ไม่ให้สองรูปแบบเพี้ยนกัน
+
+**Blocked by:** 01
+
+**Status:** done
+
+**Verified:** 2026-11-25 บน Mini PC, branch `feat/apisix-etcd-gateway` (commit c7ff5de) — ชุด dev ทั้งชุดแยก project `t03dev` (พอร์ต 27233/28233) ด้วย `apisix.yaml` ที่สร้างจาก JSON: ไม่มี cookie → 302 ไป `/login`; login แล้ว `/` และ `/api/v1/namespaces` 200; Playwright 4 ข้อผ่าน (`/api/` 8 คำขอ 2xx); ลบ project/volume/network/ไดเรกทอรีชั่วคราวแล้ว (ตรวจนับ 0)
+
+- [x] `docker/temporal-ui-gateway/gen-yaml.sh`: อ่าน `routes/*.json` เขียน `apisix.yaml` (ลงท้าย `#END`, คอมเมนต์หัวไฟล์ภาษาไทยบอกว่า "สร้างจาก routes/*.json ห้ามแก้ด้วยมือ") Lua ต้องเป็นข้อความเดียวกับใน JSON ทุกตัวอักษร
+- [x] โหมดตรวจ (`gen-yaml.sh --check`): สร้างลงไฟล์ชั่วคราวแล้วเทียบกับ `apisix.yaml` ที่ commit; ต่างกันต้อง exit ≠ 0 และพิมพ์ผลต่าง; test ของสคริปต์: แก้ JSON ไป 1 อักขระต้องล้ม และคืนค่าแล้วต้องผ่าน
+- [x] `apisix.yaml` ที่สร้างใหม่ทำงานเหมือนของเดิม (ถ้า route เดิมไม่เปลี่ยน ผลต่างควรเป็นแค่คอมเมนต์หัวไฟล์) ชุด dev ไม่ต้องแก้ compose
+- [x] README ของ `docker/temporal-ui-gateway/` บอกให้รัน `gen-yaml.sh` หลังแก้ JSON และ `--check` ก่อน commit
+- [x] **ผู้ดำเนินการ:** รันการทดสอบชุด dev แบบแยก project บน Mini PC (วิธีเดียวกับที่ทำกับ ticket 04 ของ spec เดิม: project ชั่วคราว พอร์ตสำรอง ลบหลังจบ ขออนุมัติแผนก่อน) แล้ว `:<พอร์ตสำรอง>` ไม่มี cookie ได้ 302 และ login แล้วเข้า Temporal UI ได้
