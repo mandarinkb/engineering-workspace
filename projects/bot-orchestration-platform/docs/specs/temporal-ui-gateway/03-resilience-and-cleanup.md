@@ -6,7 +6,7 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md)
 
 **Blocked by:** 01
 
-**Status:** needs-decision (ต้องให้ผู้ใช้อนุมัติการหยุด `bop-api` ชั่วคราวบน Mini PC ก่อนทดสอบ fail closed)
+**Status:** ready-for-agent (ผู้ใช้อนุมัติ 2026-11-25 ให้หยุด `bop-api` ชั่วคราวบน Mini PC เพื่อทดสอบ fail closed แล้วเปิดกลับ)
 
 - [ ] ตรวจ `TEMPORAL_CORS_ORIGINS` ของ `temporal-ui` ว่ายังถูกต้องเมื่อเข้าผ่าน gateway ปรับถ้าจำเป็น พร้อมเหตุผล
 - [ ] หลักฐานว่า upstream ไม่เห็น header `Cookie` (เช่น route ทดลองชั่วคราวที่ไม่เข้า production หรือ log ฝั่ง upstream) ลบหลังตรวจ
