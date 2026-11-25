@@ -11,7 +11,9 @@ post {
 }
 
 body:json {
-  {}
+  {
+    "note": "bruno-missing-config"
+  }
 }
 
 script:post-response {
@@ -19,6 +21,8 @@ script:post-response {
 }
 
 tests {
+  // ใส่ note ที่ขึ้นต้น bruno- ไว้ให้ cleanup-test-data.sh (skill grill-to-deploy) จับ Job นี้ได้ตอนล้างข้อมูลทดสอบ
+  // (Job ยังขาด config url เหมือนเดิม จึงล้มด้วยข้อความเดิม)
   // พฤติกรรมปัจจุบัน: API ไม่ตรวจ config ตอนรับ request — รับไว้ (202) แล้ว Job ล้มเหลว
   // ตอนรัน ดู request ถัดไป ถ้าวันหนึ่งเปลี่ยนให้ตอบ 400 ทันที ต้องแก้ test คู่นี้
   test("ตอบ 202 (ยังไม่ตรวจ config ตอนรับ request)", function () {

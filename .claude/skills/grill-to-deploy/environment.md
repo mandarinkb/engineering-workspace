@@ -48,7 +48,7 @@ PostgreSQL ที่มี volume เดิมไม่รัน init script ซ
 
 ## ข้อมูลทดสอบและการลบ
 
-**ใช้ `cleanup-test-data.sh` ในโฟลเดอร์ของ skill นี้แทนคำสั่งมือด้านล่าง:** `./cleanup-test-data.sh` (dry-run นับและแสดงรายการ) แล้ว `./cleanup-test-data.sh --yes` (ลบ Job + log ใน `bop` และ Workflow ใน Temporal ที่ prefix `bruno-`; เพิ่ม prefix ด้วย `--prefix`) มีตัวกันพลาด (ROLLBACK ถ้าจำนวนไม่ตรงที่นับ, ไม่ลบถ้ามี Workflow Running, ผ่านเมื่อนับซ้ำได้ 0) · ทดสอบกับ Mini PC แล้ว 2026-11-25 · **ลบไม่ได้:** Job ที่เคส `01b-get-job-missing-config` สร้าง (config เป็น `{}` ไม่มี prefix ให้จับ) ยังเหลือบน Mini PC ทีละ 1 รายการต่อรอบ · คำสั่งมือด้านล่างเก็บไว้เป็นอ้างอิงว่าสคริปต์ทำอะไร
+**ใช้ `cleanup-test-data.sh` ในโฟลเดอร์ของ skill นี้แทนคำสั่งมือด้านล่าง:** `./cleanup-test-data.sh` (dry-run นับและแสดงรายการ) แล้ว `./cleanup-test-data.sh --yes` (ลบ Job + log ใน `bop` และ Workflow ใน Temporal ที่ prefix `bruno-`; เพิ่ม prefix ด้วย `--prefix`) มีตัวกันพลาด (ROLLBACK ถ้าจำนวนไม่ตรงที่นับ, ไม่ลบถ้ามี Workflow Running, ผ่านเมื่อนับซ้ำได้ 0) · ทดสอบกับ Mini PC แล้ว 2026-11-25 · เคส `03-jobs/01-create-job-invalid` ใส่ `note: bruno-missing-config` ไว้ในบอดี้ให้สคริปต์จับ Job นั้นได้ (ยังขาด `url` เหมือนเดิม) Job ที่เกิดก่อนแก้นี้ (config เป็น `{}` ไม่มี prefix) สคริปต์ลบไม่ได้ ต้องลบด้วย ID ตรงตัว · คำสั่งมือด้านล่างเก็บไว้เป็นอ้างอิงว่าสคริปต์ทำอะไร
 
 Bruno สร้างข้อมูลที่ API ลบไม่ได้ (Job, Workflow Run) ลบเอง ใช้ ID ตรงตัวหรือ prefix ที่ตั้งเอง (`bruno-`, `uiwalk-`) และให้คำสั่งตรวจจำนวนก่อนลบ
 
