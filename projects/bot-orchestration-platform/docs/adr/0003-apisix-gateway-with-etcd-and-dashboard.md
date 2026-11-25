@@ -34,9 +34,13 @@ ADR นี้แทนที่เฉพาะข้อ "โหมดไฟล�
 - การใส่ admin key จาก env ผ่าน entrypoint (sed ลง config ตอนเริ่ม) ใช้ได้ และ key ไม่รั่วใน log
 - `allow_admin: 172.16.0.0/12` พอสำหรับคำขอที่ผ่านพอร์ตที่ publish ของ Docker (เข้าผ่าน tunnel ได้) และจาก LAN ต่อไม่ได้เพราะ bind `127.0.0.1`
 - Lua เก็บเป็น JSON ผ่าน Admin API ใช้ได้ (ผล 302 และ Bruno/Playwright ผ่านเหมือน gateway แบบไฟล์)
+- **etcd ล่ม (ticket 04):** gateway ยังตอบด้วย route ในหน่วยความจำ ไม่ปล่อยผ่าน (ไม่มี cookie → 302, login แล้ว → 200) ทดสอบ 33 วินาที และกลับเป็นปกติเมื่อ etcd กลับมา; route ที่ถูกลบออกจาก etcd ทำให้ `:<พอร์ต>` ตอบ 404 ไม่ใช่เปิดโล่ง
+- **snapshot และ restore (ticket 04):** กู้ route ที่ถูกลบกลับมาได้จริง (image etcd ไม่มี shell จึงต้องกู้ด้วย etcdutl + container ที่มี bash)
+- **drift (ticket 02):** `export.sh`/`seed.sh` อ่านผลจริงของ Admin API ได้ จับ route ใหม่และ plugin ที่เพิ่มใน route ที่ git ดูแลได้ และ seed เขียนทับกลับได้
+- **dashboard (ticket 02):** ใส่ admin key ในหน้า Settings แล้วเห็นรายการ route ได้ผ่าน SSH tunnel
 
 ## ยังไม่พิสูจน์
 
-- dashboard ในตัวของ APISIX 3.21 ทำฟีเจอร์ที่ต้องการเรียนรู้ได้ครบหรือไม่ (ตรวจแล้วเพียงว่า `/ui` ตอบ 200 ticket 02)
-- พฤติกรรมของ gateway เมื่อ etcd ล่มหรือติดต่อไม่ได้ (ticket 04)
-- Docker บน Mac (ไม่มี) ทดสอบได้เฉพาะ Mini PC
+- ฟีเจอร์ของ dashboard ครบแค่ไหนเมื่อสร้าง/แก้ route และ plugin ด้วยปุ่ม (ยังไม่ได้ขับ UI สร้าง/ลบเอง ผู้เรียนจะลองเอง)
+- gateway restart ขณะ etcd ล่ม (คาดว่าขึ้นไม่ได้ = fail closed แต่ยังไม่ได้ทดสอบ) และ etcd ล่มนานกว่า 33 วินาที
+- ย้ายจริงที่ `:8233` (ticket 05) และ Docker บน Mac (ไม่มี)
