@@ -23,13 +23,13 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md) · ADR: [0002](../../a
 
 **Blocked by:** None · ต้องการคำตอบจากผู้ใช้ก่อน: ใช้ทางไหน และ `remote-job-worker` จะรันที่ไหน (เครื่องเดียวกัน หรือเครื่องอื่น)
 
-**Status:** done ยกเว้น 2 เกณฑ์ที่ผู้ใช้ยังไม่ได้ตอบ (ที่รัน `remote-job-worker` และ client อื่นบน Mini PC) ถ้ามี client ที่ต้องต่อจากเครื่องอื่น ให้กลับมาตัดสินใจทางเลือก C หรือ D
+**Status:** done
 
 **Verified:** deploy commit 70b9be9 บน Mini PC, 2026-11-25 — `ss` แสดง `127.0.0.1:7233` เท่านั้น; จาก Mac `nc -vz 192.168.1.46 7233` ได้ Connection refused (ตัวควบคุม `:8233` ต่อได้); บน Mini PC `nc 127.0.0.1 7233` ต่อได้; `/readyz` 200; `bru run --env minipc` 96 request / 112 test ผ่าน; Playwright ผ่าน 9 ข้อ (`/api/` 17 คำขอ 2xx); Schedule `check-example-com` รอบ 00:52 และ 00:53 Completed (`temporal` recreate แล้ว healthy ใน 8 วินาที; `bop-worker` มี WARN poll ล้มชั่วคราวช่วงที่ `temporal` ดับ แล้วต่อกลับเอง ไม่ต้อง restart)
 
 - [x] ผู้ใช้เลือกทาง A (2026-11-25)
-- [ ] ผู้ใช้บอกที่รัน `remote-job-worker` (ถ้ารันเครื่องอื่น ทาง A จะทำให้ต่อไม่ได้ ต้องกลับมาตัดสินใหม่)
-- [ ] ตรวจก่อนแก้ว่าไม่มี client อื่นใช้ `192.168.1.46:7233` อยู่ (เช่นสังเกต `ss` หลายช่วงเวลา หรือถามผู้ใช้เรื่อง `go-temporal`)
+- [x] ผู้ใช้บอกที่รัน `remote-job-worker`: รันบน Mini PC (2026-11-25) โค้ด hardcode `localhost:7233` จึงต่อได้กับ `127.0.0.1:7233` ถ้ารันเป็นโปรเซสบนโฮสต์ (ถ้ารันใน container ที่ไม่ใช้ host network `localhost` จะไม่ใช่โฮสต์ ต้องตั้ง HostPort ใหม่) ขณะตรวจไม่มีโปรเซสนี้รันอยู่
+- [x] ตรวจว่าไม่มี client อื่นบน Mini PC ที่ต้องต่อ `192.168.1.46:7233` (ตรวจ 2026-11-25 หลัง deploy): container ที่รันอยู่ทุกตัวต่อ `temporal:7233` ภายใน network; container เก่า (`temporal-server`, `temporal-ui`, `mysql`, `postgres`) หยุดมา 20 เดือน; โปรเจกต์ `~/Programming/golang/go-temporal` (แก้ล่าสุด 2025-03-14) มี Temporal server ของตัวเองและโค้ดใช้ `client.Dial(client.Options{})` = `localhost:7233` ซึ่งยังใช้ได้กับ 127.0.0.1 และไม่ได้รันอยู่; ไม่มี crontab/systemd/โปรเซสโฮสต์ที่เกี่ยวข้อง; ไม่มีการเชื่อมต่อค้างที่ 7233 **ข้อจำกัด:** ตรวจได้เฉพาะ Mini PC ไม่ได้พิสูจน์ว่าไม่มีเครื่องอื่นในเครือข่ายเคยต่อ (Temporal ไม่ log IP ของ client)
 - [x] แก้ compose ตามทางที่เลือก (ถ้าทาง A: `127.0.0.1:7233:7233` ทั้ง root และชุด dev พร้อมคอมเมนต์ไทยบอกเหตุผล) และอัปเดต README/`REMOTE-JOB-WORKER-TODO.md` ที่พูดถึง `localhost:7233`
 - [x] **ผู้ดำเนินการ:** deploy แล้วจากเครื่องอื่นในเครือข่าย (เช่น Mac) `nc -vz 192.168.1.46 7233` ต้องต่อไม่ได้ (ก่อนแก้ต่อได้) และบน Mini PC เอง `nc -vz 127.0.0.1 7233` ยังต่อได้ (ถ้าทาง A) — ผลจริง: หลัง deploy ต่อไม่ได้ (ไม่ได้ทดสอบก่อนแก้ ส่วน "ก่อนแก้ต่อได้" เป็นความคาดหมายจากการ publish ทุก interface)
 - [x] **ผู้ดำเนินการ:** หลัง deploy `bru run --env minipc` ผ่านทั้งชุด และ log ของ `bop-worker` ไม่มี error ต่อ Temporal (Temporal UI ต่อ `temporal:7233` ภายใน ไม่กระทบ) — หมายเหตุ: log ของ `bop-worker` มี WARN ช่วงที่ `temporal` ดับประมาณ 8 วินาที ไม่มี error หลังกลับมา
