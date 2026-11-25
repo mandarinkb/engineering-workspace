@@ -79,7 +79,7 @@ export function WorkflowRunTable() {
         <div className="table-card">
 <table className="w-full border-collapse text-left text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-gray-600 dark:border-gray-700">
+            <tr className="border-b border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400">
               {/* กว้าง 60% ให้ ID เต็มของ run จาก schedule (ราว 40 ตัวอักษร) ไม่โดนตัดตรงส่วนเวลา ซึ่งเป็นส่วนที่แยกแต่ละ run */}
               <th className="w-3/5 px-4 py-2.5">Workflow ID</th>
               {/* ว่าง = run ที่สั่งเอง แสดงไว้ให้แยก run จาก Schedule กับที่สั่งเองได้ในตารางที่ไม่ได้กรอง */}
