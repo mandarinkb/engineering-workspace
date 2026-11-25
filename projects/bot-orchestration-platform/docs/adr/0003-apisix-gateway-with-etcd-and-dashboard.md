@@ -1,5 +1,7 @@
 # Temporal UI gateway ใช้ APISIX โหมด etcd พร้อม Admin API และ dashboard
 
+> **เลิกใช้แล้ว ([ADR 0004](0004-remove-apisix-gateway.md)):** gateway ถูกถอดออกจากระบบ Temporal UI เปิดตรงที่พอร์ต 8233 โค้ดเดิมเก็บไว้ที่ git tag `archive/apisix-gateway` เอกสารนี้เก็บไว้เป็นประวัติการตัดสินใจ
+
 ADR 0002 ให้ gateway รันแบบ standalone อ่าน route จากไฟล์ `apisix.yaml` (ไม่มี etcd ไม่มี Admin API) เราเปลี่ยนเป็น **โหมด traditional (`config_provider: etcd`)** พร้อม Admin API และ dashboard ในตัว (`enable_admin_ui: true`) บน gateway ตัวจริงที่พอร์ต 8233 เพื่อให้ผู้ใช้เรียนรู้ APISIX ผ่าน dashboard กับ gateway ที่ใช้งานจริง ข้อตัดสินใจเรื่อง "gateway ตรวจ session ด้วย `/me` แล้ว redirect/503" ของ ADR 0002 ยังเหมือนเดิมทุกประการ เปลี่ยนเฉพาะ **วิธีเก็บและแก้ route**
 
 ADR นี้แทนที่เฉพาะข้อ "โหมดไฟล์ ไม่มี etcd" ของ [ADR 0002](0002-temporal-ui-behind-apisix-gateway.md)

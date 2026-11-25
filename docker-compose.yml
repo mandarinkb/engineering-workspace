@@ -42,8 +42,8 @@ services:
       POSTGRES_PWD: temporal
       POSTGRES_SEEDS: postgresql
     ports:
-      # bind แค่ localhost: gRPC ของ Temporal ไม่มีการยืนยันตัวตน ถ้าเปิดทั้งเครือข่ายจะข้าม
-      # temporal-ui-gateway ได้ (ticket 05) bop-api/bop-worker ต่อ temporal:7233 ภายใน network
+      # bind แค่ localhost: gRPC ของ Temporal ไม่มีการยืนยันตัวตน (ticket 05) ไม่ควรเปิดทั้งเครือข่าย
+      # bop-api/bop-worker ต่อ temporal:7233 ภายใน network
       # ของ compose จึงไม่ต้องใช้พอร์ตนี้ มีไว้ให้ client ที่รันบนโฮสต์เดียวกันเท่านั้น
       - "127.0.0.1:7233:7233"
     # image นี้ทำ schema setup (migration ผ่าน postgres) ก่อน แล้วค่อย start temporal-server
@@ -77,52 +77,10 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:3000
-    # ไม่ publish พอร์ตออกนอก network: ทางเข้าเดียวคือ temporal-ui-gateway ที่พอร์ต 8233
-    expose:
-      - "8080"
-
-  # ด่านหน้า Temporal UI: ให้เฉพาะผู้ที่ login BOP เข้าได้ (ADR 0002) route เก็บใน etcd และ seed จาก
-  # docker/temporal-ui-gateway/routes/*.json ด้วย seed.sh ทุกครั้งที่ deploy (ADR 0003)
-  # ต้องตั้ง APISIX_ADMIN_KEY (ไฟล์ ~/Workspace/apisix-admin.env บน Mini PC ส่งด้วย --env-file)
-  # ถ้าไม่ตั้ง gateway จะหยุดและ Temporal UI เปิดไม่ได้ (fail closed ไม่ใช่เปิดโล่ง)
-  etcd:
-    image: quay.io/coreos/etcd:v3.5.21
-    command:
-      - etcd
-      - --name=etcd
-      - --data-dir=/etcd-data
-      - --listen-client-urls=http://0.0.0.0:2379
-      - --advertise-client-urls=http://etcd:2379
-    volumes:
-      - etcd-data:/etcd-data # route ที่แก้ผ่าน dashboard อยู่ที่นี่ ต้องไม่หายเมื่อ recreate
-
-  temporal-ui-gateway:
-    image: apache/apisix:3.21.0-debian
-    restart: on-failure # เป็นทางเข้าเดียวของ Temporal UI ต้องกลับมาเองเมื่อ crash (ตาม bop-api)
-    depends_on:
-      - etcd
-      - temporal-ui
-      - bop-api
-    environment:
-      # ตั้งบน Mini PC นอก repo (ห้าม commit) ถ้าไม่ตั้ง container จะหยุดพร้อมข้อความอธิบาย
-      # ไม่ใช้ ${VAR:?} ระดับ compose เพราะจะทำให้ `up` ของ service อื่นล้มด้วยเมื่อไม่ได้ตั้งตัวแปร
-      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:-}
-    volumes:
-      - ./docker/temporal-ui-gateway/config-etcd.yaml:/config-etcd.template.yaml:ro
-    # แทนค่า key ลง config ตอนเริ่ม แล้วส่งต่อให้ entrypoint เดิมของ image ($$ = $ ของ shell ใน container)
-    entrypoint:
-      - /bin/bash
-      - -c
-      - |
-        if [[ ! "$${APISIX_ADMIN_KEY:-}" =~ ^[A-Za-z0-9]{24,}$$ ]]; then
-          echo "ต้องตั้ง APISIX_ADMIN_KEY เป็นตัวอักษร/ตัวเลข 24 ตัวขึ้นไป" >&2
-          exit 1
-        fi
-        sed "s|__APISIX_ADMIN_KEY__|$${APISIX_ADMIN_KEY}|" /config-etcd.template.yaml > /usr/local/apisix/conf/config.yaml
-        exec /docker-entrypoint.sh docker-start
+    # เปิดพอร์ต 8233 ตรงๆ ไม่มีด่านตรวจ login (ADR 0004) ใครในเครือข่ายเข้าได้และสั่ง
+    # Terminate/Delete workflow ได้ ใช้ได้เฉพาะเครือข่ายที่ไว้ใจเท่านั้น
     ports:
-      - "8233:9080" # เปิดดูที่ http://localhost:8233
-      - "127.0.0.1:9180:9180" # Admin API + dashboard เข้าได้จากโฮสต์เท่านั้น (ใช้ ssh -L จากเครื่องอื่น)
+      - "8233:8080"
 
   bop-api:
     build:
@@ -193,4 +151,3 @@ services:
 
 volumes:
   temporal-postgres:
-  etcd-data:

@@ -1,5 +1,7 @@
 # Spec: เปิด Temporal UI ได้เฉพาะผ่านผู้ใช้ที่ login BOP (Temporal UI gateway)
 
+> **เลิกใช้แล้ว ([ADR 0004](../adr/0004-remove-apisix-gateway.md)):** spec นี้เก็บไว้เป็นประวัติ ไฟล์ที่อ้างถึงอยู่ที่ git tag `archive/apisix-gateway`
+
 > สถานะ: implemented และ deploy บน Mini PC แล้ว (2026-11-25) · ศัพท์ตาม [GLOSSARY.md](../../GLOSSARY.md) · การตัดสินใจ: [ADR 0002](../adr/0002-temporal-ui-behind-apisix-gateway.md)
 
 ## Problem Statement
