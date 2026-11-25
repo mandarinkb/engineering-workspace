@@ -1,5 +1,7 @@
 # เปิด Temporal UI ได้เฉพาะผ่าน gateway ที่ตรวจ session ของ BOP
 
+> **เลิกใช้แล้ว ([ADR 0004](0004-remove-apisix-gateway.md)):** gateway ถูกถอดออกจากระบบ Temporal UI เปิดตรงที่พอร์ต 8233 โค้ดเดิมเก็บไว้ที่ git tag `archive/apisix-gateway` เอกสารนี้เก็บไว้เป็นประวัติการตัดสินใจ
+
 > **ถูกแทนที่บางส่วนโดย [ADR 0003](0003-apisix-gateway-with-etcd-and-dashboard.md):** ส่วน "APISIX standalone โหมดไฟล์ ไม่มี etcd/Admin API" เปลี่ยนเป็นโหมด etcd + dashboard ส่วนที่เหลือ (ตรวจ `/me`, redirect, ตัด Cookie, fail closed) ยังใช้ตามเดิม
 
 Temporal UI (พอร์ต 8233) เดิมเปิดได้ทุกคนในเครือข่ายโดยไม่ต้อง login เราวาง **Temporal UI gateway** ด้วย APISIX ไว้หน้า `temporal-ui` ให้ gateway ถาม `bop-api` `GET /me` พร้อม cookie `bop_session` ทุกคำขอ: ผ่านเมื่อได้ 200, ไม่ผ่านพาไป `http://<host>:3000/login` และถ้าถาม `/me` ไม่ได้ให้ปิด (ไม่ปล่อยผ่าน) ลิงก์ใน nav-bar ของ dashboard ยังชี้พอร์ต 8233 เดิม

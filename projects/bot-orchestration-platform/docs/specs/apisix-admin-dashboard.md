@@ -1,5 +1,7 @@
 # Spec: Temporal UI gateway แบบ etcd + Admin API + dashboard
 
+> **เลิกใช้แล้ว ([ADR 0004](../adr/0004-remove-apisix-gateway.md)):** spec นี้เก็บไว้เป็นประวัติ ไฟล์ที่อ้างถึงอยู่ที่ git tag `archive/apisix-gateway`
+
 > สถานะ: implemented และ deploy บน Mini PC แล้ว (2026-11-25) · ศัพท์ตาม [GLOSSARY.md](../../GLOSSARY.md) · การตัดสินใจ: [ADR 0003](../adr/0003-apisix-gateway-with-etcd-and-dashboard.md) (แทนที่ข้อ "โหมดไฟล์" ของ [ADR 0002](../adr/0002-temporal-ui-behind-apisix-gateway.md)) · ต่อยอดจาก [temporal-ui-gateway.md](temporal-ui-gateway.md)
 
 ## Problem Statement
