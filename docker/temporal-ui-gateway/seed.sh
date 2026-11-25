@@ -3,8 +3,7 @@
 # ยังไม่ปล่อยผ่านคนที่ไม่ login (ADR 0003 กลไกข้อ 1, 3 และ 4)
 #
 # ใช้บน Mini PC (Admin API เข้าได้จาก 127.0.0.1 เท่านั้น):
-#   APISIX_ADMIN_KEY=... ./seed.sh                      # gateway ที่ :18233
-#   APISIX_ADMIN_KEY=... GATEWAY_URL=http://127.0.0.1:8233 ./seed.sh
+#   APISIX_ADMIN_KEY=... ./seed.sh                      # gateway ที่ :8233
 # ตัวแปรเสริม: ADMIN_URL, GATEWAY_URL, SKIP_SNAPSHOT=1 (ข้ามการสำรอง ใช้เฉพาะตอนทดสอบสคริปต์)
 #
 # ลำดับ: snapshot ก่อน (ล้ม = ไม่เขียน) → เขียน route → รายงาน drift (ไม่ลบ) → ตรวจ 302
@@ -14,7 +13,7 @@ set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ADMIN_URL="${ADMIN_URL:-http://127.0.0.1:9180}"
-GATEWAY_URL="${GATEWAY_URL:-http://127.0.0.1:18233}"
+GATEWAY_URL="${GATEWAY_URL:-http://127.0.0.1:8233}"
 ROUTES_DIR="$DIR/routes"
 
 if [ -z "${APISIX_ADMIN_KEY:-}" ]; then

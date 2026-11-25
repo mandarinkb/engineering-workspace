@@ -6,11 +6,11 @@ Spec: [apisix-admin-dashboard.md](../apisix-admin-dashboard.md) · ADR 0003 ก�
 
 **Blocked by:** 01, 02, 03, 04
 
-**Status:** needs-decision (ต้องให้ผู้ใช้อนุมัติแผน deploy ก่อนทำ: recreate gateway ตัวจริง Temporal UI ดับหลายวินาที และอนุมัติการแก้ `~/Workspace/bop-lan.override.yml` นอก repo)
+**Status:** implemented (โค้ดและเอกสารแก้แล้ว ยังไม่ deploy; ต้องได้รับอนุมัติแผน deploy: recreate gateway ตัวจริง Temporal UI ดับหลายวินาที และ `bop-lan.override.yml` ไม่ต้องแก้เพิ่ม เพราะมี `temporal-ui-gateway: restart: unless-stopped` อยู่แล้ว)
 
-- [ ] `docker-compose.yml` ที่ root: gateway โหมดไฟล์เดิมถูกแทนที่ด้วยตัวโหมด etcd ที่ publish `8233:9080` (ไม่ใช่ `18233`) ชื่อ service ที่ override ใน `bop-lan.override.yml` ตรงกัน (`restart: unless-stopped`) และ Admin API ยัง bind `127.0.0.1:9180` เท่านั้น
-- [ ] ไม่ลบ `config.yaml`/`apisix.yaml` ของโหมดไฟล์ เพราะชุด dev ยังใช้
-- [ ] เอกสารอัปเดต: ADR 0002 (หมายเหตุ), `README` ของ bop และ `environment.md` ของ skill `grill-to-deploy` ที่พูดถึงพอร์ต/วิธีรัน gateway; spec ต่างๆ เปลี่ยนสถานะตามจริง
+- [x] `docker-compose.yml` ที่ root: gateway โหมดไฟล์เดิมถูกแทนที่ด้วยตัวโหมด etcd ที่ publish `8233:9080` (ไม่ใช่ `18233`) ชื่อ service ที่ override ใน `bop-lan.override.yml` ตรงกัน (`restart: unless-stopped`) และ Admin API ยัง bind `127.0.0.1:9180` เท่านั้น
+- [x] ไม่ลบ `config.yaml`/`apisix.yaml` ของโหมดไฟล์ เพราะชุด dev ยังใช้
+- [x] เอกสารอัปเดต: ADR 0002 (หมายเหตุ), `README` ของ bop และ `environment.md` ของ skill `grill-to-deploy` ที่พูดถึงพอร์ต/วิธีรัน gateway; spec ต่างๆ เปลี่ยนสถานะตามจริง
 - [ ] **ผู้ดำเนินการ:** แผน deploy ได้รับอนุมัติ, snapshot ก่อนสลับ, `seed.sh` ผ่าน (302), gateway เดิมถูกแทนที่แล้วโดยไม่แตะ container อื่น
 - [ ] **ผู้ดำเนินการ:** regression ทั้งชุดที่ `:8233`: `bru run --env minipc` ผ่านทั้งชุด, Playwright ชุดเดิม 9 ข้อผ่าน, fail closed (หยุด `bop-api` ชั่วคราว ได้ 503) และตรวจว่า Admin API ต่อไม่ได้จาก Mac
 - [ ] **ผู้ดำเนินการ:** ย้อนกลับได้จริง: บันทึกคำสั่งย้อน (`git switch` ไป commit ก่อนหน้า + `up -d`) ไว้ใน ticket และทดสอบอย่างน้อยด้วย dry-run

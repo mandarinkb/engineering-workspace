@@ -13,8 +13,8 @@ SNAP="${1:-}"
 CONFIRM="${2:-}"
 ETCD_VOLUME="${ETCD_VOLUME:-engineering-workspace_etcd-data}"
 ETCD_IMAGE="${ETCD_IMAGE:-quay.io/coreos/etcd:v3.5.21}"
-COMPOSE="${COMPOSE:-/usr/libexec/docker/cli-plugins/docker-compose --env-file $HOME/Workspace/apisix-admin.env -f docker-compose.yml -f ../bop-lan.override.yml --profile apisix-etcd}"
-GATEWAY_SERVICE="${GATEWAY_SERVICE:-temporal-ui-gateway-next}"
+COMPOSE="${COMPOSE:-/usr/libexec/docker/cli-plugins/docker-compose --env-file $HOME/Workspace/apisix-admin.env -f docker-compose.yml -f ../bop-lan.override.yml}"
+GATEWAY_SERVICE="${GATEWAY_SERVICE:-temporal-ui-gateway}"
 
 if [ -z "$SNAP" ] || [ ! -f "$SNAP" ]; then
   echo "ใช้: $0 <snapshot.db> --yes (ไม่พบไฟล์ '${SNAP}')" >&2

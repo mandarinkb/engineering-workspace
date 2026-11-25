@@ -34,10 +34,11 @@ until [ "$(ssh -o BatchMode=yes minipc 'docker ps -q --filter ancestor=golang:1.
 
 - checkout: `~/Workspace/engineering-workspace` (compose project `engineering-workspace`) ใช้ compose ของระบบที่ `/usr/libexec/docker/cli-plugins/docker-compose` ไม่ใช่ `docker compose` (ตัวนั้นเป็นรุ่นเก่า)
 - ค่าสำหรับ LAN อยู่ในไฟล์ **นอก repo** `~/Workspace/bop-lan.override.yml` ทุกคำสั่ง compose ต้องใส่ `-f docker-compose.yml -f ../bop-lan.override.yml` รวมถึงคำสั่งใน `RESTART_CMD`
+- gateway ของ Temporal UI เป็นโหมด etcd ต้องการ admin key จากไฟล์ **นอก repo** `~/Workspace/apisix-admin.env` (`APISIX_ADMIN_KEY=...` สิทธิ์ 600) ทุกคำสั่ง compose ต้องใส่ `--env-file ~/Workspace/apisix-admin.env` ถ้าไม่ใส่ gateway จะหยุดและ `:8233` เปิดไม่ได้ (fail closed) · route เก็บใน etcd (volume `engineering-workspace_etcd-data`) หลัง deploy ที่แก้ `docker/temporal-ui-gateway/routes/*.json` ให้รัน `docker/temporal-ui-gateway/seed.sh` บน Mini PC (ดู README ในโฟลเดอร์นั้น)
 - ถ้าความต่างจากที่ deploy อยู่เป็นเอกสารล้วน compose จะไม่ recreate container (image เหมือนเดิม) บอกผู้ใช้ตามจริงว่าไม่มี restart
 
 ```bash
-ssh minipc 'cd ~/Workspace/engineering-workspace && git fetch -q origin && git switch -q <branch> && /usr/libexec/docker/cli-plugins/docker-compose -f docker-compose.yml -f ../bop-lan.override.yml up --build -d'
+ssh minipc 'cd ~/Workspace/engineering-workspace && git fetch -q origin && git switch -q <branch> && /usr/libexec/docker/cli-plugins/docker-compose --env-file ~/Workspace/apisix-admin.env -f docker-compose.yml -f ../bop-lan.override.yml up --build -d'
 # ตรวจ: docker ps, docker logs engineering-workspace-bop-api-1, curl localhost:8080/readyz, ตาราง schema_migrations ใน database bop
 ```
 
