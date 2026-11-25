@@ -6,8 +6,10 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md) · ที่มา: co
 
 **Blocked by:** 01 (ใช้ config เดียวกันจาก `docker/temporal-ui-gateway/`)
 
-**Status:** needs-decision (ผู้ใช้ตอบรับให้เพิ่ม ticket นี้แล้ว แต่ยังไม่ได้เลือกระหว่างเพิ่ม gateway หรือเอา 8233 ออก; ไม่อยู่ในการ deploy ครั้งนี้)
+**Status:** done
 
-- [ ] ตัดสินวิธี: เพิ่ม gateway ในชุด dev หรือเอา port 8233 ออก
-- [ ] README ของ bop ตรงกับพฤติกรรมจริงของชุด dev
-- [ ] **ผู้ดำเนินการ:** เปิดชุด dev แล้วเปิด `:8233` ไม่ login ไม่เห็น Temporal UI
+**Verified:** 2026-11-25 บน Mini PC, branch `feat/gateway-in-dev-compose` (commit b0c7e51) รัน compose ชุด dev ทั้งชุดเป็น project แยก `t04dev` (ย้ายพอร์ตเป็น 17233/18233 ด้วย override ชั่วคราว): container ทั้ง 4 ตัวขึ้น; `:18233` ไม่มี cookie ได้ **302** ไป `/login`; login แล้ว `/` และ `/api/v1/namespaces` ได้ 200 และได้ JSON จริง ของ Temporal ในชุด dev; Playwright ใน Chrome 4 ข้อผ่าน (ไม่ login ถูกพาไป login, login แล้วเข้าได้, title "Workflows | temporal-system", `/api/` 8 คำขอ 2xx) ลบ project, volume และไดเรกทอรีชั่วคราวแล้ว **ยังไม่ได้ทดสอบบน Docker Desktop (Mac)** และผู้ทดสอบใช้ `bop-api` บน Mini PC เป็นโฮสต์แทน `go run` บนเครื่องตัวเอง
+
+- [x] ตัดสินวิธี: เพิ่ม gateway ในชุด dev (ใช้ config เดียวกับ root; `extra_hosts: bop-api:host-gateway` ให้ชื่อ `bop-api` ใน config ชี้ไปที่ `go run ./cmd/bop` บนโฮสต์)
+- [x] README ของ bop ตรงกับพฤติกรรมจริงของชุด dev
+- [x] **ผู้ดำเนินการ:** เปิดชุด dev แล้วเปิด `:8233` ไม่ login ไม่เห็น Temporal UI — ผลจริงบนพอร์ต 18233 (ไม่ใช่ 8233 เพราะชน stack จริง)
