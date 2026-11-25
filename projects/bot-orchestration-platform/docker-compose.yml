@@ -38,7 +38,9 @@ services:
       POSTGRES_PWD: temporal
       POSTGRES_SEEDS: postgresql
     ports:
-      - "7233:7233" # gRPC endpoint ที่ Temporal Go SDK (client.Dial) เชื่อมต่อ
+      # gRPC endpoint ที่ Temporal Go SDK (client.Dial) เชื่อมต่อ bind แค่ localhost เพราะ Temporal
+      # ไม่มีการยืนยันตัวตน (ticket 05) `go run` บนโฮสต์เดียวกันยังต่อ localhost:7233 ได้
+      - "127.0.0.1:7233:7233"
 
   temporal-ui:
     image: temporalio/ui:2.58.1 # pin ตรงกับ docker-compose.yml ที่ root

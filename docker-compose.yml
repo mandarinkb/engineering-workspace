@@ -42,7 +42,10 @@ services:
       POSTGRES_PWD: temporal
       POSTGRES_SEEDS: postgresql
     ports:
-      - "7233:7233"
+      # bind แค่ localhost: gRPC ของ Temporal ไม่มีการยืนยันตัวตน ถ้าเปิดทั้งเครือข่ายจะข้าม
+      # temporal-ui-gateway ได้ (ticket 05) bop-api/bop-worker ต่อ temporal:7233 ภายใน network
+      # ของ compose จึงไม่ต้องใช้พอร์ตนี้ มีไว้ให้ client ที่รันบนโฮสต์เดียวกันเท่านั้น
+      - "127.0.0.1:7233:7233"
     # image นี้ทำ schema setup (migration ผ่าน postgres) ก่อน แล้วค่อย start temporal-server
     # จริง — รอบแรกที่สร้าง schema ใหม่อาจกินเวลาหลายสิบวินาที ถ้าไม่มี healthcheck ตัวนี้
     # `depends_on: [temporal]` เฉยๆ ของ bop-api/bop-worker ด้านล่างจะรอแค่ "container เริ่ม
