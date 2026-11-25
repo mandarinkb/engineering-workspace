@@ -1,6 +1,6 @@
 # Spec: เปิด Temporal UI ได้เฉพาะผ่านผู้ใช้ที่ login BOP (Temporal UI gateway)
 
-> สถานะ: ready-for-agent · ศัพท์ตาม [GLOSSARY.md](../../GLOSSARY.md) · การตัดสินใจ: [ADR 0002](../adr/0002-temporal-ui-behind-apisix-gateway.md)
+> สถานะ: implemented และ deploy บน Mini PC แล้ว (2026-11-25) · ศัพท์ตาม [GLOSSARY.md](../../GLOSSARY.md) · การตัดสินใจ: [ADR 0002](../adr/0002-temporal-ui-behind-apisix-gateway.md)
 
 ## Problem Statement
 
@@ -59,3 +59,7 @@ seam ที่ผู้ใช้ยืนยันแล้ว (สองชั�
 
 - ความเสี่ยงหลัก: cookie `bop_session` เป็น host-only ไม่ผูกพอร์ต ตามสเปกเบราว์เซอร์ควรถูกส่งไป `:8233` แต่ยังไม่เคยพิสูจน์ ticket แรกจึงเป็น tracer bullet ที่พิสูจน์เรื่องนี้ ถ้าไม่ส่ง ต้องกลับไปทบทวน ADR 0002
 - ผล spike: branch `prototype/apisix-temporal-ui-gateway`
+
+## ต้นทุนการทำงาน
+
+tickets=4 · subagents=2 (implementer 1, code-review 1; spike ก่อนหน้า 3 รอบรันเอง) · รอบแก้=1 (แก้ 6 ข้อ) · verify.sh ไม่ได้ใช้ (ไม่มีโค้ด Go/TS) · หนักสุด: เฟส 7 Playwright รัน 4 รอบ (ล้ม 3 รอบเพราะสคริปต์เอง) และ spike 3 รอบ

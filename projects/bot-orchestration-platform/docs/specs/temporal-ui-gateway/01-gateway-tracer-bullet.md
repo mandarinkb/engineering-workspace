@@ -12,5 +12,5 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md) · ADR: [0002](../../a
 - [x] พอร์ต 8233 เป็นของ gateway; `temporal-ui` ไม่ publish พอร์ตออกนอก network (`docker compose config` ยืนยัน)
 - [x] ไม่แก้ `bop-api` และ dashboard
 - [x] Bruno: request ใหม่ในโฟลเดอร์ `bruno/TemporalUiGateway/` อย่างน้อยหนึ่งเคส: ไม่มี cookie → 302 + `Location` ลงท้าย `/login` (วางหลัง logout) และ login แล้ว → 200
-- [ ] **ผู้ดำเนินการ:** deploy แล้ว container ขึ้น log ของ gateway ไม่มี error `bru run --env minipc` ผ่านทั้งชุด
-- [ ] **ผู้ดำเนินการ (Playwright):** login ที่ dashboard → กดลิงก์ Temporal → เห็น DOM ของ Temporal UI จริง และคำขอไป `:8233` มี cookie `bop_session`; เปิด `:8233` ตอนไม่ login ถูกพาไป `/login`
+- [x] **ผู้ดำเนินการ:** deploy แล้ว container ขึ้น log ของ gateway ไม่มี error `bru run --env minipc` ผ่านทั้งชุด
+- [x] **ผู้ดำเนินการ (Playwright):** login ที่ dashboard → กดลิงก์ Temporal → เห็น DOM ของ Temporal UI จริง และคำขอไป `:8233` มี cookie `bop_session`; เปิด `:8233` ตอนไม่ login ถูกพาไป `/login`

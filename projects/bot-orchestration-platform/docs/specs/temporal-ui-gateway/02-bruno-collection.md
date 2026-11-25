@@ -6,9 +6,11 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md)
 
 **Blocked by:** 01
 
-**Status:** implemented (ทำใน ticket 01 แล้ว; รอเกณฑ์ของผู้ดำเนินการ `bru run`)
+**Status:** done (ทำใน ticket 01)
+
+**Verified:** deploy commit c7ec188 บน Mini PC, 2026-11-25 — `bru run --env minipc` ผ่านทั้งชุด 96 request / 112 test และ `run-with-restart.sh` ผ่านครบ 6 ขั้น
 
 - [x] request ใน `bruno/TemporalUiGateway/` ตาม README ของ bruno: `seq` ไม่ซ้ำ, ไม่มี cookie → 302 + `Location` ลงท้าย `/login`, cookie ปลอม → 302, login แล้ว → 200
 - [x] request "ไม่มี cookie" วางหลัง logout ของโฟลเดอร์ (cookie jar ของ Bruno CLI แนบ cookie ให้ทุก request) และ Bruno ไม่ตาม redirect (assert สถานะ 302 ได้จริง)
 - [x] assertion ตรวจ status และ header `Location` ไม่ใช่แค่ status; มี `docs` block ระบุเกณฑ์ที่ครอบ
-- [ ] **ผู้ดำเนินการ:** `bru run --env minipc` ผ่านทั้งชุด และ `bruno/run-with-restart.sh` ยังผ่าน
+- [x] **ผู้ดำเนินการ:** `bru run --env minipc` ผ่านทั้งชุด และ `bruno/run-with-restart.sh` ยังผ่าน
