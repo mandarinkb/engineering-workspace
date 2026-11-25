@@ -89,7 +89,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
             value={step.bot_name}
             onChange={(event) => setStepBot(index, event.target.value)}
             aria-label={`bot ของ step ${index + 1}`}
-            className="rounded border border-gray-300 px-3 py-2"
+            className="field px-3 py-2"
           >
             <option value="">-- เลือก bot --</option>
             {bots?.map((b) => (
@@ -110,7 +110,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
                 value={step.config[field.key] ?? ""}
                 onChange={(event) => setStepConfigValue(index, field.key, event.target.value)}
                 aria-label={field.label}
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                className="field mt-1 w-full px-3 py-2"
               />
             </div>
           ))}
@@ -128,7 +128,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
               placeholder="ค่าเริ่มต้น 3"
               value={step.max_attempts ?? ""}
               onChange={(event) => setStepMaxAttempts(index, event.target.value)}
-              className="mt-1 w-40 rounded border border-gray-300 px-3 py-2"
+              className="field mt-1 w-40 px-3 py-2"
             />
           </div>
 
@@ -161,7 +161,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
                   placeholder="external-job-queue"
                   value={step.task_queue ?? ""}
                   onChange={(event) => setStepTaskQueue(index, event.target.value)}
-                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-mono"
+                  className="field mt-1 w-full px-3 py-2 font-mono"
                 />
               </div>
             )}
@@ -177,7 +177,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
                     placeholder="registry.example.com/report-job:v1"
                     value={step.k8s_job?.image ?? ""}
                     onChange={(event) => setStepK8sJob(index, { image: event.target.value })}
-                    className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-mono"
+                    className="field mt-1 w-full px-3 py-2 font-mono"
                   />
                 </div>
                 <div>
@@ -194,7 +194,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
                           .filter(Boolean),
                       })
                     }
-                    className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-mono"
+                    className="field mt-1 w-full px-3 py-2 font-mono"
                   />
                 </div>
                 <div>
@@ -204,7 +204,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
                     placeholder="bop-jobs"
                     value={step.k8s_job?.namespace ?? ""}
                     onChange={(event) => setStepK8sJob(index, { namespace: event.target.value || undefined })}
-                    className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-mono"
+                    className="field mt-1 w-full px-3 py-2 font-mono"
                   />
                 </div>
               </div>
@@ -215,7 +215,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
       <button
         type="button"
         onClick={addStep}
-        className="self-start rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50"
+        className="btn-secondary self-start px-3 py-1 text-sm"
       >
         + เพิ่ม step
       </button>

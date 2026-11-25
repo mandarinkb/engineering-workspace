@@ -35,7 +35,7 @@ export function BotList() {
         placeholder="ค้นหา bot..."
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        className="w-full max-w-sm rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+        className="field w-full max-w-sm px-3 py-2"
       />
 
       {/* empty state — ยังไม่มี bot ที่ตรงกับคำค้นหา (หรือระบบยังไม่มี bot เลยตั้งแต่แรก) */}

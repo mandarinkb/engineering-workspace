@@ -138,7 +138,7 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
           id="id"
           {...register("id")}
           disabled={isEdit}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+          className="field mt-1 w-full px-3 py-2 disabled:bg-gray-100"
         />
         {errors.id && <p className="mt-1 text-sm text-red-600">{errors.id.message}</p>}
         {isEdit && (
@@ -153,7 +153,7 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
         <input
           id="workflow_name"
           {...register("workflow_name")}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+          className="field mt-1 w-full px-3 py-2"
         />
         {errors.workflow_name && <p className="mt-1 text-sm text-red-600">{errors.workflow_name.message}</p>}
       </div>
@@ -176,7 +176,7 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
             min={1}
             value={intervalSeconds}
             onChange={(event) => setIntervalSeconds(event.target.value)}
-            className="w-40 rounded border border-gray-300 px-3 py-2"
+            className="field w-40 px-3 py-2"
           />
         ) : (
           <input
@@ -184,7 +184,7 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
             placeholder="0 9 * * MON-FRI"
             value={cronExpression}
             onChange={(event) => setCronExpression(event.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 font-mono"
+            className="field w-full px-3 py-2 font-mono"
           />
         )}
       </fieldset>
@@ -196,7 +196,7 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
         <select
           id="overlap"
           {...register("overlap")}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+          className="field mt-1 w-full px-3 py-2"
         >
           {OVERLAP_OPTIONS.map((o) => (
             <option key={o} value={o}>
@@ -217,7 +217,7 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
           max={31536000}
           value={catchupWindow}
           onChange={(event) => setCatchupWindow(event.target.value)}
-          className="mt-1 w-40 rounded border border-gray-300 px-3 py-2"
+          className="field mt-1 w-40 px-3 py-2"
         />
         <p className="mt-1 text-xs text-gray-500">
           Missed Run ที่เก่ากว่านี้ถูกข้ามเมื่อระบบกลับมา (ค่าเริ่มต้น 3600 = 1 ชั่วโมง ต่ำสุด 10 สูงสุด 31536000 = 1 ปี)
@@ -232,7 +232,7 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
       <button
         type="submit"
         disabled={mutation.isPending}
-        className="self-start rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        className="btn-primary self-start px-4 py-2 disabled:opacity-50"
       >
         {mutation.isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "สร้าง schedule"}
       </button>

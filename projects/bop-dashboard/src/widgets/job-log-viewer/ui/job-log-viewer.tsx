@@ -115,7 +115,7 @@ export function JobLogViewer({ jobId }: JobLogViewerProps) {
           placeholder="ค้นหาใน log..."
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          className="rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900"
+          className="field px-2 py-1 text-sm"
         />
 
         <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
@@ -127,7 +127,7 @@ export function JobLogViewer({ jobId }: JobLogViewerProps) {
           type="button"
           onClick={handleDownload}
           disabled={lines.length === 0}
-          className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
+          className="btn-secondary px-2 py-1 text-xs disabled:opacity-40"
         >
           ดาวน์โหลด .txt
         </button>

@@ -52,7 +52,9 @@ const READINESS_META: Record<Readiness, { label: string; dot: string }> = {
 };
 
 const ITEM = "flex items-center gap-3 rounded-md px-3 py-2 overflow-hidden whitespace-nowrap";
-const ITEM_IDLE = "hover:bg-gray-800/60 hover:text-white";
+// โทนเดียวกับ Temporal UI: เมนูพื้นสว่าง/มืดตามธีม hover เป็นเทาจาง ตัวที่เลือกเป็นสีน้ำเงินอ่อน + ตัวอักษร indigo
+const ITEM_IDLE = "text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white";
+const ITEM_ACTIVE = "bg-[#d2deff] text-blue-800 dark:bg-blue-500/20 dark:text-blue-300";
 
 // NavBar เป็น widget (ชั้น widgets ของ FSD) เพราะใช้ร่วมทุกหน้าใน (dashboard) route group
 // (ดู app/(dashboard)/layout.tsx) และประกอบจากหลายชั้นล่าง: user ที่ login อยู่จาก
@@ -84,19 +86,19 @@ export function NavBar({ initialCollapsed = false }: { initialCollapsed?: boolea
 
   return (
     <aside
-      className={`sticky top-0 flex h-screen shrink-0 flex-col bg-gray-900 text-sm text-gray-300 transition-[width] duration-200 dark:border-r dark:border-gray-800 dark:bg-gray-950 ${
-        collapsed ? "w-16" : "w-56"
+      className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-gray-200 bg-gray-50 text-sm text-gray-900 transition-[width] duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 ${
+        collapsed ? "w-16" : "w-64"
       }`}
     >
       <div className={`flex items-center py-4 ${collapsed ? "justify-center px-2" : "justify-between pl-5 pr-3"}`}>
-        {!collapsed && <span className="text-lg font-semibold tracking-wide text-white">BOP</span>}
+        {!collapsed && <span className="text-lg font-semibold tracking-wide text-gray-900 dark:text-white">BOP</span>}
         <button
           type="button"
           onClick={toggleCollapsed}
           aria-label={collapsed ? "กางเมนู" : "พับเมนู"}
           aria-expanded={!collapsed}
           title={collapsed ? "กางเมนู" : "พับเมนู"}
-          className="rounded-md p-2 hover:bg-gray-800/60 hover:text-white"
+          className="rounded-md p-2 text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
         >
           <Icon d={collapsed ? "M4 6h16M4 12h16M4 18h16" : "M15 18l-6-6 6-6"} />
         </button>
@@ -111,7 +113,7 @@ export function NavBar({ initialCollapsed = false }: { initialCollapsed?: boolea
               href={link.href}
               aria-current={active ? "page" : undefined}
               title={collapsed ? link.label : undefined}
-              className={`${ITEM} ${active ? "bg-gray-800 font-medium text-white" : ITEM_IDLE}`}
+              className={`${ITEM} ${active ? ITEM_ACTIVE : ITEM_IDLE}`}
             >
               <Icon d={link.icon} />
               {label(link.label)}
@@ -120,7 +122,7 @@ export function NavBar({ initialCollapsed = false }: { initialCollapsed?: boolea
         })}
 
         {/* ลิงก์ออกนอกแอป (เปิดแท็บใหม่) — แยกด้วยเส้นคั่นให้รู้ว่าไม่ใช่หน้าของ dashboard เอง */}
-        <div className="my-2 border-t border-gray-800" />
+        <div className="my-2 border-t border-gray-200 dark:border-gray-800" />
         <a
           href={TEMPORAL_UI_URL}
           target="_blank"
@@ -133,7 +135,7 @@ export function NavBar({ initialCollapsed = false }: { initialCollapsed?: boolea
         </a>
       </nav>
 
-      <div className="space-y-2 border-t border-gray-800 px-3 py-4">
+      <div className="space-y-2 border-t border-gray-200 px-3 dark:border-gray-800 py-4">
         {/* ไฟสถานะจาก GET /readyz — role="status" ให้ screen reader อ่านเมื่อเปลี่ยน */}
         <div
           role="status"
@@ -147,7 +149,7 @@ export function NavBar({ initialCollapsed = false }: { initialCollapsed?: boolea
         </div>
         {user && (
           <div className={`flex items-center gap-3 py-1 ${collapsed ? "justify-center" : "px-3"}`} title={collapsed ? user.username : undefined}>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-700 text-xs font-semibold uppercase text-white">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold uppercase text-white">
               {user.username.slice(0, 1)}
             </span>
             {!collapsed && <span className="truncate">{user.username}</span>}

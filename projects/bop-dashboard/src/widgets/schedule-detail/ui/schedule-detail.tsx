@@ -69,7 +69,7 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
           type="button"
           onClick={() => trigger.mutate(undefined)}
           disabled={trigger.isPending}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-40"
+          className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-40"
           title="สั่งรันทันที นอกตารางเวลาปกติ"
         >
           Run Now
@@ -79,7 +79,7 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
             type="button"
             onClick={() => unpause.mutate(undefined)}
             disabled={unpause.isPending}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-40"
+            className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-40"
           >
             Unpause
           </button>
@@ -88,21 +88,21 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
             type="button"
             onClick={() => pause.mutate(undefined)}
             disabled={pause.isPending}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-40"
+            className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-40"
           >
             Pause
           </button>
         )}
         <Link
           href={`/schedules/${id}/edit`}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+          className="btn-secondary px-3 py-1.5 text-sm"
         >
           แก้ไข
         </Link>
         <button
           type="button"
           onClick={() => setShowBackfill((v) => !v)}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+          className="btn-secondary px-3 py-1.5 text-sm"
         >
           Backfill
         </button>
@@ -110,7 +110,7 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
           type="button"
           onClick={handleDelete}
           disabled={deleteSchedule.isPending}
-          className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-40"
+          className="btn-danger-outline px-3 py-1.5 text-sm disabled:opacity-40"
         >
           ลบ
         </button>
@@ -127,7 +127,7 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
               type="datetime-local"
               value={backfillStart}
               onChange={(event) => setBackfillStart(event.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+              className="field mt-1 w-full px-3 py-2"
             />
           </label>
           <label className="text-sm">
@@ -136,7 +136,7 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
               type="datetime-local"
               value={backfillEnd}
               onChange={(event) => setBackfillEnd(event.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+              className="field mt-1 w-full px-3 py-2"
             />
           </label>
           <button

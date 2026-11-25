@@ -68,7 +68,7 @@ export function BotForm({ bot, onCreated }: BotFormProps) {
             id={field.key}
             type={field.type === "url" ? "url" : "text"}
             {...register(field.key)}
-            className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+            className="field mt-1 w-full px-3 py-2"
           />
           {errors[field.key] && (
             <p className="mt-1 text-sm text-red-600">{String(errors[field.key]?.message)}</p>
@@ -81,7 +81,7 @@ export function BotForm({ bot, onCreated }: BotFormProps) {
       <button
         type="submit"
         disabled={createJob.isPending}
-        className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        className="btn-primary px-4 py-2 disabled:opacity-50"
       >
         {createJob.isPending ? "กำลังสั่งรัน..." : `รัน ${bot.name}`}
       </button>

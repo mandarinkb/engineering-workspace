@@ -56,7 +56,7 @@ export function LoginForm() {
         <input
           id="username"
           {...register("username")}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+          className="field mt-1 w-full px-3 py-2"
           autoComplete="username"
         />
         {errors.username && <p className="mt-1 text-sm text-red-600">{errors.username.message}</p>}
@@ -70,7 +70,7 @@ export function LoginForm() {
           id="password"
           type="password"
           {...register("password")}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+          className="field mt-1 w-full px-3 py-2"
           autoComplete="current-password"
         />
         {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>}
@@ -83,7 +83,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={login.isPending}
-        className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        className="btn-primary px-4 py-2 disabled:opacity-50"
       >
         {login.isPending ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
       </button>
