@@ -6,7 +6,7 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md)
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done (subsumed by 01: ticket 01 ใส่ Bruno ครบทุกเคสของ ticket นี้แล้ว ยังรอเกณฑ์ของผู้ดำเนินการ `bru run`)
 
 - [ ] request ใน `bruno/TemporalUiGateway/` ตาม README ของ bruno: `seq` ไม่ซ้ำ, ไม่มี cookie → 302 + `Location` ลงท้าย `/login`, cookie ปลอม → 302, login แล้ว → 200
 - [ ] request "ไม่มี cookie" วางหลัง logout ของโฟลเดอร์ (cookie jar ของ Bruno CLI แนบ cookie ให้ทุก request) และ Bruno ไม่ตาม redirect (assert สถานะ 302 ได้จริง)
