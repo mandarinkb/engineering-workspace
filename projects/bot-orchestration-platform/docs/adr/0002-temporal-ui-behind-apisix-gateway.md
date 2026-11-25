@@ -1,5 +1,7 @@
 # เปิด Temporal UI ได้เฉพาะผ่าน gateway ที่ตรวจ session ของ BOP
 
+> **ถูกแทนที่บางส่วนโดย [ADR 0003](0003-apisix-gateway-with-etcd-and-dashboard.md):** ส่วน "APISIX standalone โหมดไฟล์ ไม่มี etcd/Admin API" เปลี่ยนเป็นโหมด etcd + dashboard ส่วนที่เหลือ (ตรวจ `/me`, redirect, ตัด Cookie, fail closed) ยังใช้ตามเดิม
+
 Temporal UI (พอร์ต 8233) เดิมเปิดได้ทุกคนในเครือข่ายโดยไม่ต้อง login เราวาง **Temporal UI gateway** ด้วย APISIX ไว้หน้า `temporal-ui` ให้ gateway ถาม `bop-api` `GET /me` พร้อม cookie `bop_session` ทุกคำขอ: ผ่านเมื่อได้ 200, ไม่ผ่านพาไป `http://<host>:3000/login` และถ้าถาม `/me` ไม่ได้ให้ปิด (ไม่ปล่อยผ่าน) ลิงก์ใน nav-bar ของ dashboard ยังชี้พอร์ต 8233 เดิม
 
 เลือก APISIX ทั้งที่ nginx/Traefik ก็ทำได้ เพราะผู้ใช้ต้องการเรียนรู้ API gateway และเป็นก้าวแรกที่ภายหลังอาจย้าย `bop-api`/dashboard มาอยู่หลัง gateway เดียวกัน

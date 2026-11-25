@@ -1,0 +1,35 @@
+# Temporal UI gateway ใช้ APISIX โหมด etcd พร้อม Admin API และ dashboard
+
+ADR 0002 ให้ gateway รันแบบ standalone อ่าน route จากไฟล์ `apisix.yaml` (ไม่มี etcd ไม่มี Admin API) เราเปลี่ยนเป็น **โหมด traditional (`config_provider: etcd`)** พร้อม Admin API และ dashboard ในตัว (`enable_admin_ui: true`) บน gateway ตัวจริงที่พอร์ต 8233 เพื่อให้ผู้ใช้เรียนรู้ APISIX ผ่าน dashboard กับ gateway ที่ใช้งานจริง ข้อตัดสินใจเรื่อง "gateway ตรวจ session ด้วย `/me` แล้ว redirect/503" ของ ADR 0002 ยังเหมือนเดิมทุกประการ เปลี่ยนเฉพาะ **วิธีเก็บและแก้ route**
+
+ADR นี้แทนที่เฉพาะข้อ "โหมดไฟล์ ไม่มี etcd" ของ [ADR 0002](0002-temporal-ui-behind-apisix-gateway.md)
+
+## Considered Options
+
+- **คงโหมดไฟล์ (ADR 0002)**: route อยู่ใน git review ได้ ไม่มี Admin API ที่แก้ gateway ได้ ปลอดภัยที่สุด แต่ไม่มี dashboard ให้เรียนรู้
+- **ยก lab แยกเป็น compose profile (ทาง C)**: เรียนรู้ผ่าน dashboard โดยไม่แตะ gateway จริง เสี่ยงต่ำสุดและแนะนำโดยผู้ช่วย แต่ผู้ใช้เลือกไม่ใช้ เพราะต้องการเล่นกับ gateway ของจริง
+- **โหมด etcd + dashboard บน gateway จริง (ที่เลือก)**: ได้ dashboard กับของจริงตัวเดียว ไม่มีของซ้ำ แลกกับความเสี่ยงด้านความปลอดภัยและการสูญเสีย review ผ่าน git ซึ่งต้องปิดด้วยกลไกด้านล่าง
+
+## กลไกที่ต้องมีควบคู่ (เงื่อนไขของการตัดสินใจนี้)
+
+1. **แหล่งความจริงของ route อยู่ใน git:** route เก็บเป็น JSON ของ Admin API ใน repo (`docker/temporal-ui-gateway/`) และมีสคริปต์ seed ที่ PUT เข้า etcd ทุกครั้งที่ deploy พร้อมสคริปต์ export ดึง route ปัจจุบันจาก etcd มาเทียบ (`git diff`) ค่าที่แก้ผ่าน UI ต้องถูก export กลับมา commit ไม่งั้นถูกเขียนทับตอน seed ครั้งถัดไป ไฟล์ `apisix.yaml` เดิมเลิกใช้เพราะโหมด etcd ไม่อ่านไฟล์นี้
+2. **Admin API และ dashboard เข้าได้จาก localhost เท่านั้น:** bind `127.0.0.1:9180` บน Mini PC เข้าจากเครื่องอื่นผ่าน `ssh -L` ตั้ง `allow_admin` ให้แคบ ใช้ admin key สุ่มที่ไม่ commit (อ่านจากตัวแปร env) และ `admin_key_required: true` ห้ามใช้ key default
+3. **ชุดทดสอบเดิมเป็น regression:** หลังแก้ route ผ่าน UI ต้องรัน Bruno `TemporalUiGateway` กับ Playwright และสคริปต์ seed ตรวจว่าไม่มี cookie ที่ `:8233` ได้ 302 ถ้าไม่ใช่ให้ล้มดังๆ เพิ่มเคส fail closed (503) ใน Bruno ถ้าทำได้
+4. **etcd มี named volume และ snapshot:** ก่อน seed ทุกครั้ง `etcdctl snapshot save` ลงไดเรกทอรีนอก repo บน Mini PC และต้องทดสอบว่าเมื่อ etcd ล่มแล้ว gateway ไม่ปล่อยผ่าน (ยังไม่ได้ตรวจ ดูหัวข้อ "ยังไม่พิสูจน์")
+5. **ย้ายสองขั้น:** ยกโหมดใหม่ขึ้นข้างๆ ที่พอร์ตชั่วคราว (เช่น 18233) ใช้ route เดียวกันและรันชุดทดสอบให้ผ่านก่อน แล้วจึงสลับพอร์ต 8233 ไปที่ตัวใหม่ และลบ gateway แบบไฟล์ ย้อนกลับด้วย `git switch` ไป commit เดิมแล้ว `up -d`
+
+## Consequences
+
+- **ความปลอดภัยแย่ลงกว่า ADR 0002 โดยตั้งใจ:** Admin API แก้ gateway ได้ทั้งตัว รวมถึงปิดการตรวจ session ของ Temporal UI ได้ ผู้ที่เข้า Admin API ได้ = ข้ามการป้องกันทั้งหมด จึงต้องคุมการเข้าถึงตามกลไกข้อ 2 อย่างเคร่งครัด
+- gateway พึ่ง etcd ซึ่งเป็น service ที่มีสถานะเพิ่มอีกตัว (RAM เพิ่มราวหลักสิบ MB และต้องดูแล backup)
+- การแก้ route ผ่าน UI ไม่ผ่าน PR review ความถูกต้องพึ่ง export + regression (กลไกข้อ 1 และ 3) ไม่ใช่ git โดยอัตโนมัติ
+- ต้องรัน seed ตอน deploy และ route อยู่ในรูป JSON ของ Admin API (Lua เป็น string ใน JSON) อ่านยากกว่า YAML เดิม
+- ADR 0002 ยังถูกต้องในส่วน: ตรวจ `/me`, redirect ด้วย `$host`, ตัด Cookie ด้วย `serverless-post-function`, ลำดับเฟส plugin (rewrite ก่อน access), fail closed
+- ถ้าวันหนึ่งต้องกลับไปโหมดไฟล์ ให้ export route จาก etcd มาเขียนเป็น `apisix.yaml` ได้ (กลไกข้อ 1 ทำให้ทั้งสองรูปแบบแปลงกันได้)
+
+## ยังไม่พิสูจน์ (ต้องตรวจตอน implement)
+
+- dashboard ในตัวของ APISIX 3.21 ทำฟีเจอร์ที่ต้องการเรียนรู้ได้ครบหรือไม่ (ยืนยันแล้วเพียงว่ามี `enable_admin_ui` ใน config ของ 3.21)
+- พฤติกรรมของ gateway เมื่อ etcd ล่มหรือติดต่อไม่ได้: ยังตอบตาม route ที่โหลดไว้ในหน่วยความจำหรือปล่อยผ่าน/ตอบผิดปกติ
+- tag ของ image etcd ที่จะใช้ (ต้องตรวจด้วย `docker buildx imagetools inspect` ก่อน pull) และความเข้ากันของ Lua ใน route เมื่อเก็บเป็น JSON ผ่าน Admin API
+- Docker บน Mac (ไม่มี) ทดสอบได้เฉพาะ Mini PC
