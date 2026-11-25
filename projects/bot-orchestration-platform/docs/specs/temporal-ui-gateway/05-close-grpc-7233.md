@@ -23,12 +23,14 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md) · ADR: [0002](../../a
 
 **Blocked by:** None · ต้องการคำตอบจากผู้ใช้ก่อน: ใช้ทางไหน และ `remote-job-worker` จะรันที่ไหน (เครื่องเดียวกัน หรือเครื่องอื่น)
 
-**Status:** implemented (แก้ compose ทั้งสองไฟล์แล้ว รอ deploy และเกณฑ์ผู้ดำเนินการ; ผู้ใช้เลือกทาง A เมื่อ 2026-11-25; ยังไม่ได้ตอบว่า `remote-job-worker` รันที่ไหน และมี client อื่นบน Mini PC ต่อ `192.168.1.46:7233` หรือไม่ จึงต้องตรวจเกณฑ์ข้อที่สองก่อน deploy ทุกครั้ง)
+**Status:** done ยกเว้น 2 เกณฑ์ที่ผู้ใช้ยังไม่ได้ตอบ (ที่รัน `remote-job-worker` และ client อื่นบน Mini PC) ถ้ามี client ที่ต้องต่อจากเครื่องอื่น ให้กลับมาตัดสินใจทางเลือก C หรือ D
+
+**Verified:** deploy commit 70b9be9 บน Mini PC, 2026-11-25 — `ss` แสดง `127.0.0.1:7233` เท่านั้น; จาก Mac `nc -vz 192.168.1.46 7233` ได้ Connection refused (ตัวควบคุม `:8233` ต่อได้); บน Mini PC `nc 127.0.0.1 7233` ต่อได้; `/readyz` 200; `bru run --env minipc` 96 request / 112 test ผ่าน; Playwright ผ่าน 9 ข้อ (`/api/` 17 คำขอ 2xx); Schedule `check-example-com` รอบ 00:52 และ 00:53 Completed (`temporal` recreate แล้ว healthy ใน 8 วินาที; `bop-worker` มี WARN poll ล้มชั่วคราวช่วงที่ `temporal` ดับ แล้วต่อกลับเอง ไม่ต้อง restart)
 
 - [x] ผู้ใช้เลือกทาง A (2026-11-25)
 - [ ] ผู้ใช้บอกที่รัน `remote-job-worker` (ถ้ารันเครื่องอื่น ทาง A จะทำให้ต่อไม่ได้ ต้องกลับมาตัดสินใหม่)
 - [ ] ตรวจก่อนแก้ว่าไม่มี client อื่นใช้ `192.168.1.46:7233` อยู่ (เช่นสังเกต `ss` หลายช่วงเวลา หรือถามผู้ใช้เรื่อง `go-temporal`)
 - [x] แก้ compose ตามทางที่เลือก (ถ้าทาง A: `127.0.0.1:7233:7233` ทั้ง root และชุด dev พร้อมคอมเมนต์ไทยบอกเหตุผล) และอัปเดต README/`REMOTE-JOB-WORKER-TODO.md` ที่พูดถึง `localhost:7233`
-- [ ] **ผู้ดำเนินการ:** deploy แล้วจากเครื่องอื่นในเครือข่าย (เช่น Mac) `nc -vz 192.168.1.46 7233` ต้องต่อไม่ได้ (ก่อนแก้ต่อได้) และบน Mini PC เอง `nc -vz 127.0.0.1 7233` ยังต่อได้ (ถ้าทาง A)
-- [ ] **ผู้ดำเนินการ:** หลัง deploy `bru run --env minipc` ผ่านทั้งชุด และ log ของ `bop-worker` ไม่มี error ต่อ Temporal (Temporal UI ต่อ `temporal:7233` ภายใน ไม่กระทบ)
-- [ ] **ผู้ดำเนินการ:** deploy นี้ recreate container `temporal` ซึ่งเป็นของผู้ใช้ (publish พอร์ตเปลี่ยน) ต้องขออนุมัติก่อนทำและประเมินผลต่อ workflow ที่กำลังรัน
+- [x] **ผู้ดำเนินการ:** deploy แล้วจากเครื่องอื่นในเครือข่าย (เช่น Mac) `nc -vz 192.168.1.46 7233` ต้องต่อไม่ได้ (ก่อนแก้ต่อได้) และบน Mini PC เอง `nc -vz 127.0.0.1 7233` ยังต่อได้ (ถ้าทาง A) — ผลจริง: หลัง deploy ต่อไม่ได้ (ไม่ได้ทดสอบก่อนแก้ ส่วน "ก่อนแก้ต่อได้" เป็นความคาดหมายจากการ publish ทุก interface)
+- [x] **ผู้ดำเนินการ:** หลัง deploy `bru run --env minipc` ผ่านทั้งชุด และ log ของ `bop-worker` ไม่มี error ต่อ Temporal (Temporal UI ต่อ `temporal:7233` ภายใน ไม่กระทบ) — หมายเหตุ: log ของ `bop-worker` มี WARN ช่วงที่ `temporal` ดับประมาณ 8 วินาที ไม่มี error หลังกลับมา
+- [x] **ผู้ดำเนินการ:** deploy นี้ recreate container `temporal` ซึ่งเป็นของผู้ใช้ (publish พอร์ตเปลี่ยน) ต้องขออนุมัติก่อนทำและประเมินผลต่อ workflow ที่กำลังรัน — ผู้ใช้อนุมัติแผน 2026-11-25 recreate เฉพาะ `temporal` (dry-run ยืนยัน)
