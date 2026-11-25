@@ -6,7 +6,9 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md) · ที่มา: co
 
 **Blocked by:** 01 (ใช้ config เดียวกันจาก `docker/temporal-ui-gateway/`)
 
-**Status:** implemented (ผู้ใช้เลือกเพิ่ม gateway ในชุด dev 2026-11-25) รอเกณฑ์ของผู้ดำเนินการ
+**Status:** implemented (ผู้ใช้เลือกเพิ่ม gateway ในชุด dev 2026-11-25) ตรวจบางส่วน ดู Verified
+
+**Verified (บางส่วน):** 2026-11-25 บน Mini PC: container APISIX ชั่วคราวใช้ config เดียวกับ root พร้อม `--add-host bop-api:host-gateway` ชื่อ `bop-api` แปลงเป็น `172.17.0.1` และคำขอไม่มี cookie ได้ **302** ไป `/login` (แปลว่าเรียก `/me` ของ bop-api บนโฮสต์ได้จริง) ลบ container แล้ว **ยังไม่ได้รัน compose ชุด dev ทั้งชุด** เกณฑ์ผู้ดำเนินการข้างล่างจึงยังไม่ติ๊ก
 
 - [x] ตัดสินวิธี: เพิ่ม gateway ในชุด dev (ใช้ config เดียวกับ root; `extra_hosts: bop-api:host-gateway` ให้ชื่อ `bop-api` ใน config ชี้ไปที่ `go run ./cmd/bop` บนโฮสต์)
 - [x] README ของ bop ตรงกับพฤติกรรมจริงของชุด dev
