@@ -66,4 +66,4 @@ docker exec engineering-workspace-temporal-1 temporal workflow delete --address 
 
 ## ที่อยู่
 
-dashboard `:3000` · API `:8080` · Temporal UI `:8233` (บน `192.168.1.46`) · ผู้ใช้ dev `admin` / `changeme` (ค่าใน compose ใช้จริงไม่ได้)
+dashboard `:3000` · API `:8080` · Temporal UI `:8233` (บน `192.168.1.46`, ผ่าน gateway ต้องมี session `bop_session`) · ผู้ใช้ dev `admin` / `changeme` (ค่าใน compose ใช้จริงไม่ได้)

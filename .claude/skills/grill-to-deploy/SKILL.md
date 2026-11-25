@@ -31,6 +31,8 @@ disable-model-invocation: true
 
 **เสร็จเมื่อ:** ผู้ใช้อนุมัติการแบ่ง และทุก ticket มีเกณฑ์ที่ตรวจได้ทีละข้อ
 
+**ก่อนเริ่มเฟส 4:** เมื่อเขียน ticket ครบทุกไฟล์แล้ว **หยุดและถามผู้ใช้เรื่อง commit** เอกสารเฟส 1–3 (ADR, glossary, spec, tickets) ก่อน เสนอข้อความ commit ให้ แล้วรอคำตอบ ห้ามเปิด subagent หรือแตก integration branch จนกว่าผู้ใช้ตอบ เพราะ worktree ของ implementer แตกจาก commit และต้องเห็น spec กับ ticket
+
 ## 4. Implement
 
 เรียก `implement-spec` แตก integration branch จาก `main` คัดลอก `implementer-guide.md` ไปไว้ใน scratchpad แล้วเติมค่า เปิด subagent หนึ่งตัวต่อ ticket ใน frontier แต่ละตัวทำใน worktree ของตัวเอง implementer **ไม่ deploy ไม่ push และไม่รัน Bruno กับ Mini PC** ผู้ดำเนินการเป็นคน merge และรัน build กับ test **หลัง merge ทุกครั้ง** เพราะ merge ที่ไม่ conflict ยังพังตอน compile ได้

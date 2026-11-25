@@ -48,3 +48,12 @@ _Avoid_: Grace period
 
 **Backfill**:
 การสั่งรัน Schedule ย้อนหลังในช่วงเวลาที่ผู้ใช้ระบุเอง — ต่างจาก Catch-up Window ที่เกิดอัตโนมัติ
+
+### การเข้าถึง
+
+**Temporal UI gateway**:
+ด่านหน้า Temporal UI (APISIX) ที่ตรวจ session ของ BOP กับ `bop-api` ทุกคำขอ ผู้ที่ไม่มี session ถูกพาไปหน้า login ของ dashboard — ทำให้ Temporal UI เปิดได้เฉพาะผ่านผู้ใช้ที่ login BOP แล้ว
+_Avoid_: Proxy (ไม่บอกว่าตรวจสิทธิ์), auth server
+
+**Session**:
+สถานะการ login ของผู้ใช้ BOP เก็บใน cookie `bop_session` ที่ `bop-api` ออกให้ และตรวจด้วย `GET /me`

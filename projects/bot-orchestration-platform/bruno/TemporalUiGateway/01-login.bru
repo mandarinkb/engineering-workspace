@@ -1,0 +1,35 @@
+meta {
+  name: Login
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {"username": "{{username}}", "password": "{{password}}"}
+}
+
+script:post-response {
+  // เก็บ cookie bop_session ไว้ให้ header ของ collection ส่งต่อไป gateway
+  const raw = res.getHeader("set-cookie");
+  const cookies = Array.isArray(raw) ? raw : [raw];
+  const session = cookies.map((c) => String(c).split(";")[0]).find((c) => c.startsWith("bop_session="));
+  if (session) {
+    bru.setVar("session", session.slice("bop_session=".length));
+  }
+}
+
+docs {
+  โฟลเดอร์นี้ login เองให้จบในตัว ไม่พึ่งลำดับของโฟลเดอร์อื่น (99-logout ล้าง session ไปแล้ว)
+}
+
+tests {
+  test("ตอบ 204", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

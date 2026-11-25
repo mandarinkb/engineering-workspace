@@ -1,0 +1,22 @@
+meta {
+  name: Drop the cookie jar (logout)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/logout
+  body: none
+  auth: none
+}
+
+docs {
+  Bruno CLI เก็บ cookie bop_session ไว้ใน cookie jar แล้วแนบให้ทุก request (แม้ตั้ง header Cookie
+  เป็นค่าว่าง) request "ไม่มี cookie" ด้านล่างจึงต้องวางหลัง logout นี้
+}
+
+tests {
+  test("logout ตอบ 204 เพื่อให้ cookie jar ทิ้ง bop_session", function () {
+    expect(res.getStatus()).to.equal(204);
+  });
+}

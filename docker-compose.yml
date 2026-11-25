@@ -74,8 +74,23 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    # ไม่ publish พอร์ตออกนอก network: ทางเข้าเดียวคือ temporal-ui-gateway ที่พอร์ต 8233
+    expose:
+      - "8080"
+
+  # ด่านหน้า Temporal UI: ให้เฉพาะผู้ที่ login BOP เข้าได้ (ADR 0002)
+  # image pin เวอร์ชันตาม spike; route อยู่ใน docker/temporal-ui-gateway/apisix.yaml
+  temporal-ui-gateway:
+    image: apache/apisix:3.21.0-debian
+    restart: on-failure # เป็นทางเข้าเดียวของ Temporal UI ต้องกลับมาเองเมื่อ crash (ตาม bop-api)
+    depends_on:
+      - temporal-ui
+      - bop-api
+    volumes:
+      - ./docker/temporal-ui-gateway/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./docker/temporal-ui-gateway/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
     ports:
-      - "8233:8080" # เปิดดูที่ http://localhost:8233
+      - "8233:9080" # เปิดดูที่ http://localhost:8233
 
   bop-api:
     build:

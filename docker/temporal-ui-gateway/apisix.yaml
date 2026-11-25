@@ -1,0 +1,57 @@
+# route เดียวของ Temporal UI gateway: ให้เฉพาะผู้ที่ login BOP เข้า Temporal UI ได้
+# (ดู docs/adr/0002-temporal-ui-behind-apisix-gateway.md)
+# ผลทดลองจริงอยู่ที่ branch prototype/apisix-temporal-ui-gateway (RESULT.md)
+routes:
+  - id: temporal-ui
+    uri: /*
+    plugins:
+      # ตรวจ session ด้วย Lua เองแทน plugin forward-auth เพราะ forward-auth ตอบได้แค่
+      # สถานะของบริการตรวจสิทธิ์ (401) ทำ redirect ไปหน้า login ของ dashboard ไม่ได้
+      serverless-pre-function:
+        phase: access
+        functions:
+          - |
+            return function(conf, ctx)
+              local http = require("resty.http")
+              local core = require("apisix.core")
+              local httpc = http.new()
+              -- timeout 2 วินาที: bop-api ช้า/ค้างต้องไม่ทำให้ gateway แขวนตาม
+              httpc:set_timeout(2000)
+              -- ถาม bop-api ว่า cookie bop_session ของคำขอนี้ยังใช้ได้ไหม
+              local res, err = httpc:request_uri("http://bop-api:8080/me", {
+                method = "GET",
+                headers = { Cookie = core.request.header(ctx, "Cookie") },
+              })
+              -- fail closed: ถามไม่ได้ (bop-api ล่ม/timeout) ต้องไม่ปล่อยผ่าน → 503
+              if not res then
+                -- บันทึกสาเหตุ (timeout / DNS / connection refused) ไว้ใน error log ให้ผู้ดูแลไล่ได้
+                core.log.error("temporal-ui-gateway: ถาม bop-api /me ไม่ได้: ", err)
+                return 503
+              end
+              if res.status == 200 then
+                return
+              end
+              -- bop-api ตอบแต่ไม่ใช่ 200/401 (เช่น 5xx) = ตรวจสิทธิ์ไม่ได้ ไม่ใช่ "ยังไม่ login"
+              -- ต้องไม่พาผู้ใช้ที่ login อยู่ไปหน้า login แต่ปิดไว้เหมือนกัน (fail closed)
+              if res.status ~= 401 then
+                core.log.error("temporal-ui-gateway: bop-api /me ตอบสถานะ ", res.status)
+                return 503
+              end
+              -- 401 (ไม่มี cookie, cookie ปลอม, หมดอายุ) → พาไปหน้า login ของ dashboard
+              -- ใช้ host ของคำขอ ไม่ฝัง IP เพื่อให้ใช้ได้ทั้ง localhost และ LAN
+              core.response.set_header("Location", "http://" .. ctx.var.host .. ":3000/login")
+              return 302
+            end
+      # ตัด Cookie ก่อนส่งต่อ เพื่อไม่ให้ Temporal UI เห็น bop_session
+      # ต้องเป็น serverless-post-function ที่รันหลัง pre-function (หลังตรวจเสร็จ)
+      # ห้ามใช้ proxy-rewrite ลบ Cookie: plugin นั้นรันก่อนขั้นตรวจ จึงลบ cookie
+      # ทิ้งก่อนถูกส่งไปถาม /me ทำให้ทุกคนไม่ผ่าน (spike พิสูจน์แล้ว)
+      serverless-post-function:
+        phase: access
+        functions:
+          - "return function(conf, ctx) ngx.req.clear_header('Cookie') end"
+    upstream:
+      type: roundrobin
+      nodes:
+        "temporal-ui:8080": 1
+#END

@@ -1,0 +1,7 @@
+# APISIX แบบ standalone: ไม่มี etcd และไม่มี Admin API — route ทั้งหมดอ่านจาก apisix.yaml
+# (ที่ mount เข้ามาข้างๆ) เพราะ gateway นี้มี route เดียว ไม่คุ้มที่จะรัน etcd เพิ่มอีกตัว
+# เปลี่ยน route = แก้ไฟล์แล้ว restart container (APISIX โหลดซ้ำเองด้วย แต่ restart ชัวร์กว่า)
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
