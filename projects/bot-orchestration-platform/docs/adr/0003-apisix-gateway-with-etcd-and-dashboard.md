@@ -27,9 +27,16 @@ ADR นี้แทนที่เฉพาะข้อ "โหมดไฟล�
 - ADR 0002 ยังถูกต้องในส่วน: ตรวจ `/me`, redirect ด้วย `$host`, ตัด Cookie ด้วย `serverless-post-function`, ลำดับเฟส plugin (rewrite ก่อน access), fail closed
 - ถ้าวันหนึ่งต้องกลับไปโหมดไฟล์ ให้ export route จาก etcd มาเขียนเป็น `apisix.yaml` ได้ (กลไกข้อ 1 ทำให้ทั้งสองรูปแบบแปลงกันได้)
 
-## ยังไม่พิสูจน์ (ต้องตรวจตอน implement)
+## พิสูจน์แล้ว (ticket 01, 2026-11-25)
 
-- dashboard ในตัวของ APISIX 3.21 ทำฟีเจอร์ที่ต้องการเรียนรู้ได้ครบหรือไม่ (ยืนยันแล้วเพียงว่ามี `enable_admin_ui` ใน config ของ 3.21)
-- พฤติกรรมของ gateway เมื่อ etcd ล่มหรือติดต่อไม่ได้: ยังตอบตาม route ที่โหลดไว้ในหน่วยความจำหรือปล่อยผ่าน/ตอบผิดปกติ
-- tag ของ image etcd ที่จะใช้ (ต้องตรวจด้วย `docker buildx imagetools inspect` ก่อน pull) และความเข้ากันของ Lua ใน route เมื่อเก็บเป็น JSON ผ่าน Admin API
+- tag ของ etcd: `quay.io/coreos/etcd:v3.5.21` มีจริงและใช้ได้
+- `deployment.etcd`, `admin_key`, `enable_admin_ui` ใน config ของ 3.21 ถูกต้อง: gateway เริ่มได้, `/ui` ตอบ 200, Admin API ใช้ key บังคับจริง
+- การใส่ admin key จาก env ผ่าน entrypoint (sed ลง config ตอนเริ่ม) ใช้ได้ และ key ไม่รั่วใน log
+- `allow_admin: 172.16.0.0/12` พอสำหรับคำขอที่ผ่านพอร์ตที่ publish ของ Docker (เข้าผ่าน tunnel ได้) และจาก LAN ต่อไม่ได้เพราะ bind `127.0.0.1`
+- Lua เก็บเป็น JSON ผ่าน Admin API ใช้ได้ (ผล 302 และ Bruno/Playwright ผ่านเหมือน gateway แบบไฟล์)
+
+## ยังไม่พิสูจน์
+
+- dashboard ในตัวของ APISIX 3.21 ทำฟีเจอร์ที่ต้องการเรียนรู้ได้ครบหรือไม่ (ตรวจแล้วเพียงว่า `/ui` ตอบ 200 ticket 02)
+- พฤติกรรมของ gateway เมื่อ etcd ล่มหรือติดต่อไม่ได้ (ticket 04)
 - Docker บน Mac (ไม่มี) ทดสอบได้เฉพาะ Mini PC
