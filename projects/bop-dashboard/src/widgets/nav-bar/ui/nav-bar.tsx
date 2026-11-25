@@ -1,36 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-import type { Readiness } from "@/shared/api";
 import { TEMPORAL_UI_URL } from "@/shared/config";
-import { useTheme } from "@/shared/lib/theme";
-import { useLogout } from "@/features/auth";
-import { useAuth } from "@/entities/user";
+import { Icon } from "@/shared/ui";
 
-import { useReadiness } from "../api/use-readiness";
 import { sidebarCookie } from "../model/sidebar-cookie";
-
-// ไอคอนเป็น inline SVG (stroke ตาม currentColor) แทนการเพิ่ม icon library ทั้งก้อนเข้ามา
-// เพื่อใช้แค่ไม่กี่ตัว — สีจะเปลี่ยนตาม text color ของลิงก์ (active/hover) เอง
-function Icon({ d }: { d: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-5 w-5 shrink-0"
-      aria-hidden="true"
-    >
-      <path d={d} />
-    </svg>
-  );
-}
 
 const NAV_LINKS = [
   // grid 4 ช่อง: หน้าภาพรวม
@@ -44,12 +21,6 @@ const NAV_LINKS = [
   // workflow: โหนดเชื่อมกัน
   { href: "/workflow-runs", label: "Workflow Runs", icon: "M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM9 6h6a3 3 0 0 1 3 3v6M6 9v9a3 3 0 0 0 3 3h6" },
 ];
-
-const READINESS_META: Record<Readiness, { label: string; dot: string }> = {
-  ready: { label: "ระบบปกติ", dot: "bg-green-500" },
-  not_ready: { label: "ระบบไม่พร้อม (Temporal/ฐานข้อมูล)", dot: "bg-red-500" },
-  api_down: { label: "เรียก API ไม่ติด", dot: "bg-red-500" },
-};
 
 const ITEM = "flex items-center gap-3 rounded-md px-3 py-2 overflow-hidden whitespace-nowrap";
 // โทนเดียวกับ Temporal UI: เมนูพื้นสว่าง/มืดตามธีม hover เป็นเทาจาง ตัวที่เลือกเป็นสีน้ำเงินอ่อน + ตัวอักษร indigo
@@ -66,14 +37,7 @@ const ITEM_ACTIVE = "bg-[#d2deff] text-blue-800 dark:bg-blue-500/20 dark:text-bl
 export function NavBar({ initialCollapsed = false }: { initialCollapsed?: boolean }) {
   // usePathname() อาจคืน null ได้ตอน build เพราะมีโฟลเดอร์ pages/ ที่ root (ดู pages/README.md)
   const pathname = usePathname();
-  const router = useRouter();
-  const { user } = useAuth();
-  const logout = useLogout();
-  const { theme, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(initialCollapsed);
-  const { data: readiness } = useReadiness();
-  // ยังไม่ได้ผลรอบแรก = สีเทา ไม่เดาว่าปกติหรือล่ม
-  const status = readiness ? READINESS_META[readiness] : { label: "กำลังเช็คระบบ...", dot: "bg-gray-500" };
 
   function toggleCollapsed() {
     const next = !collapsed;
@@ -135,46 +99,6 @@ export function NavBar({ initialCollapsed = false }: { initialCollapsed?: boolea
         </a>
       </nav>
 
-      <div className="space-y-2 border-t border-gray-200 px-3 dark:border-gray-800 py-4">
-        {/* ไฟสถานะจาก GET /readyz — role="status" ให้ screen reader อ่านเมื่อเปลี่ยน */}
-        <div
-          role="status"
-          title={collapsed ? status.label : undefined}
-          className={`flex items-center gap-3 py-1 text-xs ${collapsed ? "justify-center" : "px-3"}`}
-        >
-          <span className="flex w-5 shrink-0 justify-center">
-            <span className={`h-2.5 w-2.5 rounded-full ${status.dot}`} />
-          </span>
-          {label(status.label)}
-        </div>
-        {user && (
-          <div className={`flex items-center gap-3 py-1 ${collapsed ? "justify-center" : "px-3"}`} title={collapsed ? user.username : undefined}>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold uppercase text-white">
-              {user.username.slice(0, 1)}
-            </span>
-            {!collapsed && <span className="truncate">{user.username}</span>}
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label="สลับธีมสว่าง/มืด"
-          title={collapsed ? "สลับธีมสว่าง/มืด" : undefined}
-          className={`${ITEM} ${ITEM_IDLE} w-full text-left`}
-        >
-          <span className="w-5 shrink-0 text-center">{theme === "dark" ? "☀️" : "🌙"}</span>
-          {label(theme === "dark" ? "ธีมสว่าง" : "ธีมมืด")}
-        </button>
-        <button
-          type="button"
-          onClick={() => logout.mutate(undefined, { onSuccess: () => router.push("/login") })}
-          title={collapsed ? "ออกจากระบบ" : undefined}
-          className={`${ITEM} ${ITEM_IDLE} w-full text-left`}
-        >
-          <Icon d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H3" />
-          {label("ออกจากระบบ")}
-        </button>
-      </div>
     </aside>
   );
 }

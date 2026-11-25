@@ -8,7 +8,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="flex flex-col gap-6">
-        <h1 className="text-center text-2xl font-semibold">BOP Dashboard</h1>
+        <h1 className="text-center text-3xl">BOP Dashboard</h1>
         <LoginForm />
       </div>
     </div>

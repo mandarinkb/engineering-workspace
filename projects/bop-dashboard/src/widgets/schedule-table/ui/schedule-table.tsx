@@ -31,15 +31,16 @@ export function ScheduleTable() {
   }
 
   return (
-    <table className="w-full border-collapse text-left text-sm">
+    <div className="table-card">
+<table className="w-full border-collapse text-left text-sm">
       <thead>
-        <tr className="border-b border-gray-200 text-gray-500">
-          <th className="py-2 pr-4">ID</th>
-          <th className="py-2 pr-4">Workflow</th>
-          <th className="py-2 pr-4">สถานะ</th>
-          <th className="py-2 pr-4">ตารางเวลา</th>
-          <th className="py-2 pr-4">รอบถัดไป</th>
-          <th className="py-2 pr-4">การจัดการ</th>
+        <tr className="border-b border-gray-200 text-gray-600">
+          <th className="px-4 py-2.5">ID</th>
+          <th className="px-4 py-2.5">Workflow</th>
+          <th className="px-4 py-2.5">สถานะ</th>
+          <th className="px-4 py-2.5">ตารางเวลา</th>
+          <th className="px-4 py-2.5">รอบถัดไป</th>
+          <th className="px-4 py-2.5">การจัดการ</th>
         </tr>
       </thead>
       <tbody>
@@ -48,6 +49,7 @@ export function ScheduleTable() {
         ))}
       </tbody>
     </table>
+</div>
   );
 }
 
@@ -61,20 +63,20 @@ function ScheduleRow({ schedule }: { schedule: ScheduleSummary }) {
 
   return (
     <tr className="border-b border-gray-100 hover:bg-gray-50">
-      <td className="py-2 pr-4">
+      <td className="px-4 py-2.5">
         <Link href={`/schedules/${schedule.id}`} className="font-mono text-blue-600 hover:underline">
           {schedule.id}
         </Link>
       </td>
-      <td className="py-2 pr-4">{schedule.workflow_name}</td>
-      <td className="py-2 pr-4">
+      <td className="px-4 py-2.5">{schedule.workflow_name}</td>
+      <td className="px-4 py-2.5">
         <ScheduleStatusBadge paused={schedule.paused} />
       </td>
-      <td className="py-2 pr-4 font-mono text-gray-600">{specLabel(schedule)}</td>
-      <td className="py-2 pr-4 text-gray-500">
+      <td className="px-4 py-2.5 font-mono text-gray-600">{specLabel(schedule)}</td>
+      <td className="px-4 py-2.5 text-gray-500">
         {schedule.next_action_times?.[0] ? new Date(schedule.next_action_times[0]).toLocaleString() : "-"}
       </td>
-      <td className="py-2 pr-4">
+      <td className="px-4 py-2.5">
         <div className="flex gap-2">
           <button
             type="button"

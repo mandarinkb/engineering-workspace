@@ -11,7 +11,7 @@ export async function WorkflowRunDetailPage({ params }: WorkflowRunDetailPagePro
   const id = decodeURIComponent((await params).id);
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="break-all text-2xl font-semibold">{id}</h1>
+      <h1 className="break-all text-3xl">{id}</h1>
       <WorkflowRunDetail workflowId={id} />
     </div>
   );

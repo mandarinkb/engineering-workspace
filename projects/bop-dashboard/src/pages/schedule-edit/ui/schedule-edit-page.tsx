@@ -11,7 +11,7 @@ export async function EditSchedulePage({ params }: EditSchedulePageProps) {
   const id = decodeURIComponent((await params).id);
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="break-all text-2xl font-semibold">แก้ไข {id}</h1>
+      <h1 className="break-all text-3xl">แก้ไข {id}</h1>
       <ScheduleEditView id={id} />
     </div>
   );
