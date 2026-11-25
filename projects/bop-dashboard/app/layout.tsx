@@ -31,7 +31,7 @@ const themeInitScript = `
 (function () {
   try {
     var stored = window.localStorage.getItem("bop-theme");
-    var isDark = stored === "dark" || (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    var isDark = stored === "dark";
     document.documentElement.classList.toggle("dark", isDark);
   } catch (e) {}
 })();

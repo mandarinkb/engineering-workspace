@@ -31,7 +31,8 @@ function getInitialTheme(): Theme {
   if (stored === "light" || stored === "dark") {
     return stored;
   }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  // ยังไม่เคยเลือก = ธีมสว่างเสมอ (ไม่ตามค่าของ OS) ผู้ใช้สลับเป็นมืดเองได้ด้วยปุ่มบนแถบบน
+  return "light";
 }
 
 // ThemeProvider mount ที่ src/app/providers/providers.tsx ครอบทั้งแอป — ตั้งใจ hand-roll เอง

@@ -34,7 +34,7 @@ export function ScheduleTable() {
     <div className="table-card">
 <table className="w-full border-collapse text-left text-sm">
       <thead>
-        <tr className="border-b border-gray-200 text-gray-600">
+        <tr className="border-b border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400">
           <th className="px-4 py-2.5">ID</th>
           <th className="px-4 py-2.5">Workflow</th>
           <th className="px-4 py-2.5">สถานะ</th>
@@ -62,7 +62,7 @@ function ScheduleRow({ schedule }: { schedule: ScheduleSummary }) {
   const { pause, unpause, trigger } = useScheduleActions(schedule.id);
 
   return (
-    <tr className="border-b border-gray-100 hover:bg-gray-50">
+    <tr className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50">
       <td className="px-4 py-2.5">
         <Link href={`/schedules/${schedule.id}`} className="font-mono text-blue-600 hover:underline">
           {schedule.id}
