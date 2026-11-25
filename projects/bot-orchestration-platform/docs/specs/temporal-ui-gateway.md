@@ -1,6 +1,6 @@
 # Spec: เปิด Temporal UI ได้เฉพาะผ่านผู้ใช้ที่ login BOP (Temporal UI gateway)
 
-> สถานะ: draft · ศัพท์ตาม [GLOSSARY.md](../../GLOSSARY.md) · การตัดสินใจ: [ADR 0002](../adr/0002-temporal-ui-behind-apisix-gateway.md)
+> สถานะ: ready-for-agent · ศัพท์ตาม [GLOSSARY.md](../../GLOSSARY.md) · การตัดสินใจ: [ADR 0002](../adr/0002-temporal-ui-behind-apisix-gateway.md)
 
 ## Problem Statement
 
@@ -34,7 +34,8 @@
 - ตัด Cookie ด้วย `serverless-post-function` (เฟส access) ห้ามใช้ `proxy-rewrite` เพราะรันก่อนตรวจและทำให้ทุกคนไม่ผ่าน
 - พอร์ต 8233 map ไป gateway (container port 9080) ย้ายออกจาก `temporal-ui` ซึ่งเหลือ `expose` ภายใน network
 - `TEMPORAL_CORS_ORIGINS` ของ `temporal-ui` ทบทวนว่ายังใช้ได้เมื่อ origin เป็น gateway
-- override ของ LAN (`~/Workspace/bop-lan.override.yml`, นอก repo) ต้องเพิ่ม `restart: unless-stopped` ให้ gateway ตอน deploy โดยแสดง diff ขออนุมัติก่อน
+- gateway ตั้ง `restart: on-failure` ใน compose ตาม `bop-api` (ผลจาก code review: ทางเข้าเดียวไม่ควรพึ่ง override นอก repo) override ของ LAN (`~/Workspace/bop-lan.override.yml`) ยังตั้งเป็น `unless-stopped` ได้ถ้าต้องการ โดยแสดง diff ขออนุมัติก่อน
+- bop-api ตอบ 401 = ยังไม่ login → 302; ตอบอย่างอื่นที่ไม่ใช่ 200 หรือถามไม่ได้ → 503 และบันทึก error log
 - ไม่แก้ `bop-api` และ dashboard
 
 ## Testing Decisions

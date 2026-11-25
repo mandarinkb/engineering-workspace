@@ -82,6 +82,7 @@ services:
   # image pin เวอร์ชันตาม spike; route อยู่ใน docker/temporal-ui-gateway/apisix.yaml
   temporal-ui-gateway:
     image: apache/apisix:3.21.0-debian
+    restart: on-failure # เป็นทางเข้าเดียวของ Temporal UI ต้องกลับมาเองเมื่อ crash (ตาม bop-api)
     depends_on:
       - temporal-ui
       - bop-api

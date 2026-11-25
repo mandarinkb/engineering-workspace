@@ -81,8 +81,9 @@ go test -race ./...
 
 # 1) เปิด Temporal server + UI (ต้องรันก่อนเสมอ ทั้ง cmd/bop และ cmd/bop-worker ต่อ
 #    เข้า localhost:7233) — ดู docker-compose.yml สำหรับ service ที่รัน (Temporal server
-#    + PostgreSQL ของ Temporal เอง + Temporal UI ที่ http://localhost:8233 — ผ่าน `temporal-ui-gateway` (APISIX)
-#    ที่ต้อง login BOP ก่อน ดู docs/adr/0002-temporal-ui-behind-apisix-gateway.md)
+#    + PostgreSQL ของ Temporal เอง + Temporal UI ที่ http://localhost:8233 — ชุด dev นี้เปิดตรง ไม่มี login; ส่วน compose ที่
+#    root ของ repo (ใช้บน Mini PC) มี `temporal-ui-gateway` ต้อง login BOP ก่อน ดู
+#    docs/adr/0002-temporal-ui-behind-apisix-gateway.md)
 docker compose up -d
 
 # 2) CLI mode — สั่งรัน bot ตัวเดียวจบแล้ว exit (ไม่ต้องมี server/UI, ไม่ต้องพึ่ง Temporal เลย)

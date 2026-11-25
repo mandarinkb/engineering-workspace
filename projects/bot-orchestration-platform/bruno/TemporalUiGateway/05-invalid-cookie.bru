@@ -21,6 +21,6 @@ script:pre-request {
 tests {
   test("cookie ปลอมได้ 302 เหมือนไม่มี cookie", function () {
     expect(res.getStatus()).to.equal(302);
-    expect(res.getHeader("location")).to.match(/\/login$/);
+    expect(res.getHeader("location")).to.match(/:3000\/login$/);
   });
 }

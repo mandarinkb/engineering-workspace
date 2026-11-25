@@ -6,9 +6,9 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md)
 
 **Blocked by:** 01
 
-**Status:** done (subsumed by 01: ticket 01 ใส่ Bruno ครบทุกเคสของ ticket นี้แล้ว ยังรอเกณฑ์ของผู้ดำเนินการ `bru run`)
+**Status:** implemented (ทำใน ticket 01 แล้ว; รอเกณฑ์ของผู้ดำเนินการ `bru run`)
 
-- [ ] request ใน `bruno/TemporalUiGateway/` ตาม README ของ bruno: `seq` ไม่ซ้ำ, ไม่มี cookie → 302 + `Location` ลงท้าย `/login`, cookie ปลอม → 302, login แล้ว → 200
-- [ ] request "ไม่มี cookie" วางหลัง logout ของโฟลเดอร์ (cookie jar ของ Bruno CLI แนบ cookie ให้ทุก request) และ Bruno ไม่ตาม redirect (assert สถานะ 302 ได้จริง)
-- [ ] assertion ตรวจ status และ header `Location` ไม่ใช่แค่ status; มี `docs` block ระบุเกณฑ์ที่ครอบ
+- [x] request ใน `bruno/TemporalUiGateway/` ตาม README ของ bruno: `seq` ไม่ซ้ำ, ไม่มี cookie → 302 + `Location` ลงท้าย `/login`, cookie ปลอม → 302, login แล้ว → 200
+- [x] request "ไม่มี cookie" วางหลัง logout ของโฟลเดอร์ (cookie jar ของ Bruno CLI แนบ cookie ให้ทุก request) และ Bruno ไม่ตาม redirect (assert สถานะ 302 ได้จริง)
+- [x] assertion ตรวจ status และ header `Location` ไม่ใช่แค่ status; มี `docs` block ระบุเกณฑ์ที่ครอบ
 - [ ] **ผู้ดำเนินการ:** `bru run --env minipc` ผ่านทั้งชุด และ `bruno/run-with-restart.sh` ยังผ่าน

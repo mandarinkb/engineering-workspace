@@ -18,18 +18,26 @@ routes:
               -- timeout 2 วินาที: bop-api ช้า/ค้างต้องไม่ทำให้ gateway แขวนตาม
               httpc:set_timeout(2000)
               -- ถาม bop-api ว่า cookie bop_session ของคำขอนี้ยังใช้ได้ไหม
-              local res = httpc:request_uri("http://bop-api:8080/me", {
+              local res, err = httpc:request_uri("http://bop-api:8080/me", {
                 method = "GET",
                 headers = { Cookie = core.request.header(ctx, "Cookie") },
               })
               -- fail closed: ถามไม่ได้ (bop-api ล่ม/timeout) ต้องไม่ปล่อยผ่าน → 503
               if not res then
+                -- บันทึกสาเหตุ (timeout / DNS / connection refused) ไว้ใน error log ให้ผู้ดูแลไล่ได้
+                core.log.error("temporal-ui-gateway: ถาม bop-api /me ไม่ได้: ", err)
                 return 503
               end
               if res.status == 200 then
                 return
               end
-              -- ไม่ใช่ 200 (ไม่มี cookie, cookie ปลอม, หมดอายุ) → พาไปหน้า login ของ dashboard
+              -- bop-api ตอบแต่ไม่ใช่ 200/401 (เช่น 5xx) = ตรวจสิทธิ์ไม่ได้ ไม่ใช่ "ยังไม่ login"
+              -- ต้องไม่พาผู้ใช้ที่ login อยู่ไปหน้า login แต่ปิดไว้เหมือนกัน (fail closed)
+              if res.status ~= 401 then
+                core.log.error("temporal-ui-gateway: bop-api /me ตอบสถานะ ", res.status)
+                return 503
+              end
+              -- 401 (ไม่มี cookie, cookie ปลอม, หมดอายุ) → พาไปหน้า login ของ dashboard
               -- ใช้ host ของคำขอ ไม่ฝัง IP เพื่อให้ใช้ได้ทั้ง localhost และ LAN
               core.response.set_header("Location", "http://" .. ctx.var.host .. ":3000/login")
               return 302

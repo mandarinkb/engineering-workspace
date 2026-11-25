@@ -8,7 +8,7 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md)
 
 **Status:** ready-for-agent (ผู้ใช้อนุมัติ 2026-11-25 ให้หยุด `bop-api` ชั่วคราวบน Mini PC เพื่อทดสอบ fail closed แล้วเปิดกลับ)
 
-- [x] ตรวจ `TEMPORAL_CORS_ORIGINS` ของ `temporal-ui`: ไม่ต้องแก้ dashboard ใช้ `TEMPORAL_UI_URL` เป็นลิงก์ `href` เท่านั้น (`nav-bar.tsx`, `temporal-ui.ts`) ไม่มีโค้ดฝั่งเบราว์เซอร์เรียก API ของ Temporal UI ข้าม origin และ Temporal UI เรียก API ของตัวเองที่ origin `:8233` เดียวกัน (ยืนยันจริงใน Playwright)
+- [x] ตรวจ `TEMPORAL_CORS_ORIGINS` ของ `temporal-ui`: ไม่ต้องแก้ dashboard ใช้ `TEMPORAL_UI_URL` เป็นลิงก์ `href` เท่านั้น (`nav-bar.tsx`, `temporal-ui.ts`) ไม่มีโค้ดฝั่งเบราว์เซอร์เรียก API ของ Temporal UI ข้าม origin และ Temporal UI เรียก API ของตัวเองที่ origin `:8233` เดียวกัน (ยังต้องยืนยันจริงใน Playwright ตอนเฟส 7 เกณฑ์ข้างล่าง)
 - [ ] หลักฐานว่า upstream ไม่เห็น header `Cookie` (เช่น route ทดลองชั่วคราวที่ไม่เข้า production หรือ log ฝั่ง upstream) ลบหลังตรวจ
 - [ ] **ผู้ดำเนินการ:** หยุด `bop-api` ชั่วคราวแล้วคำขอที่ `:8233` ได้ 503 ไม่ใช่หน้า Temporal UI จากนั้นเปิดกลับและกลับมา 302/200 ตามปกติ
 - [ ] **ผู้ดำเนินการ (Playwright):** หน้าที่อัปเดตสดของ Temporal UI (WebSocket/SSE) ทำงานผ่าน gateway ตรวจจาก DOM ที่เปลี่ยนเอง
