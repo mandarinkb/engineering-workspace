@@ -6,8 +6,8 @@ Spec: [temporal-ui-gateway.md](../temporal-ui-gateway.md) · ที่มา: co
 
 **Blocked by:** 01 (ใช้ config เดียวกันจาก `docker/temporal-ui-gateway/`)
 
-**Status:** needs-decision (ผู้ใช้ตอบรับให้เพิ่ม ticket นี้แล้ว แต่ยังไม่ได้เลือกระหว่างเพิ่ม gateway หรือเอา 8233 ออก; ไม่อยู่ในการ deploy ครั้งนี้)
+**Status:** implemented (ผู้ใช้เลือกเพิ่ม gateway ในชุด dev 2026-11-25) รอเกณฑ์ของผู้ดำเนินการ
 
-- [ ] ตัดสินวิธี: เพิ่ม gateway ในชุด dev หรือเอา port 8233 ออก
-- [ ] README ของ bop ตรงกับพฤติกรรมจริงของชุด dev
+- [x] ตัดสินวิธี: เพิ่ม gateway ในชุด dev (ใช้ config เดียวกับ root; `extra_hosts: bop-api:host-gateway` ให้ชื่อ `bop-api` ใน config ชี้ไปที่ `go run ./cmd/bop` บนโฮสต์)
+- [x] README ของ bop ตรงกับพฤติกรรมจริงของชุด dev
 - [ ] **ผู้ดำเนินการ:** เปิดชุด dev แล้วเปิด `:8233` ไม่ login ไม่เห็น Temporal UI

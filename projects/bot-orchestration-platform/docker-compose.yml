@@ -47,8 +47,24 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    # ไม่ publish พอร์ตออกนอก network: ทางเข้าเดียวคือ temporal-ui-gateway (ADR 0002)
+    expose:
+      - "8080"
+
+  # ด่านหน้า Temporal UI: ให้เฉพาะผู้ที่ login BOP เข้าได้ ใช้ config ชุดเดียวกับ docker-compose.yml ที่ root
+  # (ไฟล์อยู่ที่ ../../docker/temporal-ui-gateway) ชุด dev นี้ไม่มี bop-api ใน compose (รันด้วย
+  # `go run ./cmd/bop` บนเครื่องโฮสต์ที่พอร์ต 8080) จึงแมปชื่อ bop-api ที่ config เรียกให้ชี้ไปที่โฮสต์
+  temporal-ui-gateway:
+    image: apache/apisix:3.21.0-debian # pin ตรงกับ docker-compose.yml ที่ root
+    depends_on:
+      - temporal-ui
+    extra_hosts:
+      - "bop-api:host-gateway"
+    volumes:
+      - ../../docker/temporal-ui-gateway/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ../../docker/temporal-ui-gateway/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
     ports:
-      - "8233:8080" # เปิดดูที่ http://localhost:8233
+      - "8233:9080" # เปิดดูที่ http://localhost:8233 (ต้องรัน bop-api และ login dashboard ก่อน)
 
 volumes:
   temporal-postgres:
