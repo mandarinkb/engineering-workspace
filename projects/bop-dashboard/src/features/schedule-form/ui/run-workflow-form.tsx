@@ -56,7 +56,7 @@ export function RunWorkflowForm() {
           value={workflowName}
           onChange={(event) => setWorkflowName(event.target.value)}
           placeholder="manual-healthcheck"
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+          className="field mt-1 w-full px-3 py-2"
         />
         <p className="mt-1 text-xs text-gray-500">ใช้เป็นคำนำหน้าของ workflow ID เพื่อให้ค้นหาเจอในหน้า Workflow Runs</p>
       </div>
@@ -69,7 +69,7 @@ export function RunWorkflowForm() {
       <button
         type="submit"
         disabled={createRun.isPending}
-        className="self-start rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        className="btn-primary self-start px-4 py-2 disabled:opacity-50"
       >
         {createRun.isPending ? "กำลังเริ่ม..." : "รันเลย"}
       </button>

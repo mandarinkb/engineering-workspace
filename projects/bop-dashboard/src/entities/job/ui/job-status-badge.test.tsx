@@ -10,26 +10,26 @@ describe("JobStatusBadge", () => {
   it("แสดงสีเหลืองสำหรับสถานะ running", () => {
     render(<JobStatusBadge status="running" />);
     const badge = screen.getByText("running");
-    expect(badge).toHaveClass("bg-yellow-100");
+    expect(badge).toHaveClass("bg-[#fff7c2]");
   });
 
   it("แสดงสีเขียวสำหรับสถานะ succeeded", () => {
     render(<JobStatusBadge status="succeeded" />);
     const badge = screen.getByText("succeeded");
-    expect(badge).toHaveClass("bg-green-100");
+    expect(badge).toHaveClass("bg-[#e6f6eb]");
   });
 
   it("แสดงสีแดงสำหรับสถานะ failed", () => {
     render(<JobStatusBadge status="failed" />);
     const badge = screen.getByText("failed");
-    expect(badge).toHaveClass("bg-red-100");
+    expect(badge).toHaveClass("bg-[#feebec]");
   });
 
   it("แสดงสีเทาสำหรับสถานะ pending และ cancelled", () => {
     render(<JobStatusBadge status="pending" />);
-    expect(screen.getByText("pending")).toHaveClass("bg-gray-100");
+    expect(screen.getByText("pending")).toHaveClass("bg-[#f0efec]");
 
     render(<JobStatusBadge status="cancelled" />);
-    expect(screen.getByText("cancelled")).toHaveClass("bg-gray-100");
+    expect(screen.getByText("cancelled")).toHaveClass("bg-[#f0efec]");
   });
 });

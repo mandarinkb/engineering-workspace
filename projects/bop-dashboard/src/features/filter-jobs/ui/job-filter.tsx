@@ -37,12 +37,12 @@ export function JobFilter() {
         placeholder="กรองตามชื่อ bot..."
         value={bot}
         onChange={(event) => updateParam("bot", event.target.value)}
-        className="rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+        className="field px-3 py-2"
       />
       <select
         value={status}
         onChange={(event) => updateParam("status", event.target.value)}
-        className="rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+        className="field px-3 py-2"
       >
         {STATUS_OPTIONS.map((s) => (
           <option key={s || "all"} value={s}>
@@ -59,7 +59,7 @@ export function JobFilter() {
           type="date"
           value={from}
           onChange={(event) => updateParam("from", event.target.value)}
-          className="rounded border border-gray-300 px-2 py-2 focus:border-blue-500 focus:outline-none"
+          className="field px-2 py-2"
         />
       </label>
       <label className="flex items-center gap-2 text-sm text-gray-600">
@@ -68,7 +68,7 @@ export function JobFilter() {
           type="date"
           value={to}
           onChange={(event) => updateParam("to", event.target.value)}
-          className="rounded border border-gray-300 px-2 py-2 focus:border-blue-500 focus:outline-none"
+          className="field px-2 py-2"
         />
       </label>
     </div>

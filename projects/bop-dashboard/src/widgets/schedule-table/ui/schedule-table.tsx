@@ -80,7 +80,7 @@ function ScheduleRow({ schedule }: { schedule: ScheduleSummary }) {
             type="button"
             onClick={() => trigger.mutate(undefined)}
             disabled={trigger.isPending}
-            className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-100 disabled:opacity-40"
+            className="btn-secondary px-2 py-1 text-xs disabled:opacity-40"
             title="สั่งรันทันที นอกตารางเวลาปกติ"
           >
             Run Now
@@ -90,7 +90,7 @@ function ScheduleRow({ schedule }: { schedule: ScheduleSummary }) {
               type="button"
               onClick={() => unpause.mutate(undefined)}
               disabled={unpause.isPending}
-              className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-100 disabled:opacity-40"
+              className="btn-secondary px-2 py-1 text-xs disabled:opacity-40"
             >
               Unpause
             </button>
@@ -99,7 +99,7 @@ function ScheduleRow({ schedule }: { schedule: ScheduleSummary }) {
               type="button"
               onClick={() => pause.mutate(undefined)}
               disabled={pause.isPending}
-              className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-100 disabled:opacity-40"
+              className="btn-secondary px-2 py-1 text-xs disabled:opacity-40"
             >
               Pause
             </button>

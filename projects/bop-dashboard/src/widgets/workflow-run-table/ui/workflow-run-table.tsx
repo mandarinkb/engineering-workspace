@@ -38,7 +38,7 @@ export function WorkflowRunTable() {
           value={scheduleId}
           onChange={(event) => setScheduleId(event.target.value)}
           aria-label="กรองตาม Schedule"
-          className="max-w-72 rounded border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-transparent"
+          className="field max-w-72 px-3 py-2 text-sm"
         >
           <option value="">ทุก Schedule (รวมที่สั่งเอง)</option>
           {(schedules.data ?? []).map((schedule) => (
@@ -51,7 +51,7 @@ export function WorkflowRunTable() {
           value={status}
           onChange={(event) => setStatus(event.target.value as RunStatusFilter)}
           aria-label="กรองตามสถานะ"
-          className="rounded border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-transparent"
+          className="field px-3 py-2 text-sm"
         >
           <option value="">ทุกสถานะ</option>
           {(Object.keys(RUN_STATUS_FILTER_LABELS) as Exclude<RunStatusFilter, "">[]).map((key) => (
@@ -123,7 +123,7 @@ export function WorkflowRunTable() {
             type="button"
             disabled={isFetchingNextPage}
             onClick={() => fetchNextPage()}
-            className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
+            className="btn-secondary px-3 py-1 disabled:opacity-40"
           >
             {isFetchingNextPage ? "กำลังโหลด..." : "โหลดเพิ่ม"}
           </button>

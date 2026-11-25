@@ -112,7 +112,7 @@ export function JobTable() {
             type="button"
             onClick={bulkCancel}
             disabled={cancelJob.isPending}
-            className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            className="btn-danger px-3 py-1 text-xs disabled:opacity-50"
           >
             {cancelJob.isPending ? "กำลังยกเลิก..." : "ยกเลิกที่เลือก"}
           </button>
@@ -172,7 +172,7 @@ export function JobTable() {
             type="button"
             disabled={currentPage <= 1}
             onClick={() => setPage((p) => p - 1)}
-            className="rounded border border-gray-300 px-3 py-1 disabled:opacity-40"
+            className="btn-secondary px-3 py-1 disabled:opacity-40"
           >
             ก่อนหน้า
           </button>
@@ -183,7 +183,7 @@ export function JobTable() {
             type="button"
             disabled={currentPage >= totalPages}
             onClick={() => setPage((p) => p + 1)}
-            className="rounded border border-gray-300 px-3 py-1 disabled:opacity-40"
+            className="btn-secondary px-3 py-1 disabled:opacity-40"
           >
             ถัดไป
           </button>
