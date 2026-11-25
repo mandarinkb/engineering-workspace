@@ -15,7 +15,7 @@ export async function JobDetailPage({ params }: JobDetailPageProps) {
   const { id } = await params;
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Job {id}</h1>
+      <h1 className="text-3xl">Job {id}</h1>
       <JobLogViewer jobId={id} />
     </div>
   );

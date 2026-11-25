@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 
+import { TopBar } from "@/widgets/top-bar";
 import { NavBar, SIDEBAR_COOKIE, isSidebarCollapsed } from "@/widgets/nav-bar";
 
 // layout.tsx ของ route group (dashboard) ครอบทุกหน้าใต้ bots/, jobs/, workflow-runs/
@@ -19,7 +20,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="flex min-h-screen">
       <NavBar initialCollapsed={collapsed} />
-      <main className="min-w-0 flex-1 p-6">{children}</main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar />
+        <main className="flex-1 px-10 py-8">{children}</main>
+      </div>
     </div>
   );
 }

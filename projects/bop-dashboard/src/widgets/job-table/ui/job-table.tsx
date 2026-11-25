@@ -119,10 +119,11 @@ export function JobTable() {
         </div>
       )}
 
-      <table className="w-full border-collapse text-left text-sm">
+      <div className="table-card">
+<table className="w-full border-collapse text-left text-sm">
         <thead>
-          <tr className="border-b border-gray-200 text-gray-500">
-            <th className="w-8 py-2">
+          <tr className="border-b border-gray-200 text-gray-600">
+            <th className="w-10 px-4 py-2.5">
               <input
                 type="checkbox"
                 checked={allCancellableSelected}
@@ -131,16 +132,16 @@ export function JobTable() {
                 aria-label="เลือกทั้งหมดที่ยกเลิกได้"
               />
             </th>
-            <th className="py-2 pr-4">Bot</th>
-            <th className="py-2 pr-4">Status</th>
-            <th className="py-2 pr-4">Summary</th>
-            <th className="py-2 pr-4">เริ่มเมื่อ</th>
+            <th className="px-4 py-2.5">Bot</th>
+            <th className="px-4 py-2.5">Status</th>
+            <th className="px-4 py-2.5">Summary</th>
+            <th className="px-4 py-2.5">เริ่มเมื่อ</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((job) => (
             <tr key={job.id} className="border-b border-gray-100 hover:bg-gray-50">
-              <td className="py-2">
+              <td className="px-4 py-2.5">
                 <input
                   type="checkbox"
                   checked={selectedIds.has(job.id)}
@@ -149,22 +150,23 @@ export function JobTable() {
                   aria-label={`เลือก job ${job.id}`}
                 />
               </td>
-              <td className="py-2 pr-4">
+              <td className="px-4 py-2.5">
                 {/* ลิงก์ไปหน้า live monitor ของ job นี้ (ข้อ 1.5) — ใช้ได้ทั้ง job ที่
                     ยังรันอยู่ (เห็น log ไหลสด) และที่จบไปแล้ว (เห็น log ย้อนหลังทั้งหมด) */}
                 <Link href={`/jobs/${job.id}`} className="text-blue-600 hover:underline">
                   {job.bot_name}
                 </Link>
               </td>
-              <td className="py-2 pr-4">
+              <td className="px-4 py-2.5">
                 <JobStatusBadge status={job.status} />
               </td>
-              <td className="py-2 pr-4 text-gray-600">{job.summary || job.error || "-"}</td>
-              <td className="py-2 pr-4 text-gray-500">{new Date(job.created_at).toLocaleString()}</td>
+              <td className="px-4 py-2.5 text-gray-600">{job.summary || job.error || "-"}</td>
+              <td className="px-4 py-2.5 text-gray-500">{new Date(job.created_at).toLocaleString()}</td>
             </tr>
           ))}
         </tbody>
       </table>
+</div>
 
       {totalPages > 1 && (
         <div className="flex items-center gap-3 text-sm">

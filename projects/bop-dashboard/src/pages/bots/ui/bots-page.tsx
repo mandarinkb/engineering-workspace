@@ -5,7 +5,7 @@ import { BotList } from "@/widgets/bot-list";
 export function BotsPage() {
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Bots</h1>
+      <h1 className="text-3xl">Bots</h1>
       <BotList />
     </div>
   );

@@ -13,7 +13,7 @@ import { JobTable } from "@/widgets/job-table";
 export function JobsPage() {
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Job History</h1>
+      <h1 className="text-3xl">Job History</h1>
       <JobStats />
       <Suspense fallback={<p className="text-gray-500">กำลังโหลด...</p>}>
         <JobFilter />

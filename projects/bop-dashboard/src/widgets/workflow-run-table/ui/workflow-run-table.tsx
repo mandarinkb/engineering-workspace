@@ -76,15 +76,16 @@ export function WorkflowRunTable() {
       ) : rows.length === 0 ? (
         <p className="text-gray-500">ไม่มี workflow run ที่ตรงกับตัวกรอง</p>
       ) : (
-        <table className="w-full border-collapse text-left text-sm">
+        <div className="table-card">
+<table className="w-full border-collapse text-left text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-gray-500 dark:border-gray-700">
+            <tr className="border-b border-gray-200 text-gray-600 dark:border-gray-700">
               {/* กว้าง 60% ให้ ID เต็มของ run จาก schedule (ราว 40 ตัวอักษร) ไม่โดนตัดตรงส่วนเวลา ซึ่งเป็นส่วนที่แยกแต่ละ run */}
-              <th className="w-3/5 py-2 pr-4">Workflow ID</th>
+              <th className="w-3/5 px-4 py-2.5">Workflow ID</th>
               {/* ว่าง = run ที่สั่งเอง แสดงไว้ให้แยก run จาก Schedule กับที่สั่งเองได้ในตารางที่ไม่ได้กรอง */}
-              <th className="w-1/5 py-2 pr-4">Schedule</th>
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2 pr-4">เริ่มเมื่อ</th>
+              <th className="w-1/5 px-4 py-2.5">Schedule</th>
+              <th className="px-4 py-2.5">Status</th>
+              <th className="px-4 py-2.5">เริ่มเมื่อ</th>
             </tr>
           </thead>
           <tbody>
@@ -93,7 +94,7 @@ export function WorkflowRunTable() {
                 key={`${run.workflow_id}/${run.run_id}`}
                 className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50"
               >
-                <td className="max-w-0 py-2 pr-4">
+                <td className="max-w-0 px-4 py-2.5">
                   <Link
                     href={`/workflow-runs/${encodeURIComponent(run.workflow_id)}`}
                     title={run.workflow_id}
@@ -102,19 +103,20 @@ export function WorkflowRunTable() {
                     {run.workflow_id}
                   </Link>
                 </td>
-                <td className="max-w-0 truncate py-2 pr-4 text-gray-500 dark:text-gray-400" title={run.schedule_id}>
+                <td className="max-w-0 truncate px-4 py-2.5 text-gray-500 dark:text-gray-400" title={run.schedule_id}>
                   {run.schedule_id || "สั่งเอง"}
                 </td>
-                <td className="py-2 pr-4">
+                <td className="px-4 py-2.5">
                   <WorkflowStatusBadge status={run.status} />
                 </td>
-                <td className="whitespace-nowrap py-2 pr-4 text-gray-500 dark:text-gray-400">
+                <td className="whitespace-nowrap px-4 py-2.5 text-gray-500 dark:text-gray-400">
                   {new Date(run.started_at).toLocaleString()}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+</div>
       )}
 
       {hasNextPage && (

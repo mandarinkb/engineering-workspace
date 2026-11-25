@@ -89,3 +89,20 @@ body {
     @apply rounded-md border border-gray-300 bg-white text-gray-900 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100;
   }
 }
+
+/* ตารางข้อมูลแบบ Temporal UI: อยู่ในการ์ดมุมโค้งมีกรอบ หัวตารางพื้นเทาอ่อน แถวสุดท้ายไม่มีเส้นล่าง
+   (ครอบ <table> ด้วย div.table-card) */
+@layer components {
+  .table-card {
+    @apply overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900;
+  }
+  .table-card thead tr {
+    @apply bg-gray-50 dark:bg-gray-800/60;
+  }
+  .table-card th {
+    @apply font-medium;
+  }
+  .table-card tbody tr:last-child {
+    border-bottom-width: 0;
+  }
+}
