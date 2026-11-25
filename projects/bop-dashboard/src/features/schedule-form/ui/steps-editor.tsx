@@ -70,13 +70,13 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
   }
 
   return (
-    <fieldset className="flex flex-col gap-4 rounded border border-gray-200 p-4">
+    <fieldset className="flex flex-col gap-4 rounded-lg border border-gray-200 p-4">
       <legend className="px-1 text-sm font-medium">Steps</legend>
       {steps.map((step, index) => (
         // key={index} ปลอดภัยตรงนี้เพราะ step แค่ append/remove ท้าย ไม่มี reorder
         // กลางทาง (เหมือนเหตุผลเดียวกับ job-log-viewer.tsx) — ถ้าในอนาคตเพิ่ม drag
         // reorder ต้องเปลี่ยนไปใช้ unique id ต่อ step แทน
-        <div key={index} className="flex flex-col gap-3 rounded border border-gray-100 p-3">
+        <div key={index} className="flex flex-col gap-3 rounded-lg border border-gray-100 p-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Step {index + 1}: Bot</span>
             {steps.length > 1 && (
@@ -138,7 +138,7 @@ export function StepsEditor({ steps, onChange, bots }: StepsEditorProps) {
               สำหรับความหมายเต็มๆ ของแต่ละทางเลือก bot_name ด้านบนยังจำเป็นต้องเลือก
               เสมอไม่ว่าโหมดไหน (ใช้เป็นแค่ label ใน StepResult ถ้าไม่ใช่ local — ไม่ได้
               ใช้ lookup อะไรฝั่ง backend เลยตอนนั้น) */}
-          <div className="rounded border border-gray-100 bg-gray-50 p-3 dark:bg-gray-900">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:bg-gray-900">
             <p className="mb-2 text-xs font-medium text-gray-500">รันที่ไหน</p>
             <div className="mb-3 flex flex-wrap gap-4 text-sm">
               {(Object.keys(DISPATCH_MODE_LABELS) as DispatchMode[]).map((mode) => (

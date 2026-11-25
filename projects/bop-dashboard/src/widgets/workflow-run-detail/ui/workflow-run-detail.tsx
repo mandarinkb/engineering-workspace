@@ -55,8 +55,8 @@ export function WorkflowRunDetail({ workflowId }: WorkflowRunDetailProps) {
             onClick={() => setView("pipeline")}
             className={
               view === "pipeline"
-                ? "rounded border border-blue-600 bg-blue-50 px-2 py-1 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300"
-                : "rounded border border-gray-300 px-2 py-1 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                ? "rounded-md border border-blue-600 bg-blue-50 px-2 py-1 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300"
+                : "rounded-md border border-gray-300 px-2 py-1 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
             }
           >
             Pipeline
@@ -66,8 +66,8 @@ export function WorkflowRunDetail({ workflowId }: WorkflowRunDetailProps) {
             onClick={() => setView("list")}
             className={
               view === "list"
-                ? "rounded border border-blue-600 bg-blue-50 px-2 py-1 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300"
-                : "rounded border border-gray-300 px-2 py-1 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                ? "rounded-md border border-blue-600 bg-blue-50 px-2 py-1 text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300"
+                : "rounded-md border border-gray-300 px-2 py-1 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
             }
           >
             List

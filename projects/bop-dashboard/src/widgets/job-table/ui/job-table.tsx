@@ -106,7 +106,7 @@ export function JobTable() {
   return (
     <div className="flex flex-col gap-3">
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
+        <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
           <span>เลือกไว้ {selectedIds.size} งาน</span>
           <button
             type="button"
@@ -120,6 +120,7 @@ export function JobTable() {
       )}
 
       <div className="table-card">
+<div className="overflow-x-auto">
 <table className="w-full border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400">
@@ -167,9 +168,8 @@ export function JobTable() {
         </tbody>
       </table>
 </div>
-
       {totalPages > 1 && (
-        <div className="flex items-center gap-3 text-sm">
+        <div className="table-card-footer">
           <button
             type="button"
             disabled={currentPage <= 1}
@@ -191,6 +191,7 @@ export function JobTable() {
           </button>
         </div>
       )}
+</div>
     </div>
   );
 }

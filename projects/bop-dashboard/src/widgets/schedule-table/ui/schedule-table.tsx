@@ -32,6 +32,7 @@ export function ScheduleTable() {
 
   return (
     <div className="table-card">
+<div className="overflow-x-auto">
 <table className="w-full border-collapse text-left text-sm">
       <thead>
         <tr className="border-b border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400">
@@ -49,6 +50,7 @@ export function ScheduleTable() {
         ))}
       </tbody>
     </table>
+</div>
 </div>
   );
 }

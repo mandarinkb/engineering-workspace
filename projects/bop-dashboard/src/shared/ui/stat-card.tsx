@@ -19,7 +19,7 @@ interface StatCardProps {
 
 export function StatCard({ label, value, tone = "gray" }: StatCardProps) {
   return (
-    <div className="rounded border border-gray-200 p-4 dark:border-gray-700">
+    <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
       <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
       <p className={`mt-1 text-3xl ${toneTextClasses[tone]}`}>{value}</p>
     </div>

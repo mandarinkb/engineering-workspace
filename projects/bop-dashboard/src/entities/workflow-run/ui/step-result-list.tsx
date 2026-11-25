@@ -15,7 +15,7 @@ export function StepResultList({ steps }: StepResultListProps) {
   return (
     <ol className="flex flex-col gap-2">
       {steps.map((step) => (
-        <li key={step.step_index} className="rounded border border-gray-200 p-3">
+        <li key={step.step_index} className="rounded-lg border border-gray-200 p-3">
           <p className="font-mono text-sm">
             step {step.step_index}: {step.bot_name}
           </p>

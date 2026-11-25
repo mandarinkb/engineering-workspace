@@ -58,7 +58,7 @@ export function BotList() {
       )}
 
       {selected && (
-        <div className="max-w-sm rounded border border-gray-200 p-4">
+        <div className="max-w-sm rounded-lg border border-gray-200 p-4">
           <h2 className="mb-4 text-lg font-semibold">รัน {selected.name}</h2>
           <BotForm key={selected.name} bot={selected} onCreated={(jobId) => router.push(`/jobs/${jobId}`)} />
         </div>
