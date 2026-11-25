@@ -1,14 +1,18 @@
-# route เดียวของ Temporal UI gateway: ให้เฉพาะผู้ที่ login BOP เข้า Temporal UI ได้
-# (ดู docs/adr/0002-temporal-ui-behind-apisix-gateway.md)
-# ผลทดลองที่ใช้ตัดสินใจสรุปไว้ใน ADR 0002 หัวข้อ "สิ่งที่ได้เรียนรู้จาก APISIX"
+# สร้างจาก routes/*.json ด้วย gen-yaml.sh — ห้ามแก้ไฟล์นี้ด้วยมือ (แก้ JSON แล้วรัน ./gen-yaml.sh)
+# ไฟล์นี้ใช้กับ gateway โหมดไฟล์ของชุด dev (projects/bot-orchestration-platform/docker-compose.yml)
+# route จริงบน Mini PC อยู่ใน etcd และถูก seed จากไฟล์ JSON ชุดเดียวกัน (ADR 0003)
+#
+# route นี้ให้เฉพาะผู้ที่ login BOP เข้า Temporal UI ได้ (ADR 0002):
+# - ตรวจ session ด้วย Lua เองแทน plugin forward-auth เพราะ forward-auth ตอบได้แค่สถานะของ
+#   บริการตรวจสิทธิ์ (401) ทำ redirect ไปหน้า login ของ dashboard ไม่ได้
+# - ตัด Cookie ด้วย serverless-post-function ที่รันหลัง pre-function ห้ามใช้ proxy-rewrite
+#   เพราะรันก่อนขั้นตรวจจึงลบ cookie ทิ้งก่อนถูกส่งไปถาม /me ทำให้ทุกคนไม่ผ่าน
 routes:
-  - id: temporal-ui
-    uri: /*
+  - id: "temporal-ui"
+    uri: "/*"
     plugins:
-      # ตรวจ session ด้วย Lua เองแทน plugin forward-auth เพราะ forward-auth ตอบได้แค่
-      # สถานะของบริการตรวจสิทธิ์ (401) ทำ redirect ไปหน้า login ของ dashboard ไม่ได้
       serverless-pre-function:
-        phase: access
+        phase: "access"
         functions:
           - |
             return function(conf, ctx)
@@ -42,16 +46,13 @@ routes:
               core.response.set_header("Location", "http://" .. ctx.var.host .. ":3000/login")
               return 302
             end
-      # ตัด Cookie ก่อนส่งต่อ เพื่อไม่ให้ Temporal UI เห็น bop_session
-      # ต้องเป็น serverless-post-function ที่รันหลัง pre-function (หลังตรวจเสร็จ)
-      # ห้ามใช้ proxy-rewrite ลบ Cookie: plugin นั้นรันก่อนขั้นตรวจ จึงลบ cookie
-      # ทิ้งก่อนถูกส่งไปถาม /me ทำให้ทุกคนไม่ผ่าน (spike พิสูจน์แล้ว)
       serverless-post-function:
-        phase: access
+        phase: "access"
         functions:
           - "return function(conf, ctx) ngx.req.clear_header('Cookie') end"
     upstream:
-      type: roundrobin
+      type: "roundrobin"
       nodes:
         "temporal-ui:8080": 1
+    name: "temporal-ui"
 #END
