@@ -20,7 +20,7 @@ Temporal UI (พอร์ต 8233) เดิมเปิดได้ทุกค
 
 ## สิ่งที่ได้เรียนรู้จาก APISIX
 
-ผล spike เต็มอยู่บน branch `prototype/apisix-temporal-ui-gateway` (`prototypes/apisix-temporal-ui-gateway/RESULT.md`)
+ผลที่ได้จาก spike (APISIX standalone ทดลองบน Mini PC 2026-11-25) สรุปไว้ด้านล่างทั้งหมด branch ทดลอง `prototype/apisix-temporal-ui-gateway` ถูกลบแล้วโดยไม่ได้ push สคริปต์จึงไม่เหลือ
 
 - ใช้โหมด standalone (`config_provider: yaml`) ไม่ต้องมี etcd ไฟล์ `apisix.yaml` ต้องลงท้ายด้วย `#END` ใช้ RAM ราว 110 MiB
 - **ลำดับ plugin ตามเฟส ไม่ใช่ตามลำดับที่เขียน:** `proxy-rewrite` (เฟส rewrite) รันก่อน `forward-auth` (เฟส access) การลบ Cookie ด้วย `proxy-rewrite` จึงทำให้ตัวตรวจไม่เห็น cookie และทุกคนได้ 401 ต้องตัด Cookie ด้วย `serverless-post-function` ที่เฟส access หลังตรวจแล้ว (ยืนยันว่า upstream เห็น Cookie 0 บรรทัด)

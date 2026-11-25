@@ -1,6 +1,6 @@
 # route เดียวของ Temporal UI gateway: ให้เฉพาะผู้ที่ login BOP เข้า Temporal UI ได้
 # (ดู docs/adr/0002-temporal-ui-behind-apisix-gateway.md)
-# ผลทดลองจริงอยู่ที่ branch prototype/apisix-temporal-ui-gateway (RESULT.md)
+# ผลทดลองที่ใช้ตัดสินใจสรุปไว้ใน ADR 0002 หัวข้อ "สิ่งที่ได้เรียนรู้จาก APISIX"
 routes:
   - id: temporal-ui
     uri: /*
