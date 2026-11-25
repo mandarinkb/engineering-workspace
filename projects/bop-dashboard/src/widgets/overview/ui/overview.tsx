@@ -39,7 +39,7 @@ export function Overview() {
   return (
     <div className="flex flex-col gap-6">
       {failedSources.length > 0 && (
-        <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+        <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
           โหลดข้อมูล {failedSources.join(", ")} ไม่สำเร็จ ตัวเลขด้านล่างอาจไม่ครบ
         </p>
       )}
@@ -91,7 +91,7 @@ export function Overview() {
 
 function Panel({ title, subtitle, moreHref, children }: { title: string; subtitle?: string; moreHref: string; children: React.ReactNode }) {
   return (
-    <section className="rounded border border-gray-200 dark:border-gray-700">
+    <section className="rounded-lg border border-gray-200 dark:border-gray-700">
       <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
         <div>
           <h2 className="font-medium">{title}</h2>

@@ -117,7 +117,7 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
       </div>
 
       {showBackfill && (
-        <div className="flex max-w-sm flex-col gap-3 rounded border border-gray-200 p-4">
+        <div className="flex max-w-sm flex-col gap-3 rounded-lg border border-gray-200 p-4">
           <p className="text-sm text-gray-600">
             รัน schedule นี้ย้อนหลังตามช่วงเวลาที่ระบุ ราวกับเวลานั้นเพิ่งผ่านไปตอนนี้ (เทียบเท่า &quot;Rerun&quot;)
           </p>
@@ -156,7 +156,7 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
         {schedule.steps && schedule.steps.length > 0 ? (
           <ol className="flex flex-col gap-2">
             {schedule.steps.map((step, index) => (
-              <li key={index} className="rounded border border-gray-200 p-3 font-mono text-sm">
+              <li key={index} className="rounded-lg border border-gray-200 p-3 font-mono text-sm">
                 step {index + 1}: {step.bot_name} — {JSON.stringify(step.config)}
               </li>
             ))}
@@ -174,7 +174,7 @@ export function ScheduleDetailView({ id }: ScheduleDetailViewProps) {
         {schedule.recent_actions && schedule.recent_actions.length > 0 ? (
           <ol className="flex flex-col gap-2">
             {schedule.recent_actions.map((action, index) => (
-              <li key={index} className="rounded border border-gray-200 p-3 text-sm">
+              <li key={index} className="rounded-lg border border-gray-200 p-3 text-sm">
                 <span className="text-gray-500">{new Date(action.actual_time).toLocaleString()}</span>
                 {action.workflow_id && <span className="ml-2 font-mono">{action.workflow_id}</span>}
               </li>

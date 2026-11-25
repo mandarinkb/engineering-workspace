@@ -17,7 +17,7 @@ interface PipelineNodeProps {
 // แดง=ล้มเหลว, เหลือง=กำลังทำงาน)
 export function PipelineNode({ node }: PipelineNodeProps) {
   return (
-    <div className="flex min-w-40 flex-col gap-1 rounded border border-gray-200 p-3 dark:border-gray-700">
+    <div className="flex min-w-40 flex-col gap-1 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs text-gray-500 dark:text-gray-400">step {node.stepIndex}</span>
         <StatusBadge label={node.status} tone={TONE_BY_STATUS[node.status]} />

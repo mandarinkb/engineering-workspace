@@ -101,8 +101,8 @@ export function JobLogViewer({ jobId }: JobLogViewerProps) {
               onClick={() => setLevelFilter(opt.value)}
               className={
                 levelFilter === opt.value
-                  ? "rounded border border-blue-600 bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300"
-                  : "rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                  ? "rounded-lg border border-blue-600 bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:border-blue-400 dark:bg-blue-950 dark:text-blue-300"
+                  : "rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
               }
             >
               {opt.label}
@@ -133,7 +133,7 @@ export function JobLogViewer({ jobId }: JobLogViewerProps) {
         </button>
       </div>
 
-      <div className="h-96 overflow-y-auto rounded border border-gray-200 bg-gray-950 p-4 font-mono text-sm text-gray-100">
+      <div className="h-96 overflow-y-auto rounded-lg border border-gray-200 bg-gray-950 p-4 font-mono text-sm text-gray-100">
         {filteredLines.length === 0 ? (
           <p className="text-gray-500">{lines.length === 0 ? "ยังไม่มี log" : "ไม่มี log ที่ตรงกับตัวกรอง"}</p>
         ) : (

@@ -158,7 +158,7 @@ export function ScheduleForm({ initial }: ScheduleFormProps) {
         {errors.workflow_name && <p className="mt-1 text-sm text-red-600">{errors.workflow_name.message}</p>}
       </div>
 
-      <fieldset className="flex flex-col gap-3 rounded border border-gray-200 p-4">
+      <fieldset className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
         <legend className="px-1 text-sm font-medium">ตารางเวลา</legend>
         <div className="flex gap-4 text-sm">
           <label className="flex items-center gap-2">

@@ -77,6 +77,7 @@ export function WorkflowRunTable() {
         <p className="text-gray-500">ไม่มี workflow run ที่ตรงกับตัวกรอง</p>
       ) : (
         <div className="table-card">
+<div className="overflow-x-auto">
 <table className="w-full border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-400">
@@ -117,10 +118,8 @@ export function WorkflowRunTable() {
           </tbody>
         </table>
 </div>
-      )}
-
       {hasNextPage && (
-        <div className="text-sm">
+        <div className="table-card-footer">
           <button
             type="button"
             disabled={isFetchingNextPage}
@@ -130,6 +129,8 @@ export function WorkflowRunTable() {
             {isFetchingNextPage ? "กำลังโหลด..." : "โหลดเพิ่ม"}
           </button>
         </div>
+      )}
+</div>
       )}
     </div>
   );
