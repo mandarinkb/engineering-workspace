@@ -39,9 +39,10 @@ ADR นี้แทนที่เฉพาะข้อ "โหมดไฟล�
 - **drift (ticket 02):** `export.sh`/`seed.sh` อ่านผลจริงของ Admin API ได้ จับ route ใหม่และ plugin ที่เพิ่มใน route ที่ git ดูแลได้ และ seed เขียนทับกลับได้
 - **dashboard (ticket 02):** ใส่ admin key ในหน้า Settings แล้วเห็นรายการ route ได้ผ่าน SSH tunnel
 - **gateway restart ขณะ etcd ล่ม (ticket 04):** gateway **หยุด (exit 1) และพอร์ตปิด** ไม่ปล่อยผ่าน (fail closed) log: `all etcd nodes are unavailable` เมื่อ etcd กลับมาแล้วสั่ง start gateway ใหม่ก็กลับเป็น 302 ปกติ (stack ลองไม่มี restart policy จึงต้องสั่งเอง ตัวจริงมี `restart: on-failure` และ override `unless-stopped`)
+- **ย้ายจริงที่ `:8233` (ticket 05):** ชุดทดสอบเดิมผ่านทั้งหมดบน gateway โหมด etcd (Bruno 96/112, Playwright 9 ข้อ, fail closed 503, Admin API ต่อไม่ได้จาก LAN) ผู้ใช้ Temporal UI เห็น 302/200/503 เหมือนเดิม ราคาที่จ่ายคือ Temporal UI ดับราว 25 วินาทีตอนสลับ (ดู ticket 05)
 
 ## ยังไม่พิสูจน์
 
 - ฟีเจอร์ของ dashboard ครบแค่ไหนเมื่อสร้าง/แก้ route และ plugin ด้วยปุ่ม (ยังไม่ได้ขับ UI สร้าง/ลบเอง ผู้เรียนจะลองเอง)
-- etcd ล่มนานกว่า 33 วินาที และการที่ gateway ตัวจริงกลับมาเองได้หลัง reboot (ต้องมี restart policy ของทั้ง etcd และ gateway; policy ของ etcd อยู่ใน override นอก repo)
-- ย้ายจริงที่ `:8233` (ticket 05) และ Docker บน Mac (ไม่มี)
+- etcd ล่มนานกว่า 33 วินาที และการที่ gateway ตัวจริงกลับมาเองได้หลัง reboot เครื่อง (ตั้ง `unless-stopped` ให้ทั้ง etcd และ gateway ใน override แล้ว แต่ยังไม่ได้ reboot ทดสอบ)
+- Docker บน Mac (ไม่มี)

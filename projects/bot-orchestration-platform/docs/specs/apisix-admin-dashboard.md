@@ -1,6 +1,6 @@
 # Spec: Temporal UI gateway แบบ etcd + Admin API + dashboard
 
-> สถานะ: ready-for-agent · ศัพท์ตาม [GLOSSARY.md](../../GLOSSARY.md) · การตัดสินใจ: [ADR 0003](../adr/0003-apisix-gateway-with-etcd-and-dashboard.md) (แทนที่ข้อ "โหมดไฟล์" ของ [ADR 0002](../adr/0002-temporal-ui-behind-apisix-gateway.md)) · ต่อยอดจาก [temporal-ui-gateway.md](temporal-ui-gateway.md)
+> สถานะ: implemented และ deploy บน Mini PC แล้ว (2026-11-25) · ศัพท์ตาม [GLOSSARY.md](../../GLOSSARY.md) · การตัดสินใจ: [ADR 0003](../adr/0003-apisix-gateway-with-etcd-and-dashboard.md) (แทนที่ข้อ "โหมดไฟล์" ของ [ADR 0002](../adr/0002-temporal-ui-behind-apisix-gateway.md)) · ต่อยอดจาก [temporal-ui-gateway.md](temporal-ui-gateway.md)
 
 ## Problem Statement
 
@@ -66,3 +66,7 @@ seam ที่เสนอ (ผู้ใช้ให้ไปต่อจาก�
 
 - **ความเสี่ยงหลัก:** Admin API แก้ gateway ที่ปกป้อง Temporal UI ได้ทั้งตัว ความปลอดภัยพึ่งการจำกัดการเข้าถึง (ข้อ 2 ของ ADR 0003) และชุดทดสอบ (ข้อ 3) ทั้งคู่ต้องผ่านก่อนถือว่าเสร็จ
 - **ยังไม่พิสูจน์:** ฟีเจอร์ของ dashboard ในตัว 3.21 ครบแค่ไหน, พฤติกรรมเมื่อ etcd ล่ม, วิธี inject admin key เข้า `config.yaml` (รูปแบบอ้างตัวแปร env), และ `allow_admin` เมื่อคำขอผ่านการ publish ของ Docker (ที่อยู่ต้นทางที่ APISIX เห็นอาจเป็น IP ของ bridge ไม่ใช่ 127.0.0.1) ต้องทดสอบในขั้นย้ายสองขั้นบนพอร์ตชั่วคราวก่อนสลับ
+
+## ต้นทุนการทำงาน
+
+tickets=5 · subagents=0 (ผู้ช่วยหลักทำเองทั้งหมดตามที่ผู้ใช้อนุมัติ เพราะแต่ละ ticket เล็กและต้องทดสอบบน Mini PC) · รอบแก้=2 (restore.sh ล้มเพราะ image etcd ไม่มี shell, และลำดับย้ายจริงพลาดเรื่องพอร์ต 9180 ทำให้ Temporal UI ดับ ~25 วินาที) · verify.sh ไม่ได้ใช้ (ไม่มีโค้ด Go/TS; test ของสคริปต์รันในเครื่องด้วย `tests/test-drift.sh`, `tests/test-gen-yaml.sh`) · หนักสุด: ทดสอบส่วน A/B บน Mini PC รวม Playwright ราว 10 รอบ และการเดารูปแบบ Admin API/entrypoint ที่ต้องแก้ตอนรันจริงหนึ่งครั้ง
