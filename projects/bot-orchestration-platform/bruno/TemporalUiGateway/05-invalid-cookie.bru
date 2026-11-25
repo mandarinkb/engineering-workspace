@@ -1,0 +1,26 @@
+meta {
+  name: Temporal UI with invalid cookie
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{gatewayUrl}}/
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: bop_session=not-a-valid-token
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+}
+
+tests {
+  test("cookie ปลอมได้ 302 เหมือนไม่มี cookie", function () {
+    expect(res.getStatus()).to.equal(302);
+    expect(res.getHeader("location")).to.match(/\/login$/);
+  });
+}
