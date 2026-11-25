@@ -58,7 +58,7 @@ seam ที่ผู้ใช้ยืนยันแล้ว (สองชั�
 ## Further Notes
 
 - ความเสี่ยงหลัก: cookie `bop_session` เป็น host-only ไม่ผูกพอร์ต ตามสเปกเบราว์เซอร์ควรถูกส่งไป `:8233` แต่ยังไม่เคยพิสูจน์ ticket แรกจึงเป็น tracer bullet ที่พิสูจน์เรื่องนี้ ถ้าไม่ส่ง ต้องกลับไปทบทวน ADR 0002
-- ผล spike: branch `prototype/apisix-temporal-ui-gateway`
+- ผล spike: สรุปไว้ใน ADR 0002 หัวข้อ "สิ่งที่ได้เรียนรู้จาก APISIX" (branch ทดลองถูกลบแล้ว)
 
 ## ต้นทุนการทำงาน
 
